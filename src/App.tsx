@@ -2,13 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { GlobalSwitcher } from './components/GlobalSwitcher';
+import { UnifiedStretch } from './components/UnifiedStretch';
 import { ResolutionVisualizer } from './components/ResolutionVisualizer';
-import { CustomResolution } from './components/CustomResolution';
-import { DisplayManager } from './components/DisplayManager';
-import { HardwareScaling } from './components/HardwareScaling';
-import { BorderlessStudio } from './components/BorderlessStudio';
 import { Settings } from './components/Settings';
+import { HardwareScaling } from './components/HardwareScaling';
+import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
 import {
   fetchDisplayInfo,
@@ -22,6 +20,8 @@ import {
   checkRequestedTab,
   trimMemory,
   isTauri,
+  isBadModeErrorMessage,
+  checkAppUpdates,
 } from './utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -34,12 +34,49 @@ export const App: React.FC = () => {
   const [preferredStretched, setPreferredStretched] = useState<[number, number]>([2090, 1440]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [_latestVersion, setLatestVersion] = useState('');
 
-  const showToast = (message: string, type: 'success' | 'info' = 'success') => {
+  // Background update check on startup (delayed 2.5s so app startup is instantaneous)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkAppUpdates()
+        .then((res) => {
+          if (res.has_update) {
+            setHasUpdate(true);
+            setLatestVersion(res.latest_version);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const showToast = (message: string, type: 'success' | 'info' = 'success', durationMs = 3500) => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
-    }, 3500);
+    }, durationMs);
+  };
+
+  const errorToMessage = (e: unknown): string => {
+    if (e instanceof Error) return e.message;
+    return String(e);
+  };
+
+  /** BADMODE (-2) means the mode was never Added: toast the Add guidance and land on Settings. */
+  const handleBadModeError = (e: unknown): boolean => {
+    const msg = errorToMessage(e);
+    if (isBadModeErrorMessage(msg)) {
+      showToast(msg, 'info', 7000);
+      // Brief delay so the toast is visible while landing on Settings.
+      setTimeout(() => {
+        setCurrentTab('settings');
+      }, 900);
+      return true;
+    }
+    return false;
   };
 
   const loadAllTelemetry = async () => {
@@ -64,16 +101,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadAllTelemetry();
 
-    // Keyboard shortcut navigation (1-7)
+    // Keyboard shortcut navigation (1-4)
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === '1') setCurrentTab('switcher');
       if (e.key === '2') setCurrentTab('visualizer');
-      if (e.key === '3') setCurrentTab('custom_res');
-      if (e.key === '4') setCurrentTab('displays');
-      if (e.key === '5') setCurrentTab('gpu');
-      if (e.key === '6') setCurrentTab('borderless');
-      if (e.key === '7') setCurrentTab('settings');
+      if (e.key === '3') setCurrentTab('settings');
+      if (e.key === '4') setCurrentTab('gpu');
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -104,14 +138,17 @@ export const App: React.FC = () => {
       try {
         const req = await checkRequestedTab();
         if (req) {
-          if (['switcher', 'visualizer', 'custom_res', 'displays', 'gpu', 'borderless', 'settings'].includes(req)) {
+          if (['switcher', 'visualizer', 'settings', 'gpu'].includes(req)) {
             setCurrentTab(req as TabType);
-          } else if (req === 'config') {
+          } else if (req === 'borderless' || req === 'display' || req === 'monitors') {
+            // Legacy alias: Window Stretcher merged into switcher grid
+            setCurrentTab('switcher');
+          } else if (['config', 'custom', 'cru', 'custom_res'].includes(req)) {
+            // Legacy aliases: custom builder merged into the settings tab
             setCurrentTab('settings');
-          } else if (req === 'display' || req === 'monitors') {
-            setCurrentTab('displays');
-          } else if (req === 'custom' || req === 'cru') {
-            setCurrentTab('custom_res');
+          } else if (req === 'sens') {
+            // Legacy alias: sens matcher merged into the switcher tab
+            setCurrentTab('switcher');
           }
         }
       } catch (_) {}
@@ -131,6 +168,16 @@ export const App: React.FC = () => {
     }
   }, [currentTab]);
 
+  // Unified grid tab fills viewport with no scroll; other tabs keep scroll.
+  // 'borderless' is a legacy alias that renders the same unified grid.
+  // Tabs that fit exactly within the viewport without body page scrolling
+  const isFitViewportTab =
+    currentTab === 'switcher' ||
+    currentTab === 'borderless' ||
+    currentTab === 'visualizer' ||
+    currentTab === 'settings';
+  const effectiveTab: TabType = currentTab === 'borderless' ? 'switcher' : currentTab;
+
   const handleToggle = async () => {
     setIsLoading(true);
     try {
@@ -141,7 +188,9 @@ export const App: React.FC = () => {
         'success'
       );
     } catch (e) {
-      showToast(String(e), 'info');
+      if (!handleBadModeError(e)) {
+        showToast(errorToMessage(e), 'info');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,7 +204,9 @@ export const App: React.FC = () => {
       setDisplayInfo(updated);
       showToast(`Applied ${w}×${h} @ ${hz}Hz`, 'success');
     } catch (e) {
-      showToast(String(e), 'info');
+      if (!handleBadModeError(e)) {
+        showToast(errorToMessage(e), 'info');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -184,37 +235,48 @@ export const App: React.FC = () => {
     <div className="h-screen w-screen bg-m3-surface text-m3-on-surface flex overflow-hidden selection:bg-m3-primary-container selection:text-m3-on-primary-container antialiased font-sans">
       {/* Left Sidebar Navigation */}
       <Sidebar
-        currentTab={currentTab}
+        currentTab={effectiveTab}
         onSelectTab={setCurrentTab}
         displayInfo={displayInfo}
         gpuInfo={gpuInfo}
+        hasUpdate={hasUpdate}
+        onOpenUpdates={() => setIsUpdateModalOpen(true)}
       />
 
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-m3-surface">
         {/* TopBar Header */}
         <TopBar
-          currentTab={currentTab}
+          currentTab={effectiveTab}
           displayInfo={displayInfo}
           gpuInfo={gpuInfo}
           shortcut={shortcut}
           onToggleProfile={handleToggle}
           isLoading={isLoading}
+          hasUpdate={hasUpdate}
+          onOpenUpdates={() => setIsUpdateModalOpen(true)}
         />
-
-        {/* Scrollable View Content */}
-        <main ref={mainRef} className="flex-1 overflow-y-auto p-3.5 sm:p-4">
-          <div className="max-w-6xl mx-auto">
+        {/* Scrollable View Content (unified grid locks to viewport, no scroll) */}
+        <main
+          ref={mainRef}
+          className={
+            isFitViewportTab
+              ? 'flex-1 min-h-0 overflow-hidden p-3'
+              : 'flex-1 overflow-y-auto p-3.5 sm:p-4'
+          }
+        >
+          <div className={isFitViewportTab ? 'h-full min-h-0 w-full' : 'max-w-6xl mx-auto h-full w-full'}>
             <AnimatePresence mode="wait">
               <motion.div
-                key={currentTab}
+                key={effectiveTab}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
+                className={isFitViewportTab ? 'h-full min-h-0' : 'h-full'}
               >
-                {currentTab === 'switcher' && (
-                  <GlobalSwitcher
+                {(currentTab === 'switcher' || currentTab === 'borderless') && (
+                  <UnifiedStretch
                     displayInfo={displayInfo}
                     shortcut={shortcut}
                     preferredStretched={preferredStretched}
@@ -232,15 +294,12 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {currentTab === 'custom_res' && (
-                  <CustomResolution
+                {currentTab === 'settings' && (
+                  <Settings
                     displayInfo={displayInfo}
+                    onStretchResChanged={(w, h) => setPreferredStretched([w, h])}
                     onRefreshDisplayInfo={loadAllTelemetry}
                   />
-                )}
-
-                {currentTab === 'displays' && (
-                  <DisplayManager onRefreshTelemetry={loadAllTelemetry} />
                 )}
 
                 {currentTab === 'gpu' && (
@@ -249,37 +308,21 @@ export const App: React.FC = () => {
                     onOpenControlPanel={handleOpenControlPanel}
                   />
                 )}
-
-                {currentTab === 'borderless' && <BorderlessStudio />}
-
-                {currentTab === 'settings' && (
-                  <Settings
-                    displayInfo={displayInfo}
-                    onStretchResChanged={(w, h) => setPreferredStretched([w, h])}
-                  />
-                )}
               </motion.div>
             </AnimatePresence>
           </div>
         </main>
-
-        {/* Persistent Bottom Status Bar */}
-        <footer className="h-8 px-5 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/70 text-xs text-m3-on-surface-variant flex items-center justify-between shrink-0 select-none">
-          <div className="flex items-center space-x-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-m3-primary shadow-[0_0_6px_rgba(208,188,255,0.6)]" />
-            <span className="text-[11px] text-m3-secondary font-medium">
-              TrueStretch Studio • Material 3 Expressive
-            </span>
-          </div>
-          <div className="flex items-center space-x-3 text-[11px] text-m3-outline">
-            <span>Win32 GDI Display API</span>
-            <span>•</span>
-            <span>0.0 ms Frame Overhead</span>
-            <span>•</span>
-            <span>VALORANT 1.45:1 Golden Ratio</span>
-          </div>
-        </footer>
       </div>
+
+      {/* In-App Update Modal */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        onUpdateStatusChange={(has, ver) => {
+          setHasUpdate(has);
+          setLatestVersion(ver);
+        }}
+      />
 
       {/* Animated Toast Notification */}
       <AnimatePresence>

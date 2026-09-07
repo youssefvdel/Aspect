@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::os::windows::process::CommandExt;
 use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW};
+use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE};
+use winreg::RegKey;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -88,7 +90,7 @@ pub fn save_gpu_settings(settings: &SavedGpuSettings) {
 }
 
 pub fn detect_gpu() -> GpuInfo {
-    let mut name = String::new();
+    let mut names: Vec<String> = Vec::new();
     unsafe {
         let mut dd = DISPLAY_DEVICEW {
             cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32,
@@ -99,30 +101,60 @@ pub fn detect_gpu() -> GpuInfo {
         while EnumDisplayDevicesW(None, idx, &mut dd, 0).as_bool() {
             let str_val = String::from_utf16_lossy(&dd.DeviceString);
             let cleaned = str_val.trim_matches(char::from(0)).trim().to_string();
-            if !cleaned.is_empty() && !cleaned.contains("Basic Display") {
-                name = cleaned;
-                break;
+            if !cleaned.is_empty() && !cleaned.contains("Basic Display") && !cleaned.contains("Basic Render") && !names.contains(&cleaned) {
+                names.push(cleaned);
             }
             idx += 1;
         }
     }
 
-    if name.is_empty() {
-        name = "Generic Display Adapter".to_string();
+    // Also inspect registry Class\{4d36e968-e325-11ce-bfc1-08002be10318} to ensure hybrid/all GPUs are found
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+    if let Ok(class_key) = hklm.open_subkey_with_flags(class_path, KEY_READ) {
+        for i in 0..16 {
+            let sub_name = format!("{:04}", i);
+            if let Ok(sub_key) = class_key.open_subkey_with_flags(&sub_name, KEY_READ) {
+                if let Ok(desc) = sub_key.get_value::<String, _>("DriverDesc") {
+                    let cleaned = desc.trim().to_string();
+                    if !cleaned.is_empty() && !cleaned.contains("Basic Display") && !cleaned.contains("Basic Render") && !names.contains(&cleaned) {
+                        names.push(cleaned);
+                    }
+                }
+            }
+        }
     }
 
-    let lower = name.to_lowercase();
-    let vendor = if lower.contains("nvidia") || lower.contains("geforce") || lower.contains("rtx") || lower.contains("gtx") {
-        GpuVendor::Nvidia
-    } else if lower.contains("amd") || lower.contains("radeon") {
-        GpuVendor::Amd
-    } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
-        GpuVendor::Intel
-    } else {
-        GpuVendor::Unknown
+    let classify = |s: &str| -> GpuVendor {
+        let lower = s.to_lowercase();
+        if lower.contains("nvidia") || lower.contains("geforce") || lower.contains("rtx") || lower.contains("gtx") || lower.contains("quadro") {
+            GpuVendor::Nvidia
+        } else if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+            GpuVendor::Amd
+        } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+            GpuVendor::Intel
+        } else {
+            GpuVendor::Unknown
+        }
     };
 
-    let instructions: Vec<String> = match vendor {
+    // Prioritize discrete GPUs (RTX/GTX/Radeon RX/Arc) over integrated GPUs for the main badge
+    let primary_idx = names.iter().position(|n| {
+        let l = n.to_lowercase();
+        (l.contains("geforce") || l.contains("rtx") || l.contains("gtx") || (l.contains("radeon") && (l.contains("rx") || l.contains("xt") || l.contains("pro")))) && !l.contains("graphics")
+    }).unwrap_or(0);
+
+    let primary_name = if !names.is_empty() { names[primary_idx].clone() } else { "Generic Display Adapter".to_string() };
+    let vendor = classify(&primary_name);
+
+    let display_name = if names.len() > 1 {
+        let others: Vec<_> = names.iter().enumerate().filter(|(i, _)| *i != primary_idx).map(|(_, n)| n.as_str()).collect();
+        format!("{} (+ {})", primary_name, others.join(", "))
+    } else {
+        primary_name
+    };
+
+    let mut instructions: Vec<String> = match vendor {
         GpuVendor::Nvidia => vec![
             "Set Scaling mode to: 'Full-screen'.".into(),
             "Set 'Perform scaling on:' to: 'GPU'.".into(),
@@ -132,17 +164,17 @@ pub fn detect_gpu() -> GpuInfo {
         ],
         GpuVendor::Amd => vec![
             "Set 'Scaling Mode' to: 'Full Panel'.".into(),
-            "Toggle 'GPU Scaling' to: ENABLED.".into(),
-            "Override application-level aspect ratio constraints.".into(),
-            "Enable Radeon Anti-Lag direct scanout.".into(),
-            "Disable integer scaling lock.".into(),
+            "Toggle 'GPU Scaling' to: ENABLED (DalGpuScaling).".into(),
+            "Override application-level aspect ratio constraints (DalEnableModeBypass).".into(),
+            "DalKeepAspectRatio set to 0 (Full Panel stretched).".into(),
+            "Automatic custom mode injection active via DalNonStandardModesBCD.".into(),
         ],
         GpuVendor::Intel => vec![
-            "Set Scale to: 'Stretched' (0 black bars).".into(),
-            "Route scaling through Intel Xe hardware engine.".into(),
-            "Disable Maintain Aspect Ratio in display settings.".into(),
-            "Enable low-latency direct flip scanout.".into(),
-            "Bypass in-game resolution letterboxing.".into(),
+            "Set Scale to: 'Scale Full Screen / Stretched' (ScaleOption=3).".into(),
+            "Route scaling through Intel Xe / Arc hardware engine.".into(),
+            "ReadEDIDFromRegistry enabled for custom resolution recognition.".into(),
+            "Bypass in-game resolution letterboxing (bShouldLetterbox=False).".into(),
+            "MaintainAspectRatio set to 0 (0 black bars).".into(),
         ],
         GpuVendor::Unknown => vec![
             "Enable GPU hardware scaling.".into(),
@@ -151,9 +183,13 @@ pub fn detect_gpu() -> GpuInfo {
         ],
     };
 
+    if names.len() > 1 {
+        instructions.push("Multi-GPU system detected: Scaling and custom modes configured across all adapters.".into());
+    }
+
     GpuInfo {
         vendor,
-        name,
+        name: display_name,
         instructions,
     }
 }
@@ -320,51 +356,72 @@ pub fn get_gpu_settings_report() -> GpuSettingsReport {
     }
 }
 
-fn set_reg_dword(root_and_key: &str, value_name: &str, dword_value: u32) {
-    let _ = Command::new("reg")
-        .args(["add", root_and_key, "/v", value_name, "/t", "REG_DWORD", "/d", &dword_value.to_string(), "/f"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
+fn set_hklm_dword(subkey_path: &str, value_name: &str, val: u32) {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok((key, _)) = hklm.create_subkey(subkey_path) {
+        let _ = key.set_value(value_name, &val);
+    }
+}
+
+fn set_hkcu_dword(subkey_path: &str, value_name: &str, val: u32) {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok((key, _)) = hkcu.create_subkey(subkey_path) {
+        let _ = key.set_value(value_name, &val);
+    }
+}
+
+fn apply_scaling_recursive(key: &RegKey, scaling_val: u32) {
+    if let Ok(_) = key.get_value::<u32, _>("Scaling") {
+        let _ = key.set_value("Scaling", &scaling_val);
+    }
+    for sub in key.enum_keys().filter_map(|k| k.ok()) {
+        if let Ok(sub_key) = key.open_subkey_with_flags(&sub, KEY_READ | KEY_SET_VALUE) {
+            apply_scaling_recursive(&sub_key, scaling_val);
+        }
+    }
+}
+
+pub fn apply_to_all_gpu_adapters<F>(mut f: F)
+where
+    F: FnMut(&str, &str, &RegKey),
+{
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+    if let Ok(class_key) = hklm.open_subkey_with_flags(class_path, KEY_READ) {
+        for i in 0..16 {
+            let sub_name = format!("{:04}", i);
+            if let Ok(sub_key) = class_key.open_subkey_with_flags(&sub_name, KEY_READ | KEY_SET_VALUE) {
+                let desc: String = sub_key.get_value("DriverDesc").unwrap_or_default();
+                let prov: String = sub_key.get_value("ProviderName").unwrap_or_default();
+                f(&desc, &prov, &sub_key);
+            }
+        }
+    }
 }
 
 pub fn apply_single_gpu_setting(id: &str, value: bool) -> Result<GpuSettingsReport, String> {
     let mut saved = load_saved_gpu_settings();
-    let gpu_info = detect_gpu();
 
     match id {
         "full_screen_scaling" => {
             saved.full_screen_scaling = value;
             let _ = crate::display::set_display_scaling_mode(value);
 
-            // Vendor-specific registry updates in background
-            let vendor = gpu_info.vendor.clone();
-            std::thread::spawn(move || {
-                match vendor {
-                    GpuVendor::Amd => {
-                        let keep_aspect = if value { 0 } else { 1 };
-                        let script = format!(
-                            r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'DalKeepAspectRatio' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                            keep_aspect
-                        );
-                        let _ = Command::new("powershell")
-                            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .output();
-                    }
-                    GpuVendor::Intel => {
-                        let scale_opt = if value { 3 } else { 2 };
-                        let script = format!(
-                            r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'ScaleOption' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                            scale_opt
-                        );
-                        let _ = Command::new("powershell")
-                            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .output();
-                    }
-                    _ => {}
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+                    let _ = sub_key.set_value("DalKeepAspectRatio", &if value { 0u32 } else { 1u32 });
+                    let _ = sub_key.set_value("DalScaleRule", &0u32);
+                } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+                    let _ = sub_key.set_value("ScaleOption", &if value { 3u32 } else { 2u32 });
                 }
             });
+
+            // Set global WDDM scaling in GraphicsDrivers\Configuration
+            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+            if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
+                apply_scaling_recursive(&config_root, if value { 4 } else { 2 });
+            }
         }
         "gpu_scaling_engine" => {
             saved.gpu_scaling_engine = value;
@@ -372,97 +429,117 @@ pub fn apply_single_gpu_setting(id: &str, value: bool) -> Result<GpuSettingsRepo
                 let _ = crate::display::apply_gpu_scaling_stretched();
             }
 
-            match gpu_info.vendor {
-                GpuVendor::Nvidia => {
-                    set_reg_dword(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "DxgkUsePhysicalMode", if value { 0 } else { 1 });
+            set_hklm_dword(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "DxgkUsePhysicalMode", if value { 0 } else { 1 });
+
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+                    let _ = sub_key.set_value("DalGpuScaling", &if value { 1u32 } else { 0u32 });
+                    let _ = sub_key.set_value("DalScaleRule", &0u32);
+                } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+                    let _ = sub_key.set_value("ScaleOption", &if value { 3u32 } else { 1u32 });
+                    let _ = sub_key.set_value("ReadEDIDFromRegistry", &1u32);
                 }
-                GpuVendor::Amd => {
-                    std::thread::spawn(move || {
-                        let dal_val = if value { 1 } else { 0 };
-                        let script = format!(
-                            r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'DalGpuScaling' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                            dal_val
-                        );
-                        let _ = Command::new("powershell")
-                            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .output();
-                    });
-                }
-                GpuVendor::Intel => {
-                    std::thread::spawn(move || {
-                        let scale_val = if value { 3 } else { 1 };
-                        let script = format!(
-                            r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'ScaleOption' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                            scale_val
-                        );
-                        let _ = Command::new("powershell")
-                            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .output();
-                    });
-                }
-                _ => {}
-            }
+            });
         }
         "override_game_scaling" => {
             saved.override_game_scaling = value;
             let _ = crate::game_config::set_letterbox_all(!value);
-            set_reg_dword(r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences", "DisableDXGIWindowedStereo", if value { 1 } else { 0 });
+            set_hkcu_dword(r"Software\Microsoft\DirectX\UserGpuPreferences", "DisableDXGIWindowedStereo", if value { 1 } else { 0 });
 
-            if gpu_info.vendor == GpuVendor::Amd {
-                std::thread::spawn(move || {
-                    let dal_bypass = if value { 1 } else { 0 };
-                    let script = format!(
-                        r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'DalEnableModeBypass' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                        dal_bypass
-                    );
-                    let _ = Command::new("powershell")
-                        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
-                });
-            }
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+                    let _ = sub_key.set_value("DalEnableModeBypass", &if value { 1u32 } else { 0u32 });
+                } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+                    let _ = sub_key.set_value("DisableLetterboxing", &if value { 1u32 } else { 0u32 });
+                    let _ = sub_key.set_value("MaintainAspectRatio", &0u32);
+                }
+            });
         }
         "low_latency_scanout" => {
             saved.low_latency_scanout = value;
             let reg_val = if value { 1 } else { 0 };
-            set_reg_dword(r"HKCU\Software\Microsoft\Windows\DWM", "DirectFlipEnabled", reg_val);
-            set_reg_dword(r"HKLM\SOFTWARE\Microsoft\Windows\DWM", "DirectFlipEnabled", reg_val);
+            set_hkcu_dword(r"Software\Microsoft\Windows\DWM", "DirectFlipEnabled", reg_val);
+            set_hklm_dword(r"SOFTWARE\Microsoft\Windows\DWM", "DirectFlipEnabled", reg_val);
         }
         "integer_scaling_bypass" => {
             saved.integer_scaling_bypass = value;
-            std::thread::spawn(move || {
-                let reg_script = r#"
-                    Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.GetValue('Scaling') -ne $null } | ForEach-Object {
-                        Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'Scaling' -Value 4 -Type DWord -Force -ErrorAction SilentlyContinue
-                    }
-                "#;
-                let _ = Command::new("powershell")
-                    .args(["-NoProfile", "-NonInteractive", "-Command", reg_script])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output();
-            });
-
-            if gpu_info.vendor == GpuVendor::Amd {
-                std::thread::spawn(move || {
-                    let dal_int = if value { 0 } else { 1 };
-                    let script = format!(
-                        r#"Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}' -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -match '\\[0-9]{{4}}$' }} | ForEach-Object {{ Set-ItemProperty -Path ("Registry::" + $_.Name) -Name 'DalIntegerScaling' -Value {} -Type DWord -Force -ErrorAction SilentlyContinue }}"#,
-                        dal_int
-                    );
-                    let _ = Command::new("powershell")
-                        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
-                });
+            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+            if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
+                apply_scaling_recursive(&config_root, 4);
             }
+
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+                    let _ = sub_key.set_value("DalIntegerScaling", &if value { 0u32 } else { 1u32 });
+                } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+                    let _ = sub_key.set_value("MaintainAspectRatio", &if value { 0u32 } else { 1u32 });
+                }
+            });
         }
         _ => return Err(format!("Unknown setting ID: {}", id)),
     }
 
     save_gpu_settings(&saved);
     Ok(get_gpu_settings_report())
+}
+
+/// Enforces Full-Screen Stretched scaling across Win32 CCD, WDDM, NVIDIA driver database, and AMD/Intel keys.
+pub fn enforce_all_gpu_scaling() {
+    // 1. Win32 CCD SetDisplayConfig (forces active display paths to DISPLAYCONFIG_SCALING_STRETCHED)
+    let _ = crate::display::set_display_scaling_mode(true);
+
+    // 2. Pure native winreg update for WDDM GraphicsDrivers\Configuration
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok(config_root) = hklm.open_subkey_with_flags(
+        r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration",
+        KEY_READ | KEY_SET_VALUE,
+    ) {
+        apply_scaling_recursive(&config_root, 4); // 4 = Stretched Full-Screen
+    }
+
+    // 3. Update NVIDIA nvlddmkm DisplayDatabase ScalingConfig
+    // byte 8: 0x02 = Full-screen
+    // byte 9: 0x01 = GPU scaling
+    // byte 10: 0x01 = Override scaling mode set by games
+    // byte 12: 0xf1 = Checksum flag
+    let nv_base = r"SYSTEM\CurrentControlSet\Services\nvlddmkm\State\DisplayDatabase";
+    if let Ok(nv_key) = hklm.open_subkey_with_flags(nv_base, KEY_READ | KEY_SET_VALUE) {
+        for sub in nv_key.enum_keys().filter_map(|k| k.ok()) {
+            if let Ok(sub_key) = nv_key.open_subkey_with_flags(&sub, KEY_READ | KEY_SET_VALUE) {
+                if let Ok(mut val) = sub_key.get_raw_value("ScalingConfig") {
+                    if val.bytes.len() >= 16 {
+                        val.bytes[8] = 0x02;
+                        val.bytes[9] = 0x01;
+                        val.bytes[10] = 0x01;
+                        val.bytes[12] = 0xf1;
+                        let _ = sub_key.set_raw_value("ScalingConfig", &val);
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Update GPU adapter registry keys (AMD, Intel, etc.)
+    apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+        let lower = format!("{} {}", prov, desc).to_lowercase();
+        if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+            let _ = sub_key.set_value("DalKeepAspectRatio", &0u32);
+            let _ = sub_key.set_value("DalGpuScaling", &1u32);
+            let _ = sub_key.set_value("DalEnableModeBypass", &1u32);
+            let _ = sub_key.set_value("DalScaleRule", &0u32);
+            let _ = sub_key.set_value("DalIntegerScaling", &0u32);
+        } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+            let _ = sub_key.set_value("ScaleOption", &3u32);
+            let _ = sub_key.set_value("ReadEDIDFromRegistry", &1u32);
+            let _ = sub_key.set_value("CustomModeAllowed", &1u32);
+            let _ = sub_key.set_value("EnableCustomResolutions", &1u32);
+            let _ = sub_key.set_value("MaintainAspectRatio", &0u32);
+            let _ = sub_key.set_value("DisableLetterboxing", &1u32);
+        }
+    });
 }
 
 pub fn auto_configure_all_gpu_settings() -> Result<(String, GpuSettingsReport), String> {
@@ -481,19 +558,41 @@ pub fn auto_configure_all_gpu_settings() -> Result<(String, GpuSettingsReport), 
     // 2. Disable letterboxing across all configs
     let config_count = crate::game_config::set_letterbox_all(false).unwrap_or(0);
 
-    // 3. Apply registry DirectFlip + DXGI stereo disable
-    let reg_script = r#"
-        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\DWM' -Name 'DirectFlipEnabled' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name 'DisableDXGIWindowedStereo' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-    "#;
-    let _ = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", reg_script])
-        .output();
+    // 3. Set DirectFlip + DXGI stereo disable via pure native winreg
+    set_hkcu_dword(r"Software\Microsoft\Windows\DWM", "DirectFlipEnabled", 1);
+    set_hklm_dword(r"SOFTWARE\Microsoft\Windows\DWM", "DirectFlipEnabled", 1);
+    set_hkcu_dword(r"Software\Microsoft\DirectX\UserGpuPreferences", "DisableDXGIWindowedStereo", 1);
+    set_hklm_dword(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "DxgkUsePhysicalMode", 0);
+
+    // 4. Set global WDDM scaling in GraphicsDrivers\Configuration
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
+        apply_scaling_recursive(&config_root, 4);
+    }
+
+    // 5. Configure all GPU adapter keys (NVIDIA, AMD, Intel)
+    apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+        let lower = format!("{} {}", prov, desc).to_lowercase();
+        if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+            let _ = sub_key.set_value("DalKeepAspectRatio", &0u32);
+            let _ = sub_key.set_value("DalGpuScaling", &1u32);
+            let _ = sub_key.set_value("DalEnableModeBypass", &1u32);
+            let _ = sub_key.set_value("DalScaleRule", &0u32);
+            let _ = sub_key.set_value("DalIntegerScaling", &0u32);
+        } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+            let _ = sub_key.set_value("ScaleOption", &3u32);
+            let _ = sub_key.set_value("ReadEDIDFromRegistry", &1u32);
+            let _ = sub_key.set_value("CustomModeAllowed", &1u32);
+            let _ = sub_key.set_value("EnableCustomResolutions", &1u32);
+            let _ = sub_key.set_value("MaintainAspectRatio", &0u32);
+            let _ = sub_key.set_value("DisableLetterboxing", &1u32);
+        }
+    });
 
     let report = get_gpu_settings_report();
 
     let msg = format!(
-        "Auto-applied recommended GPU settings: {} active display paths set to Full-Screen Stretched, letterboxing bypassed in {} game config(s), and DirectFlip low-latency scanout activated.",
+        "Auto-applied recommended GPU settings: {} active display paths set to Full-Screen Stretched across all GPU adapters (NVIDIA/AMD/Intel), letterboxing bypassed in {} game config(s), and DirectFlip low-latency scanout activated.",
         ccd_res, config_count
     );
 
@@ -524,6 +623,18 @@ pub fn launch_control_panel(vendor: &GpuVendor) -> Result<(), String> {
             Ok(())
         }
         GpuVendor::Amd => {
+            let paths = [
+                r"C:\Program Files\AMD\CNext\CNext\RadeonSoftware.exe",
+                r"C:\Program Files\AMD\CNext\CNext\cncmd.exe",
+            ];
+            for path in &paths {
+                if std::path::Path::new(path).exists() {
+                    let _ = Command::new(path)
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn();
+                    return Ok(());
+                }
+            }
             Command::new("explorer.exe")
                 .arg("amd://")
                 .creation_flags(CREATE_NO_WINDOW)
@@ -532,6 +643,17 @@ pub fn launch_control_panel(vendor: &GpuVendor) -> Result<(), String> {
             Ok(())
         }
         GpuVendor::Intel => {
+            let paths = [
+                r"C:\Program Files\Intel\Intel Graphics Command Center\IGCC.exe",
+            ];
+            for path in &paths {
+                if std::path::Path::new(path).exists() {
+                    let _ = Command::new(path)
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn();
+                    return Ok(());
+                }
+            }
             Command::new("explorer.exe")
                 .arg("igcc://")
                 .creation_flags(CREATE_NO_WINDOW)
@@ -540,8 +662,8 @@ pub fn launch_control_panel(vendor: &GpuVendor) -> Result<(), String> {
             Ok(())
         }
         GpuVendor::Unknown => {
-            Command::new("control.exe")
-                .arg("desk.cpl")
+            Command::new("explorer.exe")
+                .arg("ms-settings:display")
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .map_err(|e| format!("Failed to open Windows Display Settings: {}", e))?;

@@ -1,101 +1,63 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Wand2,
   Sliders,
-  Shield,
   RotateCcw,
   Check,
   AlertTriangle,
-  Play,
-  FileCode2,
-  Cpu,
-  RefreshCw,
-  ExternalLink,
-  Zap,
   CheckCircle2,
-  Layers,
+  Plus,
+  Loader2,
+  Shield,
+  ChevronDown,
 } from 'lucide-react';
 import type { DisplayInfo } from '../types';
 import {
   applyResolution,
   savePreferredStretchedRes,
-  applyCustomResToAllConfigs,
-  launchCru,
-  restartGraphicsDriver,
-  resetAllCruOverrides,
+  addCustomResolution,
+  removeCustomOverride,
 } from '../utils/ipc';
 
 interface CustomResolutionProps {
   displayInfo: DisplayInfo | null;
   onRefreshDisplayInfo?: () => void;
+  externalDims?: { w: number; h: number; nonce: number } | null;
+  defaultW?: number;
+  defaultH?: number;
 }
-
-interface AspectRatioPreset {
-  label: string;
-  ratioLabel: string;
-  calcWidth: (nativeH: number) => number;
-  description: string;
-  hitboxGain: string;
-}
-
-const PRESETS: AspectRatioPreset[] = [
-  {
-    label: '1.45:1 Golden Ratio',
-    ratioLabel: '1.45:1 True Stretch',
-    calcWidth: (h) => {
-      const calc = Math.round(h * 1.45) + 2;
-      return calc % 2 === 0 ? calc : calc + 1;
-    },
-    description: 'Esports gold standard: 32% wider hitboxes with native vertical FOV.',
-    hitboxGain: '+32.4%',
-  },
-  {
-    label: '4:3 Competitive',
-    ratioLabel: '4:3 Classic',
-    calcWidth: (h) => {
-      const calc = Math.round((h * 4) / 3);
-      return calc % 2 === 0 ? calc : calc + 1;
-    },
-    description: 'CS / Quake legacy: Maximum horizontal stretch and target width.',
-    hitboxGain: '+33.3%',
-  },
-  {
-    label: '16:10 Extended',
-    ratioLabel: '16:10 Balanced',
-    calcWidth: (h) => {
-      const calc = Math.round((h * 16) / 10);
-      return calc % 2 === 0 ? calc : calc + 1;
-    },
-    description: 'Subtle stretch: Smooth pixel density with 10% wider models.',
-    hitboxGain: '+10.0%',
-  },
-  {
-    label: '5:4 Ultra Wide',
-    ratioLabel: '5:4 Extreme',
-    calcWidth: (h) => {
-      const calc = Math.round((h * 5) / 4);
-      return calc % 2 === 0 ? calc : calc + 1;
-    },
-    description: 'Aggressive stretch: Giant player models for ultra-close angles.',
-    hitboxGain: '+44.0%',
-  },
-];
 
 export const CustomResolution: React.FC<CustomResolutionProps> = ({
   displayInfo,
   onRefreshDisplayInfo,
+  externalDims = null,
+  defaultW,
+  defaultH,
 }) => {
   const nativeW = displayInfo?.native_width || 2560;
   const nativeH = displayInfo?.native_height || 1440;
   const defaultHz = displayInfo?.current_hz || 260;
 
-  const [width, setWidth] = useState<number>(() => {
-    const calc = Math.round(nativeH * 1.45) + 2;
-    return calc % 2 === 0 ? calc : calc + 1;
-  });
-  const [height, setHeight] = useState<number>(nativeH);
+  const [width, setWidth] = useState<number>(() => defaultW || Math.round(nativeH * 1.451));
+  const [height, setHeight] = useState<number>(() => defaultH || nativeH);
   const [hz, setHz] = useState<number>(defaultHz);
-  const [lockReadonly, setLockReadonly] = useState<boolean>(true);
+
+  // Sync external dims if user selected a target upstairs or on initial load
+  useEffect(() => {
+    if (defaultW && defaultH && appliedNonce.current === 0) {
+      setWidth(defaultW);
+      setHeight(defaultH);
+    }
+  }, [defaultW, defaultH]);
+
+  // Sync external dims if user selected a target upstairs
+  const appliedNonce = useRef<number>(0);
+  useEffect(() => {
+    if (!externalDims || externalDims.nonce === appliedNonce.current) return;
+    appliedNonce.current = externalDims.nonce;
+    setWidth(externalDims.w);
+    setHeight(externalDims.h);
+  }, [externalDims]);
 
   // Safe Test Mode State
   const [isTesting, setIsTesting] = useState<boolean>(false);
@@ -106,12 +68,29 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     hz: number;
   } | null>(null);
 
-  const [isApplying, setIsApplying] = useState<boolean>(false);
-  const [cruLoading, setCruLoading] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState<boolean>(false);
+  const [isHzDropdownOpen, setIsHzDropdownOpen] = useState(false);
+  const hzDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (hzDropdownRef.current && !hzDropdownRef.current.contains(event.target as Node)) {
+        setIsHzDropdownOpen(false);
+      }
+    };
+    if (isHzDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isHzDropdownOpen]);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     type: 'success' | 'warning' | 'info';
   } | null>(null);
+
+  // Tracks monitorId if an EDID override was added in this test session.
+  // If user reverts or timeout expires, this override is removed so it is not kept saved!
+  const addedOverrideMonitorId = useRef<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -124,15 +103,6 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
       setToastMessage(null);
     }, 4500);
   };
-
-  // Real-time calculation metrics
-  const ratio = (width / height).toFixed(2);
-  const pixelCount = width * height;
-  const nativePixelCount = nativeW * nativeH;
-  const fillRateDelta = Math.round(
-    ((nativePixelCount - pixelCount) / nativePixelCount) * 100
-  );
-  const hitboxMultiplier = ((16 / 9) / (width / height) - 1) * 100;
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -152,7 +122,6 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // Time expired! Screen might have gone black or user walked away. Revert automatically!
           revertSafeMode();
           return 0;
         }
@@ -165,25 +134,42 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     };
   }, [isTesting]);
 
-  // Global Escape key handler to revert during test
+  // Global Escape and Enter key handler during test
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isTesting) {
+      if (!isTesting) return;
+      if (e.key === 'Escape') {
         revertSafeMode();
+      } else if (e.key === 'Enter') {
+        keepChanges();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTesting, safeMode]);
+  }, [isTesting, safeMode, width, height, hz]);
 
-  // Start Safe Test Mode
-  const startSafeTest = async () => {
-    if (width <= 0 || height <= 0 || hz <= 0) {
+  const normalizeEvenDims = (w: number, h: number) => {
+    let ew = Math.round(w);
+    let eh = Math.round(h);
+    if (ew % 2 !== 0) ew += 1;
+    if (eh % 2 !== 0) eh += 1;
+    return { w: ew, h: eh, rounded: ew !== Math.round(w) || eh !== Math.round(h) };
+  };
+
+  const isAdminErrorText = (text: string) => {
+    const l = text.toLowerCase();
+    return l.includes('admin') || l.includes('elevat');
+  };
+
+  const startSafeTest = async (overrideW?: number, overrideH?: number, overrideHz?: number) => {
+    const tw = overrideW ?? width;
+    const th = overrideH ?? height;
+    const thz = overrideHz ?? hz;
+    if (tw <= 0 || th <= 0 || thz <= 0) {
       showToast('Please enter valid resolution dimensions and refresh rate.', 'warning');
       return;
     }
 
-    // Save previous safe mode
     const currentSafe = {
       width: displayInfo?.current_width || nativeW,
       height: displayInfo?.current_height || nativeH,
@@ -193,7 +179,7 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     setIsTesting(true);
 
     try {
-      await applyResolution(width, height, hz);
+      await applyResolution(tw, th, thz);
       if (onRefreshDisplayInfo) onRefreshDisplayInfo();
     } catch (err) {
       showToast(`Failed to switch resolution: ${err}`, 'warning');
@@ -201,121 +187,122 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     }
   };
 
-  // Revert back to original safe resolution
   const revertSafeMode = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsTesting(false);
 
+    const overrideMonitorId = addedOverrideMonitorId.current;
+    addedOverrideMonitorId.current = null;
+
     if (safeMode) {
       try {
         await applyResolution(safeMode.width, safeMode.height, safeMode.hz);
-        showToast(
-          `Reverted back to safe resolution (${safeMode.width}×${safeMode.height} @ ${safeMode.hz}Hz).`,
-          'info'
-        );
-        if (onRefreshDisplayInfo) onRefreshDisplayInfo();
       } catch (err) {
-        showToast(`Error reverting resolution: ${err}`, 'warning');
+        console.error('Failed to revert resolution:', err);
       }
+    }
+
+    // If an EDID override was created during this test, remove it so it does not stay on the PC!
+    if (overrideMonitorId) {
+      try {
+        await removeCustomOverride(overrideMonitorId);
+        showToast('Resolution test reverted: mode was removed from your PC.', 'info');
+      } catch (err) {
+        showToast(`Reverted display, but failed to clean override: ${err}`, 'warning');
+      }
+    } else if (safeMode) {
+      showToast(`Reverted back to safe resolution (${safeMode.width}×${safeMode.height} @ ${safeMode.hz}Hz).`, 'info');
+    }
+
+    if (onRefreshDisplayInfo) {
+      onRefreshDisplayInfo();
     }
     setSafeMode(null);
   };
 
-  // Keep Changes: permanently saves custom resolution
   const keepChanges = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsTesting(false);
+    // User explicitly kept the resolution — do NOT remove the override!
+    addedOverrideMonitorId.current = null;
     setSafeMode(null);
 
     try {
       await savePreferredStretchedRes(width, height);
-      showToast(
-        `Success! Resolution ${width}×${height} @ ${hz}Hz confirmed and saved as default stretched preset.`,
-        'success'
-      );
+      showToast(`Resolution ${width}×${height} @ ${hz}Hz confirmed and saved to PC!`, 'success');
       if (onRefreshDisplayInfo) onRefreshDisplayInfo();
     } catch (err) {
       showToast(`Saved resolution mode: ${err}`, 'info');
     }
   };
 
-  // Direct Apply & Sync to Game Configs
-  const handleApplyToGameConfigs = async () => {
-    setIsApplying(true);
-    try {
-      const msg = await applyCustomResToAllConfigs(width, height, lockReadonly);
-      await savePreferredStretchedRes(width, height);
-      showToast(msg, 'success');
-      if (onRefreshDisplayInfo) onRefreshDisplayInfo();
-    } catch (err) {
-      showToast(`Failed to sync config: ${err}`, 'warning');
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  // Launch CRU (Custom Resolution Utility)
-  const handleLaunchCru = async () => {
-    setCruLoading('cru');
-    try {
-      await launchCru();
-      showToast('Custom Resolution Utility (CRU by ToastyX) launched.', 'info');
-    } catch (err) {
-      showToast(`Failed to launch CRU: ${err}`, 'warning');
-    } finally {
-      setCruLoading(null);
-    }
-  };
-
-  // Restart Graphics Driver
-  const handleRestartDriver = async () => {
-    setCruLoading('restart');
-    try {
-      const res = await restartGraphicsDriver();
-      showToast(res, 'success');
-      if (onRefreshDisplayInfo) onRefreshDisplayInfo();
-    } catch (err) {
-      showToast(`Driver restart note: ${err}`, 'info');
-    } finally {
-      setCruLoading(null);
-    }
-  };
-
-  // Reset All EDID Overrides
-  const handleResetAllOverrides = async () => {
-    if (
-      !window.confirm(
-        'Are you sure you want to reset all custom EDID overrides to monitor factory defaults?'
-      )
-    ) {
+  const handleAddMode = async () => {
+    if (width <= 0 || height <= 0 || hz <= 0) {
+      showToast('Please enter valid resolution dimensions and refresh rate.', 'warning');
       return;
     }
-    setCruLoading('reset');
+    const origW = Math.round(width);
+    const origH = Math.round(height);
+    const norm = normalizeEvenDims(width, height);
+    const effW = norm.w;
+    const effH = norm.h;
+    if (norm.rounded) {
+      setWidth(effW);
+      setHeight(effH);
+      showToast(`Adjusted ${origW}×${origH} to even ${effW}×${effH} for display timing.`, 'info');
+    }
+
+    setIsAdding(true);
     try {
-      const res = await resetAllCruOverrides();
-      showToast(res, 'success');
+      const monitorId = displayInfo?.device_name || '\\\\.\\DISPLAY1';
+      let msg: string;
+      try {
+        msg = await addCustomResolution(monitorId, effW, effH, hz);
+        // Track that this override was added for this test so we can roll it back if reverted!
+        addedOverrideMonitorId.current = monitorId;
+      } catch (err) {
+        const text = String(err);
+        if (isAdminErrorText(text)) {
+          showToast(`Requires administrator rights: restart app as Admin. (${text})`, 'warning');
+        } else {
+          showToast(`Add mode failed: ${text}`, 'warning');
+        }
+        return;
+      }
+      showToast(msg, 'success');
+      if (onRefreshDisplayInfo) onRefreshDisplayInfo();
+      await startSafeTest(effW, effH, hz);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleResetOverrides = async () => {
+    const monitorId = displayInfo?.device_name || '\\\\.\\DISPLAY1';
+    setIsAdding(true);
+    try {
+      const msg = await removeCustomOverride(monitorId);
+      showToast(msg, 'info');
       if (onRefreshDisplayInfo) onRefreshDisplayInfo();
     } catch (err) {
-      showToast(`Reset note: ${err}`, 'info');
+      showToast(`Reset failed: ${err}`, 'warning');
     } finally {
-      setCruLoading(null);
+      setIsAdding(false);
     }
   };
 
   const supportedRates =
-    displayInfo?.supported_refresh_rates &&
-    displayInfo.supported_refresh_rates.length > 0
+    displayInfo?.supported_refresh_rates && displayInfo.supported_refresh_rates.length > 0
       ? displayInfo.supported_refresh_rates
       : [260, 240, 165, 144, 120, 60];
 
   return (
-    <div className="flex-1 h-full flex flex-col justify-between p-4 overflow-hidden select-none bg-m3-surface text-m3-on-surface relative">
+    <div className="flex flex-col gap-2.5 p-3.5 select-none bg-m3-surface-container text-m3-on-surface relative rounded-2xl border border-m3-outline-subtle shadow-m3-1">
       {/* SAFE TEST COUNTDOWN OVERLAY MODAL */}
       {isTesting && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="w-full max-w-md p-6 rounded-3xl bg-m3-surface-container-high border border-m3-primary/50 shadow-2xl flex flex-col items-center text-center space-y-4">
-            {/* Animated Countdown Ring */}
-            <div className="relative w-20 h-20 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm p-6 rounded-3xl bg-m3-surface-container-high border border-m3-primary/50 shadow-2xl flex flex-col items-center text-center space-y-4">
+            <div className="relative w-20 h-20 flex items-center justify-center my-1 shrink-0">
               <div className="absolute inset-0 rounded-full border-4 border-m3-outline-subtle" />
               <div
                 className="absolute inset-0 rounded-full border-4 border-m3-primary border-t-transparent animate-spin"
@@ -330,368 +317,213 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
               <h3 className="font-display font-extrabold text-lg text-m3-on-surface">
                 Testing Custom Resolution
               </h3>
-              <p className="text-sm font-semibold text-m3-primary mt-0.5">
+              <p className="text-sm font-semibold text-m3-primary mt-0.5 font-mono">
                 {width} × {height} @ {hz} Hz
               </p>
               <p className="text-xs text-m3-on-surface-variant mt-2 max-w-xs leading-relaxed">
-                Does your display look clear? If anything went wrong (black screen or out-of-range signal), do nothing—your monitor will automatically revert in {countdown} seconds.
+                If the screen goes black or out of range, do nothing—it will automatically revert to your safe resolution in {countdown} seconds.
               </p>
             </div>
 
-            {/* Modal Action Buttons */}
-            <div className="flex items-center space-x-3 w-full pt-2">
+            <div className="flex items-center space-x-2.5 w-full pt-2">
               <button
                 onClick={keepChanges}
-                className="flex-1 py-2.5 px-4 rounded-full bg-m3-primary text-m3-on-primary font-bold text-xs shadow-m3-1 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center space-x-2"
+                className="flex-1 py-2.5 px-3 rounded-full bg-m3-primary text-m3-on-primary font-bold text-xs shadow-m3-1 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>Keep Changes</span>
+                <span>Keep (Enter)</span>
               </button>
 
               <button
                 onClick={revertSafeMode}
-                className="flex-1 py-2.5 px-4 rounded-full bg-m3-surface-container text-m3-on-surface hover:bg-m3-surface-container-highest border border-m3-outline font-semibold text-xs active:scale-95 transition-all flex items-center justify-center space-x-2"
+                className="flex-1 py-2.5 px-3 rounded-full bg-m3-surface-container text-m3-on-surface hover:bg-m3-surface-container-highest border border-m3-outline font-semibold text-xs active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4 text-m3-secondary" />
-                <span>Revert Now (Esc)</span>
+                <span>Revert (Esc)</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Top Header Card */}
-      <div className="shrink-0 p-4 rounded-3xl bg-m3-surface-container border border-m3-outline-subtle shadow-m3-1 mb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-m3-primary-container border border-m3-primary/30 flex items-center justify-center text-m3-primary shadow-m3-1 shrink-0">
-              <Wand2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <h2 className="text-base font-display font-extrabold text-m3-on-surface tracking-tight">
-                  Custom Resolution & Safe Tester
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-m3-primary/15 text-m3-primary border border-m3-primary/30">
-                  Fail-Safe Watchdog Active
-                </span>
-              </div>
-              <p className="text-xs text-m3-on-surface-variant font-medium mt-0.5">
-                Build custom stretched display modes with instant 15s auto-revert protection & CRU EDID override integration
-              </p>
-            </div>
-          </div>
-
+      {/* Toast Alert Banner */}
+      {toastMessage && (
+        <div
+          className={`px-3 py-2 rounded-xl flex items-center justify-between text-xs font-medium animate-in fade-in slide-in-from-top-1 duration-200 border ${
+            toastMessage.type === 'warning'
+              ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+              : toastMessage.type === 'info'
+              ? 'bg-blue-950/40 border-blue-500/40 text-blue-200'
+              : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+          }`}
+        >
           <div className="flex items-center space-x-2">
-            <span className="px-3 py-1.5 rounded-full text-xs font-mono font-semibold bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface">
-              Active: {displayInfo?.current_width || nativeW}×
-              {displayInfo?.current_height || nativeH} @ {displayInfo?.current_hz || defaultHz}Hz
-            </span>
+            {toastMessage.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
           </div>
-        </div>
-
-        {/* Toast Alert Banner */}
-        {toastMessage && (
-          <div
-            className={`mt-2.5 px-3 py-2 rounded-2xl flex items-center justify-between text-xs font-medium animate-in fade-in slide-in-from-top-1 duration-200 border ${
-              toastMessage.type === 'warning'
-                ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
-                : toastMessage.type === 'info'
-                ? 'bg-blue-950/40 border-blue-500/40 text-blue-200'
-                : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-            }`}
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-xs opacity-70 hover:opacity-100 ml-4 font-bold cursor-pointer"
           >
-            <div className="flex items-center space-x-2">
-              {toastMessage.type === 'warning' ? (
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              )}
-              <span>{toastMessage.text}</span>
-            </div>
-            <button
-              onClick={() => setToastMessage(null)}
-              className="text-xs opacity-70 hover:opacity-100 ml-4 font-bold"
-            >
-              ✕
-            </button>
-          </div>
-        )}
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between h-6 pb-2 border-b border-m3-outline-subtle shrink-0">
+        <div className="flex items-center space-x-2">
+          <Sliders className="w-4 h-4 text-m3-primary" />
+          <h3 className="font-display font-bold text-xs text-m3-on-surface uppercase tracking-wider">
+            Display Mode Lab • Add Custom Resolution
+          </h3>
+        </div>
+        <div className="flex items-center space-x-1 text-[11px] font-mono text-m3-outline">
+          <Shield className="w-3.5 h-3.5 text-m3-primary" />
+          <span>15s Fail-Safe Protected</span>
+        </div>
       </div>
 
-      {/* Main Grid: Left Builder & Right CRU Suite */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0">
-        {/* Left Column: Custom Resolution Generator & Safe Test (7 cols) */}
-        <div className="lg:col-span-7 flex flex-col justify-between p-4 rounded-3xl bg-m3-surface-container border border-m3-outline-subtle shadow-m3-1 space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-m3-outline flex items-center space-x-1.5">
-                <Sliders className="w-3.5 h-3.5 text-m3-primary" />
-                <span>Resolution Inputs</span>
-              </span>
-              <span className="text-[11px] font-mono text-m3-primary font-semibold">
-                Aspect: {ratio}:1 ({hitboxMultiplier > 0 ? `+${hitboxMultiplier.toFixed(1)}% hitbox` : '16:9 standard'})
-              </span>
-            </div>
-
-            {/* Inputs Row (Width, Height, Hz) */}
-            <div className="grid grid-cols-3 gap-2.5 mb-3">
-              {/* Width Input */}
-              <div className="p-2.5 rounded-2xl bg-m3-surface-container-high border border-m3-outline-subtle flex flex-col">
-                <label className="text-[10px] font-mono uppercase text-m3-on-surface-variant font-semibold">
-                  Width (px)
-                </label>
-                <input
-                  type="number"
-                  step="2"
-                  min="640"
-                  max="7680"
-                  value={width}
-                  onChange={(e) => setWidth(Number(e.target.value))}
-                  className="bg-transparent text-m3-on-surface font-display font-extrabold text-base mt-1 focus:outline-hidden tabular-nums"
-                />
-              </div>
-
-              {/* Height Input */}
-              <div className="p-2.5 rounded-2xl bg-m3-surface-container-high border border-m3-outline-subtle flex flex-col">
-                <label className="text-[10px] font-mono uppercase text-m3-on-surface-variant font-semibold">
-                  Height (px)
-                </label>
-                <input
-                  type="number"
-                  step="2"
-                  min="480"
-                  max="4320"
-                  value={height}
-                  onChange={(e) => setHeight(Number(e.target.value))}
-                  className="bg-transparent text-m3-on-surface font-display font-extrabold text-base mt-1 focus:outline-hidden tabular-nums"
-                />
-              </div>
-
-              {/* Refresh Rate Dropdown */}
-              <div className="p-2.5 rounded-2xl bg-m3-surface-container-high border border-m3-outline-subtle flex flex-col">
-                <label className="text-[10px] font-mono uppercase text-m3-on-surface-variant font-semibold">
-                  Refresh Rate
-                </label>
-                <select
-                  value={hz}
-                  onChange={(e) => setHz(Number(e.target.value))}
-                  className="bg-transparent text-m3-primary font-display font-extrabold text-base mt-1 focus:outline-hidden cursor-pointer"
-                >
-                  {supportedRates.map((r) => (
-                    <option key={r} value={r} className="bg-m3-surface-container text-m3-on-surface">
-                      {r} Hz {r === defaultHz ? '(Native)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Quick Presets Buttons Grid */}
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-mono text-m3-outline uppercase font-semibold">
-                Quick Aspect Ratio Presets
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {PRESETS.map((preset) => {
-                  const targetW = preset.calcWidth(height);
-                  const isCurrent = width === targetW;
-
-                  return (
-                    <button
-                      key={preset.label}
-                      onClick={() => setWidth(targetW)}
-                      className={`p-2 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between ${
-                        isCurrent
-                          ? 'bg-m3-primary-container border-m3-primary text-m3-on-primary-container ring-1 ring-m3-primary/30'
-                          : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest border-m3-outline-subtle text-m3-on-surface'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-bold font-display">
-                          {preset.label}
-                        </span>
-                        <span
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full ${
-                            isCurrent
-                              ? 'bg-m3-primary text-m3-on-primary'
-                              : 'bg-m3-surface-container text-m3-secondary border border-m3-outline-subtle'
-                          }`}
-                        >
-                          {targetW}×{height}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between mt-1 text-[10px] opacity-85">
-                        <span className="truncate">{preset.description}</span>
-                        <span className="font-mono text-m3-primary font-bold shrink-0 ml-1">
-                          {preset.hitboxGain}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Test & Apply Action Bar */}
-          <div className="pt-2 border-t border-m3-outline-subtle space-y-2">
-            <div className="flex items-center justify-between text-xs text-m3-on-surface-variant font-medium">
-              <span className="flex items-center space-x-1.5">
-                <Shield className="w-3.5 h-3.5 text-m3-primary" />
-                <span>15s Revert Watchdog protects against black screens</span>
-              </span>
-              {fillRateDelta > 0 && (
-                <span className="font-mono text-emerald-400 font-semibold">
-                  +{fillRateDelta}% GPU Fillrate Headroom
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center space-x-2.5">
-              {/* The Safe Test Button */}
-              <button
-                onClick={startSafeTest}
-                className="flex-1 py-2.5 px-4 rounded-full bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary font-display font-extrabold text-xs shadow-m3-1 transition-all flex items-center justify-center space-x-2 active:scale-95"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Test Resolution (15s Auto-Revert)</span>
-              </button>
-
-              {/* Sync to Game Configs */}
-              <button
-                onClick={handleApplyToGameConfigs}
-                disabled={isApplying}
-                className="py-2.5 px-4 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface border border-m3-outline-subtle font-semibold text-xs transition-all flex items-center space-x-1.5 active:scale-95 disabled:opacity-50"
-                title="Sync this custom resolution directly to VALORANT GameUserSettings.ini"
-              >
-                <FileCode2 className="w-4 h-4 text-m3-secondary" />
-                <span>Sync Game Files</span>
-              </button>
-            </div>
+      {/* Unmistakable Form Inputs Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-1">
+        {/* Width Box */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-semibold text-m3-on-surface-variant flex items-center justify-between">
+            <span>Width (Horizontal)</span>
+            <span className="text-[10px] font-mono text-m3-outline">even px</span>
+          </label>
+          <div className="relative flex items-center rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle/90 hover:border-m3-outline focus-within:border-m3-primary focus-within:ring-2 focus-within:ring-m3-primary/30 transition-all shadow-inner">
+            <input
+              type="number"
+              step="2"
+              min="640"
+              max="7680"
+              value={width}
+              onChange={(e) => setWidth(Number(e.target.value))}
+              placeholder="e.g. 2090"
+              className="w-full h-10 px-3 pr-10 bg-transparent text-m3-on-surface font-mono font-bold text-sm focus:outline-none tabular-nums placeholder:text-m3-outline/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="absolute right-3 text-xs font-mono font-semibold text-m3-outline pointer-events-none">
+              px
+            </span>
           </div>
         </div>
 
-        {/* Right Column: CRU (Custom Resolution Utility) & Driver Suite (5 cols) */}
-        <div className="lg:col-span-5 flex flex-col justify-between p-4 rounded-3xl bg-m3-surface-container border border-m3-outline-subtle shadow-m3-1 space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <div className="w-7 h-7 rounded-xl bg-m3-tertiary-container text-m3-tertiary flex items-center justify-center shrink-0 border border-m3-tertiary/30">
-                  <Cpu className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-xs text-m3-on-surface">
-                    Hardware EDID & CRU Suite
-                  </h3>
-                  <p className="text-[10px] text-m3-on-surface-variant font-medium">
-                    Powered by ToastyX CRU v1.5.3
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono text-m3-primary bg-m3-primary/15 border border-m3-primary/30">
-                Driver Hook
-              </span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-m3-surface-container-high border border-m3-outline-subtle text-xs space-y-2 mb-3">
-              <p className="text-[11px] text-m3-on-surface font-medium leading-snug">
-                Custom Resolution Utility (CRU) creates software-based EDID overrides directly in the Windows Registry, bypassing GPU driver restrictions for arbitrary refresh rates.
-              </p>
-              <div className="pt-2 border-t border-m3-outline-subtle/60 flex items-center justify-between text-[10px] text-m3-on-surface-variant font-mono">
-                <span>Registry: HKLM\SYSTEM\DISPLAY</span>
-                <span className="text-emerald-400 font-semibold">Active</span>
-              </div>
-            </div>
-
-            {/* CRU Action Controls */}
-            <div className="space-y-2">
-              {/* Launch CRU Button */}
-              <button
-                onClick={handleLaunchCru}
-                disabled={cruLoading !== null}
-                className="w-full p-2.5 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface border border-m3-outline-subtle text-xs font-semibold transition-all flex items-center justify-between active:scale-95 disabled:opacity-50"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <Layers className="w-4 h-4 text-m3-primary" />
-                  <div className="text-left">
-                    <span className="block font-bold">Open CRU Editor</span>
-                    <span className="text-[10px] text-m3-on-surface-variant block font-normal">
-                      Detailed timing descriptors & FreeSync
-                    </span>
-                  </div>
-                </div>
-                <ExternalLink className="w-3.5 h-3.5 text-m3-outline" />
-              </button>
-
-              {/* Restart Graphics Driver Button */}
-              <button
-                onClick={handleRestartDriver}
-                disabled={cruLoading !== null}
-                className="w-full p-2.5 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface border border-m3-outline-subtle text-xs font-semibold transition-all flex items-center justify-between active:scale-95 disabled:opacity-50"
-                title="Restarts graphics driver stack to apply newly added resolutions without rebooting"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <RefreshCw
-                    className={`w-4 h-4 text-m3-tertiary ${
-                      cruLoading === 'restart' ? 'animate-spin' : ''
-                    }`}
-                  />
-                  <div className="text-left">
-                    <span className="block font-bold">Restart Graphics Driver</span>
-                    <span className="text-[10px] text-m3-on-surface-variant block font-normal">
-                      Instant driver reload via restart64 (No reboot)
-                    </span>
-                  </div>
-                </div>
-                <Zap className="w-3.5 h-3.5 text-m3-tertiary" />
-              </button>
-
-              {/* Emergency Reset Button */}
-              <button
-                onClick={handleResetAllOverrides}
-                disabled={cruLoading !== null}
-                className="w-full p-2.5 rounded-2xl bg-m3-surface-container-lowest hover:bg-red-950/40 text-m3-on-surface border border-m3-outline-subtle/80 hover:border-red-500/50 text-xs font-semibold transition-all flex items-center justify-between active:scale-95 disabled:opacity-50"
-                title="Emergency reset for all EDID overrides back to monitor factory default"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <RotateCcw className="w-4 h-4 text-red-400" />
-                  <div className="text-left">
-                    <span className="block font-bold text-red-300">
-                      Emergency Reset Overrides
-                    </span>
-                    <span className="text-[10px] text-m3-on-surface-variant block font-normal">
-                      Runs reset-all.exe if screen behaves erratically
-                    </span>
-                  </div>
-                </div>
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-              </button>
-            </div>
-          </div>
-
-          {/* Config lock toggle */}
-          <div className="pt-2 border-t border-m3-outline-subtle flex items-center justify-between text-xs">
-            <span className="text-[11px] text-m3-on-surface-variant font-medium">
-              Write-Protect (Read-Only) Game Configs
+        {/* Height Box */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-semibold text-m3-on-surface-variant flex items-center justify-between">
+            <span>Height (Vertical)</span>
+            <span className="text-[10px] font-mono text-m3-outline">even px</span>
+          </label>
+          <div className="relative flex items-center rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle/90 hover:border-m3-outline focus-within:border-m3-primary focus-within:ring-2 focus-within:ring-m3-primary/30 transition-all shadow-inner">
+            <input
+              type="number"
+              step="2"
+              min="480"
+              max="4320"
+              value={height}
+              onChange={(e) => setHeight(Number(e.target.value))}
+              placeholder="e.g. 1440"
+              className="w-full h-10 px-3 pr-10 bg-transparent text-m3-on-surface font-mono font-bold text-sm focus:outline-none tabular-nums placeholder:text-m3-outline/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="absolute right-3 text-xs font-mono font-semibold text-m3-outline pointer-events-none">
+              px
             </span>
+          </div>
+        </div>
+
+        {/* Refresh Rate Dropdown */}
+        <div className="flex flex-col gap-1.5" ref={hzDropdownRef}>
+          <label className="text-[11px] font-semibold text-m3-on-surface-variant flex items-center justify-between">
+            <span>Refresh Rate</span>
+            <span className="text-[10px] font-mono text-m3-outline">Hz</span>
+          </label>
+          <div className="relative">
             <button
               type="button"
-              onClick={() => setLockReadonly(!lockReadonly)}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                lockReadonly ? 'bg-m3-primary' : 'bg-m3-surface-container-highest'
+              disabled={isAdding}
+              onClick={() => setIsHzDropdownOpen((prev) => !prev)}
+              className={`w-full h-10 px-3 rounded-xl bg-m3-surface-container-lowest border transition-all flex items-center justify-between gap-2 text-left cursor-pointer shadow-inner ${
+                isHzDropdownOpen
+                  ? 'border-m3-primary ring-2 ring-m3-primary/30'
+                  : 'border-m3-outline-subtle/90 hover:border-m3-outline'
               }`}
             >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  lockReadonly
-                    ? 'translate-x-4 bg-m3-on-primary'
-                    : 'translate-x-0 bg-m3-outline'
-                }`}
-              />
+              <span className="text-sm font-bold font-mono text-m3-primary">
+                {hz} Hz {hz === defaultHz ? '(Native)' : ''}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-m3-outline transition-transform duration-200 ${isHzDropdownOpen ? 'rotate-180 text-m3-primary' : ''}`} />
             </button>
+
+            <AnimatePresence>
+              {isHzDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-xl bg-m3-surface-container border border-m3-outline-subtle shadow-2xl p-1.5 custom-scrollbar max-h-48 overflow-y-auto"
+                >
+                  {supportedRates.map((r) => {
+                    const isSelected = r === hz;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => {
+                          setHz(r);
+                          setIsHzDropdownOpen(false);
+                        }}
+                        className={`w-full px-2.5 py-2 rounded-lg text-left text-xs font-mono font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-m3-primary/15 text-m3-primary font-bold'
+                            : 'text-m3-on-surface hover:bg-m3-surface-container-highest'
+                        }`}
+                      >
+                        <span>{r} Hz {r === defaultHz ? '(Native)' : ''}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-m3-primary shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+        </div>
+      </div>
+
+      {/* Action Footer */}
+      <div className="pt-2 border-t border-m3-outline-subtle flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        <p className="text-[11px] text-m3-on-surface-variant">
+          Safely injects resolution and runs 15s test. If reverted or timed out, it is automatically removed from your PC.
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleResetOverrides}
+            disabled={isAdding || isTesting}
+            className="h-8 px-3 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-container-highest border border-m3-outline-subtle text-m3-on-surface hover:text-red-300 font-semibold text-xs transition-colors flex items-center space-x-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+            title="Remove all custom EDID overrides on this monitor and restore factory timings"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-m3-outline" />
+            <span>Reset Overrides</span>
+          </button>
+          <button
+            onClick={handleAddMode}
+            disabled={isAdding || isTesting}
+            className="h-8 px-4 rounded-full bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary font-bold text-xs shadow-xs transition-all flex items-center space-x-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+            title="Add mode via EDID override to GPU driver and run 15-second test"
+          >
+            {isAdding ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
+            <span>{isAdding ? 'Adding & Testing…' : `Add & Test ${width}×${height}`}</span>
+          </button>
         </div>
       </div>
     </div>

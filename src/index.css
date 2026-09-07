@@ -8,6 +8,17 @@
     font-family: 'Outfit', 'DM Sans', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'tnum';
     text-rendering: optimizeLegibility;
+    /* Desktop app: nothing selectable (user rule) — feels like an app, not a web page. */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Form fields stay selectable/editable. */
+  input,
+  textarea,
+  select {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   h1, h2, h3, h4, .font-display {
@@ -31,21 +42,57 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Material 3 Expressive smooth pill scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Remove default browser numeric input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
 }
 
-::-webkit-scrollbar-track {
-  background: #140e1b;
+/* Default zero-scrollbar for clean layout */
+*:not(.custom-scrollbar):not(.custom-scrollbar *) {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+*:not(.custom-scrollbar):not(.custom-scrollbar *)::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #3a2a4c;
-  border-radius: 9999px;
+/* Explicitly styled scrollbar for scrollable lists needing visual affordance */
+.custom-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: #d0bcff rgba(255, 255, 255, 0.1) !important;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  display: block !important;
+  width: 7px !important;
+  height: 7px !important;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 9999px !important;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d0bcff !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 0 6px rgba(208, 188, 255, 0.4) !important;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #e8def8 !important;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #4f378b;
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none !important;
+  }
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "TrueStretchStudio",
+  "productName": "Aspect",
   "version": "0.1.0",
-  "identifier": "com.truestretch.studio",
+  "identifier": "com.aspect.utility",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -10,10 +10,11 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
-        "title": "TrueStretch Studio • 1.45 Ratio & GPU Scaling",
+        "title": "Aspect • Stretched Resolution & Utility",
         "width": 1180,
         "height": 860,
         "minWidth": 980,
@@ -30,11 +31,12 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
+      "icons/icon.ico",
+      "icons/icon.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/128x128.png",
+      "icons/32x32.png",
+      "icons/icon.icns"
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"

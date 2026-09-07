@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { DisplayInfo, ShortcutBinding, GpuInfo, GpuSettingsReport, WindowInfo, ConfigFileInfo, QuickShortcut, MonitorDevice } from '../types';
+import type { DisplayInfo, ShortcutBinding, GpuInfo, GpuSettingsReport, WindowInfo, ConfigFileInfo, QuickShortcut, MonitorDevice, UpdateInfo } from '../types';
 
 export const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -128,7 +128,11 @@ export async function applyResolution(width: number, height: number, hz: number)
     mockDisplayInfo.active_profile = width === mockDisplayInfo.native_width ? 'native' : 'stretched';
     return;
   }
-  await invoke('apply_resolution', { width, height, hz });
+  try {
+    await invoke('apply_resolution', { width, height, hz });
+  } catch (e) {
+    throw new Error(friendlyApplyResolutionError(width, height, hz, e));
+  }
 }
 
 export async function toggleProfile(): Promise<DisplayInfo> {
@@ -144,7 +148,13 @@ export async function toggleProfile(): Promise<DisplayInfo> {
     }
     return { ...mockDisplayInfo };
   }
-  return await invoke<DisplayInfo>('toggle_profile');
+  try {
+    return await invoke<DisplayInfo>('toggle_profile');
+  } catch (e) {
+    // toggle_profile resolves its target internally; use 0x0 placeholder when
+    // the backend message already names the mode, else keep generic Hz.
+    throw new Error(friendlyToggleProfileError(e));
+  }
 }
 
 export async function fetchShortcut(): Promise<ShortcutBinding> {
@@ -348,6 +358,8 @@ let mockMonitors: MonitorDevice[] = [
     position_x: -1080,
     position_y: -477,
     orientation: 'Portrait (90°)',
+    device_id: 'MONITOR\\PHLC401\\MOCK1\\0001',
+    is_device_disabled: false,
   },
   {
     device_name: '\\\\.\\DISPLAY2',
@@ -361,6 +373,8 @@ let mockMonitors: MonitorDevice[] = [
     position_x: 0,
     position_y: 0,
     orientation: 'Landscape',
+    device_id: 'MONITOR\\PHLC402\\MOCK2\\0002',
+    is_device_disabled: false,
   },
   {
     device_name: '\\\\.\\DISPLAY3',
@@ -374,6 +388,8 @@ let mockMonitors: MonitorDevice[] = [
     position_x: 0,
     position_y: -1080,
     orientation: 'Landscape',
+    device_id: 'MONITOR\\PHLC403\\MOCK3\\0003',
+    is_device_disabled: false,
   },
 ];
 
@@ -382,6 +398,11 @@ export async function fetchAllMonitors(): Promise<MonitorDevice[]> {
   return await invoke<MonitorDevice[]>('get_all_monitors');
 }
 
+/**
+ * @deprecated Kept for backend compat only. The Display Manager UI no longer
+ * uses CCD Attached/Detached — use {@link setMonitorDeviceEnabled} instead.
+ * Do not call from new UI code.
+ */
 export async function setMonitorAttached(
   deviceName: string,
   attached: boolean
@@ -398,6 +419,32 @@ export async function setMonitorAttached(
   });
 }
 
+/**
+ * True Device Manager disable/enable (SetupDi, admin). This is the ONLY
+ * supported path in the Display Manager UI.
+ * Always pass the PnP instance path (`device_id`, `MONITOR\...`) when
+ * available, falling back to `\\.\DISPLAYx` only if `device_id` is empty.
+ * Tauri camelCase: `{ monitorId, enabled }` maps to backend
+ * `set_monitor_device_enabled(monitor_id, enabled)`.
+ */
+export async function setMonitorDeviceEnabled(
+  monitorId: string,
+  enabled: boolean
+): Promise<MonitorDevice[]> {
+  if (!isTauri()) {
+    mockMonitors = mockMonitors.map((m) =>
+      m.device_name === monitorId || m.device_id === monitorId
+        ? { ...m, is_device_disabled: !enabled, is_attached: enabled ? m.is_attached : false }
+        : m
+    );
+    return mockMonitors;
+  }
+  return await invoke<MonitorDevice[]>('set_monitor_device_enabled', {
+    monitorId,
+    enabled,
+  });
+}
+
 export async function setMonitorPrimary(
   deviceName: string
 ): Promise<MonitorDevice[]> {
@@ -410,15 +457,6 @@ export async function setMonitorPrimary(
   }
   return await invoke<MonitorDevice[]>('set_monitor_primary', { deviceName });
 }
-
-export async function launchCru(): Promise<void> {
-  if (!isTauri()) {
-    alert('Custom Resolution Utility (CRU) launched (Mock)');
-    return;
-  }
-  await invoke('launch_cru');
-}
-
 export async function restartGraphicsDriver(): Promise<string> {
   if (!isTauri()) {
     return 'Mock: Graphics driver restarted successfully!';
@@ -426,10 +464,166 @@ export async function restartGraphicsDriver(): Promise<string> {
   return await invoke<string>('restart_graphics_driver');
 }
 
-export async function resetAllCruOverrides(): Promise<string> {
+export async function resetAllEdidOverrides(): Promise<string> {
   if (!isTauri()) {
     return 'Mock: All EDID overrides reset successfully!';
   }
-  return await invoke<string>('reset_all_cru_overrides');
+  return await invoke<string>('reset_all_edid_overrides');
+}
+
+/** Back-compat alias for resetAllEdidOverrides */
+export const resetAllCruOverrides = resetAllEdidOverrides;
+
+export interface CustomModeTest {
+  exists: boolean;
+  code: number;
+}
+
+export interface DisplayMode {
+  width: number;
+  height: number;
+  refresh_rate: number;
+}
+
+export function cdsCodeToText(code: number): string {
+  switch (code) {
+    case 0: return 'SUCCESSFUL';
+    case 1: return 'RESTART_REQUIRED';
+    case -1: return 'FAILED';
+    case -2: return 'BADMODE (mode not in driver list — Add it first)';
+    case -3: return 'NOTUPDATED';
+    case -4: return 'BADFLAGS';
+    case -5: return 'BADPARAM';
+    case -6: return 'BADDUALVIEW';
+    default: return `UNKNOWN (${code})`;
+  }
+}
+
+/** Raw invoke rejection -> plain string (Tauri rejects with the backend Err String). */
+export function extractInvokeMessage(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in (e as Record<string, unknown>)) {
+    return String((e as Record<string, unknown>).message);
+  }
+  return String(e);
+}
+
+/** True for driver-missing-mode failures: BADMODE text, -2 code, or friendly preflight text. */
+export function isBadModeErrorMessage(msg: string): boolean {
+  if (!msg) return false;
+  const upper = msg.toUpperCase();
+  if (upper.includes('BADMODE')) return true;
+  if (msg.includes('not in driver list')) return true;
+  // Standalone -2 (avoid matching 2090x1440 widths): non-digit boundaries.
+  if (/(^|[^0-9])-2([^0-9]|$)/.test(msg)) return true;
+  return false;
+}
+
+/**
+ * Maps a raw apply_resolution failure to a friendly actionable message.
+ * Preserves the backend friendly message verbatim when it already contains
+ * the Custom Res Add guidance; otherwise enriches a bare BADMODE/-2 with
+ * cdsCodeToText + Add steps so the toast never shows a cryptic code alone.
+ */
+export function friendlyApplyResolutionError(
+  width: number,
+  height: number,
+  hz: number,
+  raw: unknown
+): string {
+  const msg = extractInvokeMessage(raw);
+  // Backend (display.rs preflight) already friendly — preserve it.
+  if (/Custom Res.*Add Mode/i.test(msg) && msg.includes(`${width}x${height}`)) {
+    return msg;
+  }
+  if (msg.includes('not in driver list')) {
+    return msg;
+  }
+  if (isBadModeErrorMessage(msg)) {
+    // Try to surface the symbolic name for any embedded numeric code.
+    const codeMatch = msg.match(/-?\d+/g)?.map(Number).find((n) => n <= 1 && n >= -6);
+    const symbol = codeMatch !== undefined ? cdsCodeToText(codeMatch) : cdsCodeToText(-2);
+    return (
+      `Mode ${width}x${height}@${hz}Hz not in driver list (BADMODE -2, ${symbol}). ` +
+      `Go to Custom Res & Test > Add Mode ${width}x${height}@${hz}Hz as admin ` +
+      `(EDID override + driver restart), then Test. [driver said: ${msg}]`
+    );
+  }
+  // Non-BADMODE numeric codes: append symbolic text so they are never cryptic.
+  const numMatch = msg.match(/(-?\d+)/);
+  if (numMatch) {
+    const code = Number(numMatch[1]);
+    if (Number.isInteger(code) && code <= 1 && code >= -6) {
+      return `${msg} (${cdsCodeToText(code)})`;
+    }
+  }
+  return msg;
+}
+
+/** toggle_profile targets are resolved backend-side; keep its BADMODE mapping generic. */
+export function friendlyToggleProfileError(raw: unknown): string {
+  const msg = extractInvokeMessage(raw);
+  if (/Custom Res.*Add Mode/i.test(msg) || msg.includes('not in driver list')) {
+    return msg;
+  }
+  if (isBadModeErrorMessage(msg)) {
+    return (
+      `${msg} Go to Custom Res & Test > Add the stretched mode as admin ` +
+      `(EDID override + driver restart), then Test.`
+    );
+  }
+  return msg;
+}
+
+export async function testCustomMode(width: number, height: number, hz: number): Promise<CustomModeTest> {
+  if (!isTauri()) {
+    const exists = mockDisplayInfo.current_width === width && mockDisplayInfo.current_height === height && mockDisplayInfo.current_hz === hz;
+    return { exists, code: exists ? 0 : -2 };
+  }
+  return await invoke<CustomModeTest>('test_custom_mode', { width, height, hz });
+}
+
+export async function addCustomResolution(monitorId: string, width: number, height: number, hz: number): Promise<string> {
+  if (!isTauri()) {
+    return `Mock: Added ${width}×${height} @ ${hz}Hz on ${monitorId} (EDID override + driver restart).`;
+  }
+  return await invoke<string>('add_custom_resolution', { monitorId, width, height, hz });
+}
+
+export async function removeCustomOverride(monitorId: string): Promise<string> {
+  if (!isTauri()) {
+    return `Mock: Removed EDID override on ${monitorId}.`;
+  }
+  return await invoke<string>('remove_custom_override', { monitorId });
+}
+
+export async function listSupportedModes(): Promise<DisplayMode[]> {
+  if (!isTauri()) return [];
+  return await invoke<DisplayMode[]>('list_supported_modes');
+}
+
+export async function checkAppUpdates(): Promise<UpdateInfo> {
+  if (!isTauri()) {
+    return {
+      has_update: false,
+      current_version: '0.1.0',
+      latest_version: '0.1.0',
+      release_title: 'Aspect v0.1.0',
+      release_notes: 'Running latest dev build.',
+      published_at: new Date().toISOString(),
+      html_url: 'https://github.com/youssefvdel/truestretch_tauri',
+      download_url: null,
+    };
+  }
+  return await invoke<UpdateInfo>('check_app_updates');
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!isTauri()) {
+    window.open(url, '_blank');
+    return;
+  }
+  await invoke('open_external_url', { url });
 }
 

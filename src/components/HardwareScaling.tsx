@@ -6,7 +6,6 @@ import {
   ShieldCheck,
   Maximize2,
   Monitor,
-  Layers,
   Sparkles,
   RefreshCw,
 } from 'lucide-react';
@@ -133,9 +132,6 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
                 {vendor} Hardware
               </span>
             </div>
-            <p className="text-[11px] text-m3-on-surface-variant leading-tight mt-0.5">
-              Real-time hardware scaling switches & DWM letterbox elimination engine
-            </p>
           </div>
         </div>
 
@@ -173,18 +169,15 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
         </div>
       )}
 
-      {/* Real GPU Settings Toggles & Low-Latency Architecture */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* Left 7 Cols: Real Toggle Buttons */}
-        <div className="lg:col-span-7 bg-m3-surface-container border border-m3-outline-subtle rounded-2xl p-3.5 space-y-2.5 shadow-m3-1">
+      {/* Real GPU Settings Toggles */}
+      <div className="grid grid-cols-1 gap-3 items-start">
+        {/* Full-width toggle list */}
+        <div className="bg-m3-surface-container border border-m3-outline-subtle rounded-2xl p-3.5 space-y-2.5 shadow-m3-1">
           <div className="flex items-center justify-between border-b border-m3-outline-subtle pb-2">
             <div>
               <h3 className="font-display font-bold text-xs text-m3-on-surface">
                 Real Hardware & Driver Settings
               </h3>
-              <p className="text-[10px] text-m3-on-surface-variant">
-                Live toggles modifying Win32 CCD display scanout and driver registry pipelines
-              </p>
             </div>
             <span className="text-[10px] text-m3-primary font-mono font-semibold px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle">
               {settingsList.filter((s) => s.enabled).length} / {settingsList.length} Active
@@ -215,9 +208,6 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
                         {setting.badge}
                       </span>
                     </div>
-                    <p className="text-[11px] text-m3-on-surface-variant leading-tight mt-0.5 line-clamp-1">
-                      {setting.description}
-                    </p>
                   </div>
                 </div>
 
@@ -245,40 +235,6 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Right 5 Cols: Technical Architecture Cards */}
-        <div className="lg:col-span-5 space-y-2.5">
-          <section className="p-3.5 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle space-y-2 shadow-m3-1">
-            <div className="flex items-center space-x-1.5 text-m3-primary font-semibold text-xs">
-              <Layers className="w-3.5 h-3.5" />
-              <span className="font-display font-bold text-xs text-m3-on-surface">
-                GPU Hardware vs Display Scaling
-              </span>
-            </div>
-            <div className="space-y-1.5 text-xs text-m3-on-surface-variant leading-snug">
-              <p>
-                <strong className="text-m3-primary font-semibold">GPU Hardware Scaler:</strong> The {vendor} GPU rasterizer stretches the 1.45:1 frame before outputting native timing over DisplayPort/HDMI.
-              </p>
-              <ul className="list-disc list-inside space-y-0.5 text-m3-on-surface-variant pl-1 text-[11px]">
-                <li><strong className="text-m3-on-surface">0.0 ms Scanout:</strong> Raw zero-latency scanout pipeline.</li>
-                <li><strong className="text-m3-on-surface">Instant Alt-Tab:</strong> Zero monitor mode resync delays.</li>
-                <li><strong className="text-m3-on-surface">Universal:</strong> Works on all high-refresh gaming monitors.</li>
-              </ul>
-            </div>
-          </section>
-
-          <section className="p-3.5 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle space-y-2 shadow-m3-1">
-            <div className="flex items-center space-x-1.5 text-m3-tertiary font-semibold text-xs">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="font-display font-bold text-xs text-m3-on-surface">
-                Automatic Letterbox Elimination
-              </span>
-            </div>
-            <p className="text-[11px] text-m3-on-surface-variant leading-relaxed">
-              When <strong className="text-m3-tertiary font-medium">Override Scaling Mode Set by Games</strong> is active, TrueStretch automatically overrides Unreal Engine 4 and DXGI letterbox clamping (<code className="text-[10px] bg-m3-surface-container-high px-1 rounded">bShouldLetterbox=False</code>), ensuring full-screen stretched presentation without black bars.
-            </p>
-          </section>
         </div>
       </div>
     </div>

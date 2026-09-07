@@ -78,13 +78,28 @@ export interface MonitorDevice {
   position_x: number;
   position_y: number;
   orientation: string;
+  /** PnP instance path, e.g. MONITOR\...\... Empty when unresolvable. */
+  device_id?: string;
+  /** True when disabled in Device Manager (SetupDi), distinct from CCD detach. */
+  is_device_disabled?: boolean;
 }
 
 export type TabType =
   | 'switcher'
   | 'visualizer'
+  | 'sens'
   | 'custom_res'
-  | 'displays'
   | 'gpu'
   | 'borderless'
   | 'settings';
+
+export interface UpdateInfo {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_title: string;
+  release_notes: string;
+  published_at: string;
+  html_url: string;
+  download_url: string | null;
+}

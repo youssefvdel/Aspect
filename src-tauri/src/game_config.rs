@@ -278,6 +278,7 @@ pub fn set_letterbox_all(disable_letterbox: bool) -> Result<usize, String> {
     Ok(count)
 }
 
+#[allow(dead_code)]
 pub fn is_letterbox_disabled_in_configs() -> bool {
     let configs = find_valorant_configs();
     if configs.is_empty() {

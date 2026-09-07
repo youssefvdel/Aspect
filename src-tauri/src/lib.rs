@@ -1,9 +1,11 @@
 mod calculator;
+mod custom_res;
 mod display;
 mod game_config;
 mod gpu;
 mod shortcuts;
 mod window_manager;
+mod updater;
 
 use std::sync::Mutex;
 use tauri::{
@@ -245,17 +247,107 @@ fn check_requested_tab() -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
+#[repr(C)]
+struct PROCESSENTRY32W {
+    dw_size: u32,
+    cnt_usage: u32,
+    th32_process_id: u32,
+    th32_default_heap_id: usize,
+    th32_module_id: u32,
+    cnt_threads: u32,
+    th32_parent_process_id: u32,
+    pc_pri_class_base: i32,
+    dw_flags: u32,
+    sz_exe_file: [u16; 260],
+}
+
+#[cfg(target_os = "windows")]
 extern "system" {
     fn SetProcessWorkingSetSize(h_process: *mut std::ffi::c_void, dw_min: usize, dw_max: usize) -> i32;
     fn GetCurrentProcess() -> *mut std::ffi::c_void;
+    fn GetCurrentProcessId() -> u32;
+    fn CreateToolhelp32Snapshot(dw_flags: u32, th32_process_id: u32) -> *mut std::ffi::c_void;
+    fn Process32FirstW(h_snapshot: *mut std::ffi::c_void, lppe: *mut PROCESSENTRY32W) -> i32;
+    fn Process32NextW(h_snapshot: *mut std::ffi::c_void, lppe: *mut PROCESSENTRY32W) -> i32;
+    fn OpenProcess(dw_desired_access: u32, b_inherit_handle: i32, dw_process_id: u32) -> *mut std::ffi::c_void;
+    fn CloseHandle(h_object: *mut std::ffi::c_void) -> i32;
 }
 
 pub fn trim_working_set() {
     #[cfg(target_os = "windows")]
     unsafe {
+        // 1. Trim host process itself (TrueStretchStudio)
         let handle = GetCurrentProcess();
         SetProcessWorkingSetSize(handle, usize::MAX, usize::MAX);
+
+        // 2. Discover and trim all descendant WebView2 processes (Manager, GPU process, Renderer, Utility)
+        let our_pid = GetCurrentProcessId();
+        let snapshot = CreateToolhelp32Snapshot(0x00000002 /* TH32CS_SNAPPROCESS */, 0);
+        if snapshot as isize != -1 && !snapshot.is_null() {
+            let mut entries: Vec<(u32, u32)> = Vec::new();
+            let mut entry = PROCESSENTRY32W {
+                dw_size: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                cnt_usage: 0,
+                th32_process_id: 0,
+                th32_default_heap_id: 0,
+                th32_module_id: 0,
+                cnt_threads: 0,
+                th32_parent_process_id: 0,
+                pc_pri_class_base: 0,
+                dw_flags: 0,
+                sz_exe_file: [0u16; 260],
+            };
+
+            if Process32FirstW(snapshot, &mut entry) != 0 {
+                loop {
+                    entries.push((entry.th32_process_id, entry.th32_parent_process_id));
+                    if Process32NextW(snapshot, &mut entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snapshot);
+
+            // Collect all descendants (children, grandchildren)
+            let mut descendant_pids = std::collections::HashSet::new();
+            let mut current_parents = std::collections::HashSet::new();
+            current_parents.insert(our_pid);
+
+            for _ in 0..4 {
+                let mut next_parents = std::collections::HashSet::new();
+                for &(pid, parent_pid) in &entries {
+                    if current_parents.contains(&parent_pid) && !descendant_pids.contains(&pid) {
+                        descendant_pids.insert(pid);
+                        next_parents.insert(pid);
+                    }
+                }
+                if next_parents.is_empty() {
+                    break;
+                }
+                current_parents = next_parents;
+            }
+
+            // Flush physical working set for all WebView2 child processes
+            for pid in descendant_pids {
+                // PROCESS_SET_QUOTA (0x0100) | PROCESS_QUERY_LIMITED_INFORMATION (0x1000)
+                let h_proc = OpenProcess(0x0100 | 0x1000, 0, pid);
+                if !h_proc.is_null() {
+                    SetProcessWorkingSetSize(h_proc, usize::MAX, usize::MAX);
+                    CloseHandle(h_proc);
+                }
+            }
+        }
     }
+}
+
+#[tauri::command]
+fn check_app_updates() -> Result<updater::UpdateInfo, String> {
+    updater::check_for_updates()
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    updater::open_url(&url)
 }
 
 #[tauri::command]
@@ -269,9 +361,17 @@ fn get_all_monitors() -> Result<Vec<display::MonitorDevice>, String> {
     Ok(display::get_all_monitors())
 }
 
+/// Kept for backend compat only. The Display Manager UI no longer exposes CCD
+/// Attached/Detached — only Device Manager Enable/Disable remains. Retained so
+/// existing invokes / restore paths don't break.
 #[tauri::command]
 fn set_monitor_attached(device_name: String, attached: bool) -> Result<Vec<display::MonitorDevice>, String> {
-    display::set_monitor_attached(&device_name, attached)
+    display::set_monitor_topology_attached(&device_name, attached)
+}
+
+#[tauri::command]
+fn set_monitor_device_enabled(monitor_id: String, enabled: bool) -> Result<Vec<display::MonitorDevice>, String> {
+    display::set_monitor_device_enabled(&monitor_id, enabled)
 }
 
 #[tauri::command]
@@ -286,12 +386,38 @@ fn launch_cru() -> Result<(), String> {
 
 #[tauri::command]
 fn restart_graphics_driver() -> Result<String, String> {
-    display::restart_graphics_driver()
+    Ok(custom_res::restart_driver_stack())
 }
 
 #[tauri::command]
 fn reset_all_cru_overrides() -> Result<String, String> {
-    display::reset_all_cru_overrides()
+    custom_res::reset_all_edid_overrides()
+}
+
+#[tauri::command]
+fn reset_all_edid_overrides() -> Result<String, String> {
+    custom_res::reset_all_edid_overrides()
+}
+
+#[tauri::command]
+fn test_custom_mode(width: u32, height: u32, hz: u32) -> Result<custom_res::CustomModeTest, String> {
+    custom_res::validate_custom_resolution(width, height, hz)?;
+    Ok(custom_res::test_display_mode(None, width, height, hz))
+}
+
+#[tauri::command]
+fn add_custom_resolution(monitor_id: String, width: u32, height: u32, hz: u32) -> Result<String, String> {
+    custom_res::add_custom_resolution(&monitor_id, width, height, hz)
+}
+
+#[tauri::command]
+fn remove_custom_override(monitor_id: String) -> Result<String, String> {
+    custom_res::remove_custom_override(&monitor_id)
+}
+
+#[tauri::command]
+fn list_supported_modes() -> Result<Vec<display::DisplayMode>, String> {
+    Ok(display::get_all_supported_modes())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -318,10 +444,18 @@ pub fn run() {
         preferred_stretched,
     };
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_mcp_bridge::init())
+    // MCP Bridge plugin enabled for automation and live MCP verification
+    let builder = tauri::Builder::default().plugin(tauri_plugin_mcp_bridge::init());
+
+    builder
         .manage(app_state)
         .setup(move |app| {
+            // Pre-register Golden Ratio stretched modes into the GPU driver scaling table
+            let _ = custom_res::inject_gpu_custom_mode(2090, 1440);
+            let _ = custom_res::inject_gpu_custom_mode(2078, 1440);
+            let _ = custom_res::inject_gpu_custom_mode(1568, 1080);
+            gpu::enforce_all_gpu_scaling();
+
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 while let Ok(()) = rx.recv() {
@@ -341,17 +475,23 @@ pub fn run() {
                 }
             });
 
-            // Automated working set trimmer to keep RAM consumption minimal
+            // Automated working set trimmer to keep RAM consumption minimal across host and WebView2 child tree
             std::thread::spawn(|| {
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(20));
+                    std::thread::sleep(std::time::Duration::from_secs(12));
                     trim_working_set();
                 }
             });
 
+            // Explicitly set high-res icon on the main window for crystal clear Windows taskbar & titlebar rendering
+            if let Some(window) = app.get_webview_window("main") {
+                let img = tauri::include_image!("icons/icon.png");
+                let _ = window.set_icon(img);
+            }
+
             // Create System Tray Menu
-            let show_i = MenuItem::with_id(app, "show", "Show TrueStretch", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit TrueStretch", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show Aspect", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit Aspect", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
             if let Some(icon) = app.default_window_icon() {
@@ -359,7 +499,7 @@ pub fn run() {
                     .icon(icon.clone())
                     .menu(&menu)
                     .show_menu_on_left_click(false)
-                    .tooltip("TrueStretch Studio")
+                    .tooltip("Aspect • Stretched Resolution & Utility")
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "quit" => {
                             app.exit(0);
@@ -394,9 +534,20 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    let _ = window.hide();
+                    api.prevent_close();
+                    trim_working_set();
+                    std::thread::spawn(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        trim_working_set();
+                    });
+                }
+                tauri::WindowEvent::Focused(false) => {
+                    trim_working_set();
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -423,10 +574,18 @@ pub fn run() {
             trim_memory,
             get_all_monitors,
             set_monitor_attached,
+            set_monitor_device_enabled,
             set_monitor_primary,
             launch_cru,
             restart_graphics_driver,
             reset_all_cru_overrides,
+            reset_all_edid_overrides,
+            test_custom_mode,
+            add_custom_resolution,
+            remove_custom_override,
+            list_supported_modes,
+            check_app_updates,
+            open_external_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

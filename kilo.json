@@ -1,0 +1,11 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "tauri": {
+      "type": "local",
+      "command": ["cmd", "/c", "npx", "-y", "@hypothesi/tauri-mcp-server"],
+      "enabled": true,
+      "timeout": 15000
+    }
+  }
+}
