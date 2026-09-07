@@ -1,0 +1,10 @@
+# Enforce proper language detection in GitHub Linguist
+package-lock.json linguist-vendored
+Cargo.lock linguist-vendored
+*.lock linguist-vendored
+*.json linguist-documentation
+
+# Ensure consistent LF line endings across platforms
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
