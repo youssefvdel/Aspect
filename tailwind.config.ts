@@ -1,8 +1,9 @@
-/** @type {import('tailwindcss').Config} */
+import type { Config } from 'tailwindcss';
+
 export default {
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    './index.html',
+    './src/**/*.{ts,tsx}',
   ],
   darkMode: 'class',
   theme: {
@@ -41,45 +42,6 @@ export default {
           'on-surface': '#e6e0e9',
           'on-surface-variant': '#cac4d0',
         },
-        forest: {
-          50: '#F2F9F5',
-          100: '#E1F3EA',
-          200: '#C2E7D4',
-          300: '#94D4B3',
-          400: '#5FB98B',
-          500: '#389E6B',
-          600: '#2A8255',
-          700: '#236745',
-          800: '#1F5238',
-          900: '#1A432F',
-          950: '#0C2318',
-        },
-        sage: {
-          50: '#F4F7F5',
-          100: '#E6ECE8',
-          200: '#CFDBD3',
-          300: '#ADC2B5',
-          400: '#87A392',
-          500: '#698774',
-          600: '#526D5C',
-          700: '#43584B',
-          800: '#37473E',
-          900: '#2F3B34',
-        },
-        charcoal: {
-          950: '#0B0E10',
-          900: '#111518',
-          850: '#161B1F',
-          800: '#1C2328',
-          750: '#242D33',
-          700: '#2D3840',
-          600: '#3F4E58',
-          500: '#556673',
-          400: '#738593',
-          300: '#98A8B5',
-          200: '#C5D0D9',
-          100: '#E5EBEF',
-        },
       },
       fontFamily: {
         display: ['"Outfit"', '"Google Sans"', 'system-ui', 'sans-serif'],
@@ -102,4 +64,4 @@ export default {
     },
   },
   plugins: [],
-}
+} satisfies Config;

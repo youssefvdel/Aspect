@@ -14,7 +14,7 @@ pub struct UpdateInfo {
 }
 
 pub const CURRENT_VERSION: &str = "0.1.0";
-pub const DEFAULT_REPO: &str = "youssefvdel/truestretch_tauri";
+pub const DEFAULT_REPO: &str = "youssefvdel/Aspect";
 
 /// Compares two semver strings (e.g. "2.0.0" vs "v2.0.1").
 /// Returns true if remote is strictly greater than current.

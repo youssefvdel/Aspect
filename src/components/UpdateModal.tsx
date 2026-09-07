@@ -105,7 +105,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                   Checking for new releases...
                 </p>
                 <p className="text-[10px] text-m3-outline font-mono">
-                  github.com/youssefvdel/truestretch_tauri
+                  github.com/youssefvdel/Aspect
                 </p>
               </div>
             ) : error ? (

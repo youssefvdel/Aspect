@@ -612,7 +612,7 @@ export async function checkAppUpdates(): Promise<UpdateInfo> {
       release_title: 'Aspect v0.1.0',
       release_notes: 'Running latest dev build.',
       published_at: new Date().toISOString(),
-      html_url: 'https://github.com/youssefvdel/truestretch_tauri',
+      html_url: 'https://github.com/youssefvdel/Aspect',
       download_url: null,
     };
   }
