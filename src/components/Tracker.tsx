@@ -1,17 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Activity,
   Check,
   RefreshCw,
-  ShieldCheck,
   Trophy,
-  Crosshair,
-  Search,
 } from 'lucide-react';
 import type { TrackerMmrPoint, TrackerProfile } from '../types';
-import { CustomDropdown } from './ValorantConfig';
 import {
   detectLocalAccount,
+  detectRegion,
   fetchCompetitiveUpdates,
   fetchHistoryMeta,
   fetchMmrDirect,
@@ -19,28 +15,6 @@ import {
   queueLabel,
   shortMapName,
 } from '../utils/tracker';
-
-const REGIONS = [
-  { value: 'eu', label: 'Europe' },
-  { value: 'na', label: 'North America' },
-  { value: 'ap', label: 'Asia-Pacific' },
-  { value: 'br', label: 'Brazil' },
-  { value: 'latam', label: 'Latin America' },
-  { value: 'kr', label: 'Korea' },
-];
-
-const lsGet = (k: string): string => {
-  try {
-    return localStorage.getItem(k) ?? '';
-  } catch {
-    return '';
-  }
-};
-const lsSet = (k: string, v: string): void => {
-  try {
-    localStorage.setItem(k, v);
-  } catch {}
-};
 
 const fmtDate = (ms: number): string => {
   if (!ms) return '';
@@ -71,37 +45,25 @@ const GameRow: React.FC<{ g: TrackerMmrPoint; queue: string; map: string }> = ({
 );
 
 export const Tracker: React.FC = () => {
-  const [region, setRegion] = useState(() => lsGet('aspect_tracker_region') || 'eu');
-  const [name, setName] = useState(() => lsGet('aspect_tracker_name'));
-  const [tag, setTag] = useState(() => lsGet('aspect_tracker_tag'));
-
   const [profile, setProfile] = useState<TrackerProfile | null>(null);
   const [games, setGames] = useState<TrackerMmrPoint[]>([]);
   const [queueById, setQueueById] = useState<Record<string, string>>({});
   const [mapById, setMapById] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isDetecting, setIsDetecting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const autoTried = useRef(false);
-
-  useEffect(() => lsSet('aspect_tracker_region', region), [region]);
-  useEffect(() => lsSet('aspect_tracker_name', name), [name]);
-  useEffect(() => lsSet('aspect_tracker_tag', tag), [tag]);
 
   const load = async () => {
     setIsLoading(true);
     setBanner(null);
     try {
-      let accName = name.trim();
-      let accTag = tag.trim();
+      const region = await detectRegion();
+      let accName = '';
+      let accTag = '';
       try {
         const acc = await detectLocalAccount();
-        if (acc.game_name) {
-          accName = acc.game_name;
-          accTag = acc.tagline;
-          setName(accName);
-          setTag(accTag);
-        }
+        accName = acc.game_name;
+        accTag = acc.tagline;
       } catch {}
       const [prof, comp] = await Promise.all([
         fetchMmrDirect(region, accName, accTag),
@@ -132,20 +94,6 @@ export const Tracker: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const detect = async () => {
-    setIsDetecting(true);
-    try {
-      const acc = await detectLocalAccount();
-      setName(acc.game_name);
-      setTag(acc.tagline);
-      setBanner(`Detected ${acc.game_name}#${acc.tagline} — hit Load.`);
-    } catch (e) {
-      setBanner(String(e instanceof Error ? e.message : e));
-    } finally {
-      setIsDetecting(false);
-    }
-  };
-
   const maxAbs = Math.max(10, ...games.map((p) => Math.abs(p.change)));
 
   return (
@@ -161,35 +109,6 @@ export const Tracker: React.FC = () => {
           </button>
         </div>
       )}
-
-      {/* Identity */}
-      <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-2 shrink-0 shadow-m3-1">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-m3-primary" />
-          <h3 className="font-display font-bold text-xs text-m3-on-surface uppercase tracking-wider">
-            Who to track
-          </h3>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-40">
-            <CustomDropdown value={region} options={REGIONS} onChange={setRegion} />
-          </div>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (lil ga7ed)"
-            className="h-8 px-2.5 rounded-lg bg-m3-surface-container-lowest border border-m3-outline-subtle text-[11px] font-semibold focus:outline-none focus:border-m3-primary w-36" />
-          <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Tag (zngr)"
-            className="h-8 px-2.5 rounded-lg bg-m3-surface-container-lowest border border-m3-outline-subtle text-[11px] font-semibold focus:outline-none focus:border-m3-primary w-24" />
-          <button onClick={detect} disabled={isDetecting}
-            className="h-8 px-3 rounded-full bg-m3-surface-container-high border border-m3-primary/40 text-m3-primary text-[11px] font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
-            <Search className="w-3 h-3" />
-            <span>{isDetecting ? 'Detecting…' : 'Detect my account'}</span>
-          </button>
-          <button onClick={load} disabled={isLoading}
-            className="h-8 px-4 rounded-full bg-m3-primary text-m3-on-primary text-[11px] font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ml-auto">
-            {isLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trophy className="w-3 h-3" />}
-            <span>{isLoading ? 'Loading…' : 'Refresh'}</span>
-          </button>
-        </div>
-      </section>
 
       {/* Profile */}
       {profile && (
@@ -209,10 +128,10 @@ export const Tracker: React.FC = () => {
               {profile.name}#{profile.tag} • {profile.wins}W / {profile.games - profile.wins}L ({profile.games} games)
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-m3-on-surface-variant shrink-0">
-            <ShieldCheck className="w-3.5 h-3.5 text-m3-tertiary" />
-            <Crosshair className="w-3.5 h-3.5 text-m3-outline" />
-          </div>
+          <button onClick={load} disabled={isLoading} title="Refresh"
+            className="w-8 h-8 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0 ml-auto">
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
         </section>
       )}
 

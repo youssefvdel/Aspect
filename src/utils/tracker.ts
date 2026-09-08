@@ -206,6 +206,30 @@ export async function fetchCompetitiveUpdates(region: string, count = 20): Promi
   }));
 }
 
+/** Find the account's shard: cached 7 days, else first shard that answers. */
+export async function detectRegion(): Promise<string> {
+  try {
+    const raw = localStorage.getItem('aspect_tracker_shard');
+    if (raw) {
+      const { savedAt, region } = JSON.parse(raw);
+      if (Date.now() - savedAt < 7 * 24 * 3600 * 1000 && region) return region;
+    }
+  } catch {}
+  const ent = await getEntitlements();
+  for (const r of ['eu', 'na', 'ap', 'br', 'latam', 'kr']) {
+    try {
+      const j = await riotGet(shardFor(r), `/mmr/v1/players/${ent.puuid}`);
+      if (j?.LatestCompetitiveUpdate) {
+        try {
+          localStorage.setItem('aspect_tracker_shard', JSON.stringify({ savedAt: Date.now(), region: r }));
+        } catch {}
+        return r;
+      }
+    } catch {}
+  }
+  return 'eu';
+}
+
 /** Queue label + total match count (history entries are ID-only). */
 export async function fetchHistoryMeta(
   region: string,
