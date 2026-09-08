@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { LocalRiotAccount, TrackerDuel, TrackerMatch, TrackerMatchDetail, TrackerPlayer, TrackerProfile } from '../types';
+import type { LocalRiotAccount, TrackerDuel, TrackerMatch, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
 
 const API = 'https://api.henrikdev.xyz';
@@ -177,6 +177,7 @@ export async function fetchMatchDetail(matchId: string, apiKey: string): Promise
   const all = d?.players?.all_players ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const players: TrackerPlayer[] = (Array.isArray(all) ? all : []).map((p: any) => ({
+    puuid: String(p?.puuid ?? ''),
     name: String(p?.name ?? '?'),
     tag: String(p?.tag ?? ''),
     team: String(p?.team ?? ''),
