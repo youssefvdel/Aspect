@@ -103,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {hasUpdate && (
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-pulse" />
             )}
-            <span>v0.1.1</span>
+            <span>v{__APP_VERSION__}</span>
           </button>
         </div>
 

@@ -160,7 +160,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                     You're up to date!
                   </h4>
                   <p className="text-[11px] text-m3-outline mt-0.5">
-                    Aspect {updateInfo?.current_version || 'v0.1.0'} is the latest version.
+                    Aspect {updateInfo?.current_version || `v${__APP_VERSION__}`} is the latest version.
                   </p>
                 </div>
               </div>

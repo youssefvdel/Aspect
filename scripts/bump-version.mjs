@@ -29,10 +29,22 @@ if (/"version"\s*:/.test(tauriConf)) {
 }
 
 // Guard: no hardcoded versions may remain in source (excluding lockfiles/build output).
-// Only version *assignments* count — test fixtures like is_newer_version("0.1.0", …) are fine.
-const banned = ['src-tauri/src/updater.rs', 'src/utils/ipc.ts', 'vite.config.ts'];
+// Only version *assignments* and JSX-embedded badges count —
+// test fixtures like is_newer_version("0.1.0", …) are fine.
+const banned = [
+  'src-tauri/src/updater.rs',
+  'src/utils/ipc.ts',
+  'src/components/Sidebar.tsx',
+  'src/components/UpdateModal.tsx',
+  'vite.config.ts',
+];
+const stalePatterns = [
+  /[:=]\s*['"]\d+\.\d+\.\d+(-[\w.]+)?['"]/g,
+  />v?\d+\.\d+\.\d+(-[\w.]+)?</g,
+];
 for (const f of banned) {
-  const stale = [...read(f).matchAll(/[:=]\s*['"]\d+\.\d+\.\d+(-[\w.]+)?['"]/g)].map((m) => m[0].trim());
+  const content = read(f);
+  const stale = stalePatterns.flatMap((re) => [...content.matchAll(re)].map((m) => m[0].trim()));
   if (stale.length > 0) {
     console.error(`REFUSED: hardcoded version in ${f}: ${stale.join(', ')}`);
     process.exit(1);
@@ -48,17 +60,19 @@ writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 // 2. Cargo.toml [package] version (first `version =` under [package])
 const cargoPath = new URL('src-tauri/Cargo.toml', root);
 let cargo = read('src-tauri/Cargo.toml');
-const before = cargo;
-// NOTE: function replacer — a "$1…​" string would misparse ($1 + "0.1.2" = $10).
-cargo = cargo.replace(
-  /(\[package\][^\[]*?^version\s*=\s*")[^"]+(")/m,
-  (_m, p1, p2) => `${p1}${next}${p2}`,
-);
-if (cargo === before) {
+const currentCargo = cargo.match(/\[package\][^\[]*?^version\s*=\s*"([^"]+)"/m)?.[1];
+if (!currentCargo) {
   console.error('REFUSED: could not find [package] version in src-tauri/Cargo.toml');
   process.exit(1);
 }
-writeFileSync(cargoPath, cargo);
+if (currentCargo !== next) {
+  // NOTE: function replacer — a "$1…​" string would misparse ($1 + "0.1.2" = $10).
+  cargo = cargo.replace(
+    /(\[package\][^\[]*?^version\s*=\s*")[^"]+(")/m,
+    (_m, p1, p2) => `${p1}${next}${p2}`,
+  );
+  writeFileSync(cargoPath, cargo);
+}
 
 console.log(`Bumped to ${next}: package.json + src-tauri/Cargo.toml`);
 console.log('Next: npx tauri build && git add -A && git commit && git push');
