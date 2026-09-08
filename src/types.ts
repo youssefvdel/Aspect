@@ -110,6 +110,7 @@ export interface TrackerProfile {
   peak: string;
   wins: number;
   games: number;
+  seasons: { id: string; games: number; wins: number; tier: number }[];
 }
 
 export interface TrackerMatch {
@@ -211,7 +212,8 @@ export type TabType =
   | 'borderless'
   | 'settings'
   | 'valorant'
-  | 'tracker';
+  | 'overview'
+  | 'matches';
 
 export interface UpdateInfo {
   has_update: boolean;

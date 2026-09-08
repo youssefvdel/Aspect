@@ -31,7 +31,7 @@ export async function detectLocalAccount(): Promise<LocalRiotAccount> {
 }
 
 /** Tier id → name fallback when only the number arrives. */
-const tierName = (id: number): string => {
+export const tierName = (id: number): string => {
   if (id >= 27) return 'Radiant';
   if (id < 3) return 'Unrated';
   const tiers = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Ascendant', 'Immortal'];
@@ -114,27 +114,30 @@ async function riotGet(host: string, path: string): Promise<any> {
   }
 }
 
-let gameDataMem: { agents: Record<string, string>; maps: Record<string, string> } | null = null;
+let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string> } | null = null;
 
-/** Map/agent display names via public valorant-api.com, cached 30 days. */
-export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string> }> {
+/** Map/agent/season display names via public valorant-api.com, cached 30 days. */
+export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string> }> {
   if (gameDataMem) return gameDataMem;
   try {
     const raw = localStorage.getItem('aspect_game_data');
     if (raw) {
       const { savedAt, data } = JSON.parse(raw);
       if (Date.now() - savedAt < 30 * 24 * 3600 * 1000 && data?.agents) {
-        gameDataMem = { agents: data.agents, maps: data.maps ?? {} };
+        gameDataMem = { agents: data.agents, maps: data.maps ?? {}, seasons: data.seasons ?? {} };
         return gameDataMem;
       }
     }
   } catch {}
   const agents: Record<string, string> = {};
   const maps: Record<string, string> = {};
+  const seasons: Record<string, string> = {};
   try {
-    const [aj, mj] = await Promise.all([
+    const [aj, mj, cs, sn] = await Promise.all([
       fetch('https://valorant-api.com/v1/agents?isPlayableCharacter=true').then((r) => r.json()),
       fetch('https://valorant-api.com/v1/maps').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/seasons/competitive').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/seasons').then((r) => r.json()),
     ]);
     for (const a of aj?.data ?? []) {
       if (a?.uuid && a?.displayName) agents[String(a.uuid).toLowerCase()] = a.displayName;
@@ -145,9 +148,22 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
         if (m?.uuid) maps[String(m.uuid).toLowerCase()] = m.displayName;
       }
     }
-    localStorage.setItem('aspect_game_data', JSON.stringify({ savedAt: Date.now(), data: { agents, maps } }));
+    // competitive uuid → "V26 · ACT V": episode from asset path, act from season name.
+    const names: Record<string, string> = {};
+    for (const s of sn?.data ?? []) {
+      if (s?.uuid && s?.displayName) names[String(s.uuid).toLowerCase()] = s.displayName;
+    }
+    for (const c of cs?.data ?? []) {
+      const cuuid = String(c?.uuid ?? '').toLowerCase();
+      const suuid = String(c?.seasonUuid ?? '').toLowerCase();
+      if (!cuuid) continue;
+      const act = names[suuid] ?? '';
+      const ep = /Episode(V\d+)/i.exec(String(c?.assetPath ?? ''))?.[1] ?? '';
+      seasons[cuuid] = [ep, act].filter(Boolean).join(' · ') || 'Season';
+    }
+    localStorage.setItem('aspect_game_data', JSON.stringify({ savedAt: Date.now(), data: { agents, maps, seasons } }));
   } catch {}
-  gameDataMem = { agents, maps };
+  gameDataMem = { agents, maps, seasons };
   return gameDataMem;
 }
 
@@ -155,7 +171,7 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
 export const shortMapName = (mapId: string, maps: Record<string, string>): string =>
   maps[mapId.toLowerCase()] ?? (mapId.split('/').pop() || '?');
 
-/** Rank + RR + peak + wins/games straight from Riot. */
+/** Rank + RR + peak + per-season peaks straight from Riot. */
 export async function fetchMmrDirect(region: string, name: string, tag: string): Promise<TrackerProfile> {
   const ent = await getEntitlements();
   const j = await riotGet(shardFor(region), `/mmr/v1/players/${ent.puuid}`);
@@ -165,13 +181,17 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
   let games = 0;
   let peakTier = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const s of Object.values(seasons) as any[]) {
+  const per: { id: string; games: number; wins: number; tier: number }[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const [id, s] of Object.entries(seasons) as [string, any][]) {
     const g = Number(s?.NumberOfGames ?? 0);
+    const t = Number(s?.CompetitiveTier ?? 0);
+    per.push({ id, games: g, wins: Number(s?.NumberOfWins ?? 0), tier: t });
     if (g >= games) {
       games = g;
       wins = Number(s?.NumberOfWins ?? 0);
     }
-    peakTier = Math.max(peakTier, Number(s?.CompetitiveTier ?? 0));
+    peakTier = Math.max(peakTier, t);
   }
   const tierId = Number(latest?.TierAfterUpdate ?? 0);
   return {
@@ -184,6 +204,7 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
     peak: peakTier > 0 ? tierName(peakTier) : '—',
     wins,
     games,
+    seasons: per.filter((s) => s.games > 0).sort((a, b) => b.games - a.games),
   };
 }
 
