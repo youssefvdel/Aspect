@@ -166,6 +166,8 @@ export interface TrackerMmrPoint {
   rr: number;
   change: number;
   matchId: string;
+  mapId: string;
+  when: number;
 }
 
 export interface LocalRiotAccount {
