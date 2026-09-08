@@ -9,6 +9,7 @@ import {
   Layout,
   CheckCircle2,
   ChevronDown,
+  Calculator,
 } from 'lucide-react';
 import type { DisplayInfo, ShortcutBinding, WindowInfo } from '../types';
 import {
@@ -217,13 +218,38 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
 
   const selectedWindow = windows.find((w) => w.hwnd === selectedHwnd) ?? null;
 
-  // ---- Sensitivity match strip (two-way native ⇄ stretch, ÷k compensation) ----
-  const [dpiInput, setDpiInput] = useState('1600');
+  // ---- Sensitivity calculator (reference only — never touches game sens) ----
+  // Empty on first boot (placeholders hint at format); every keystroke
+  // persists, stretch sens always derives from native.
+  const loadSensInput = (key: string): string => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved !== null && saved.trim() !== '' && !isNaN(parseFloat(saved)) && parseFloat(saved) > 0) {
+        return saved;
+      }
+    } catch {}
+    return '';
+  };
+  const [dpiInput, setDpiInput] = useState(() => loadSensInput('aspect_sens_dpi'));
+  const [nativeSensInput, setNativeSensInput] = useState(() => loadSensInput('aspect_sens_native'));
   const stretchK = nativeW / stretchedW;
   const fmtSens = (n: number): string => (n >= 10 ? n.toFixed(2) : n.toFixed(3));
-  const [nativeSensInput, setNativeSensInput] = useState('0.333');
-  const [stretchSensInput, setStretchSensInput] = useState(() => fmtSens(0.333 / stretchK));
+  const [stretchSensInput, setStretchSensInput] = useState(() => {
+    const n = parseFloat(loadSensInput('aspect_sens_native'));
+    return n > 0 ? fmtSens(n / stretchK) : '';
+  });
   const [copiedStretch, setCopiedStretch] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('aspect_sens_dpi', dpiInput);
+    } catch {}
+  }, [dpiInput]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('aspect_sens_native', nativeSensInput);
+    } catch {}
+  }, [nativeSensInput]);
 
   useEffect(() => {
     if (nativeSensInput) {
@@ -368,16 +394,17 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
           <button
             onClick={() => onToggle()}
             disabled={isLoading}
-            className="h-9 px-4 rounded-full bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary text-xs font-bold flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            className="h-11 px-5 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer whitespace-nowrap shadow-m3-1"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>{isLoading ? 'Switching…' : isNative ? `Stretch to ${ratioBadge}` : 'Back to Native'}</span>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Switching…' : isNative ? 'Press to Stretch' : 'Press for Native'}</span>
           </button>
           <button
             onClick={() => setShowHotkeyModal(true)}
-            className="h-6 text-[10px] text-m3-outline hover:text-m3-primary flex items-center justify-center gap-1 cursor-pointer font-mono"
+            title="Change the global hotkey"
+            className="h-7 px-3 rounded-full border border-m3-primary/50 bg-m3-primary-container/40 hover:bg-m3-primary-container/70 text-m3-primary text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
           >
-            <Keyboard className="w-3 h-3" />
+            <Keyboard className="w-3.5 h-3.5" />
             <span>{shortcut ? formatShortcut(shortcut) : 'F4'} to toggle • change</span>
           </button>
         </div>
@@ -425,8 +452,13 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
         )}
       </div>
 
-      {/* SENSITIVITY MATCH 4-CARD GRID: DPI | Native sens | Stretch sens | eDPI */}
+      {/* SENSITIVITY CALCULATOR — reference only, never changes your game sens */}
       <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 px-1 pb-2">
+          <Calculator className="w-3.5 h-3.5 text-m3-primary shrink-0" />
+          <span className="text-[11px] font-bold text-m3-on-surface">Sensitivity Calculator</span>
+          <span className="text-[10px] text-m3-outline">— reference only, type the result into Valorant yourself</span>
+        </div>
         <div className="grid grid-cols-4 gap-2.5">
           {/* 1: DPI */}
           <div className="rounded-xl bg-m3-surface-container-high/60 border border-m3-outline-subtle/80 p-2 flex flex-col items-center gap-1.5 transition-colors">

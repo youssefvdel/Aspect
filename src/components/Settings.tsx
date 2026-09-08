@@ -1,24 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Check,
-  RefreshCw,
   Crosshair,
-  FileCode2,
-  Lock,
-  Unlock,
-  Zap,
-  Shield,
   X,
   RotateCcw,
 } from 'lucide-react';
-import type { ConfigFileInfo, DisplayInfo, DisplayMode } from '../types';
+import type { DisplayInfo, DisplayMode } from '../types';
 import { CustomResolution } from './CustomResolution';
 import {
-  fetchValorantConfigs,
-  applyCustomResToAllConfigs,
   fetchPreferredStretchedRes,
   savePreferredStretchedRes,
-  updateValorantConfig,
   listSupportedModes,
 } from '../utils/ipc';
 
@@ -45,11 +36,6 @@ export const Settings: React.FC<SettingsProps> = ({
   // Available display modes on PC
   const [supportedModes, setSupportedModes] = useState<DisplayMode[]>([]);
 
-  // Game config files state
-  const [configs, setConfigs] = useState<ConfigFileInfo[]>([]);
-  const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
-  const [isApplyingAll, setIsApplyingAll] = useState(false);
-  const [lockReadOnly, setLockReadOnly] = useState(true);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
   // Signal to pre-fill Display Mode Lab when a target is chosen
@@ -88,23 +74,18 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const loadData = async () => {
-    setIsLoadingConfigs(true);
     try {
-      const [res, cfgs, modes] = await Promise.all([
+      const [res, modes] = await Promise.all([
         fetchPreferredStretchedRes(),
-        fetchValorantConfigs(),
         listSupportedModes(),
       ]);
       setStretchedW(res[0]);
       setStretchedH(res[1]);
       setCustomInputW(res[0].toString());
       setCustomInputH(res[1].toString());
-      setConfigs(cfgs);
       setSupportedModes(modes);
     } catch (e) {
       console.error('Failed to load settings data', e);
-    } finally {
-      setIsLoadingConfigs(false);
     }
   };
 
@@ -217,52 +198,6 @@ export const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const handleApplyToAll = async () => {
-    setIsApplyingAll(true);
-    try {
-      const msg = await applyCustomResToAllConfigs(stretchedW, stretchedH, lockReadOnly);
-      setStatusBanner(msg);
-      const cfgs = await fetchValorantConfigs();
-      setConfigs(cfgs);
-    } catch (e) {
-      setStatusBanner(`Error applying to files: ${String(e)}`);
-    } finally {
-      setIsApplyingAll(false);
-    }
-  };
-
-  const handleToggleLockSingle = async (cfg: ConfigFileInfo) => {
-    try {
-      const newLockState = !cfg.is_read_only;
-      await updateValorantConfig(
-        cfg.path,
-        true,
-        cfg.res_x && cfg.res_y ? [cfg.res_x, cfg.res_y] : [stretchedW, stretchedH],
-        newLockState
-      );
-      const updated = await fetchValorantConfigs();
-      setConfigs(updated);
-    } catch (e) {
-      setStatusBanner(`Error toggling file lock: ${String(e)}`);
-    }
-  };
-
-  const handleApplySingle = async (cfg: ConfigFileInfo) => {
-    try {
-      await updateValorantConfig(
-        cfg.path,
-        true,
-        [stretchedW, stretchedH],
-        lockReadOnly
-      );
-      setStatusBanner(`Applied ${stretchedW}×${stretchedH} to ${cfg.display_name}`);
-      const updated = await fetchValorantConfigs();
-      setConfigs(updated);
-    } catch (e) {
-      setStatusBanner(`Error writing config: ${String(e)}`);
-    }
-  };
-
   return (
     <div className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-hidden [@media(max-height:720px)]:overflow-y-auto">
       {/* Notification Banner */}
@@ -281,15 +216,15 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {/* 2-COLUMN GRID: Stretched Target (Left) & Game Config Sync (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 items-stretch flex-1 min-h-0">
-        {/* COLUMN 1: SELECT STRETCHED TARGET (AVAILABLE MODES ON PC) */}
+      {/* Stretch target picker — per-file sync lives in the Valorant Config tab */}
+      <div className="flex flex-col gap-2.5 flex-1 min-h-0">
+        {/* STRETCHED TARGET (AVAILABLE MODES ON PC) */}
         <section className="bg-m3-surface-container border border-m3-outline-subtle rounded-2xl p-3 shadow-m3-1 flex flex-col gap-2 h-full min-h-0">
           <div className="flex items-center justify-between h-6 pb-2 border-b border-m3-outline-subtle shrink-0">
             <div className="flex items-center space-x-2">
               <Crosshair className="w-4 h-4 text-m3-primary" />
               <h3 className="font-display font-bold text-xs text-m3-on-surface uppercase tracking-wider">
-                1. Stretched Resolution Target
+                Stretched Resolution Target
               </h3>
             </div>
             <div className="flex items-center space-x-1.5">
@@ -418,137 +353,6 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </section>
 
-        {/* COLUMN 2: SYNC GAME CONFIG FILES */}
-        <section className="bg-m3-surface-container border border-m3-outline-subtle rounded-2xl p-3 shadow-m3-1 flex flex-col gap-2 h-full min-h-0">
-          <div className="flex items-center justify-between h-6 pb-2 border-b border-m3-outline-subtle shrink-0">
-            <div className="flex items-center space-x-2">
-              <FileCode2 className="w-4 h-4 text-m3-primary" />
-              <h3 className="font-display font-bold text-xs text-m3-on-surface uppercase tracking-wider">
-                2. Sync Game Config Files
-              </h3>
-            </div>
-
-            <button
-              onClick={handleRefreshAll}
-              disabled={isLoadingConfigs}
-              className="h-7 px-3 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface border border-m3-outline-subtle text-[11px] font-semibold transition-colors cursor-pointer flex items-center space-x-1 shrink-0"
-              title="Rescan game config files"
-            >
-              <RefreshCw className={`w-2.5 h-2.5 text-m3-primary ${isLoadingConfigs ? 'animate-spin' : ''}`} />
-              <span>Rescan</span>
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant font-medium shrink-0">
-            <span>Detected game user configs ({configs.length}):</span>
-            <span className="text-[10px] text-m3-outline">Writes {stretchedW}×{stretchedH}</span>
-          </div>
-
-          {/* Config Files List */}
-          <div className="flex-1 min-h-0 flex flex-col justify-start gap-1.5 overflow-y-auto custom-scrollbar pr-1.5 pb-1">
-            {configs.length === 0 ? (
-              <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant">
-                No VALORANT configs detected in %LOCALAPPDATA%\VALORANT.
-              </div>
-            ) : (
-              configs.map((cfg, idx) => (
-                <div
-                  key={idx}
-                  className="min-h-[52px] p-2 pl-2.5 rounded-xl bg-m3-surface-container-high/60 border border-m3-outline-subtle flex items-center justify-between gap-2 text-xs"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center space-x-1.5">
-                      <span className="font-bold text-[11px] text-m3-on-surface">
-                        {cfg.display_name}
-                      </span>
-                      {cfg.is_read_only ? (
-                        <span className="px-1.5 py-0.5 text-[9px] font-mono rounded-full bg-m3-primary-container text-m3-primary border border-m3-primary/30 flex items-center space-x-0.5 font-bold shrink-0">
-                          <Lock className="w-2 h-2 text-m3-primary" />
-                          <span>Locked</span>
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 text-[9px] font-mono rounded-full bg-m3-surface-container text-m3-outline border border-m3-outline-subtle flex items-center space-x-0.5 shrink-0">
-                          <Unlock className="w-2 h-2 text-m3-outline" />
-                          <span>Open</span>
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] font-mono text-m3-outline flex items-center space-x-2 mt-0.5">
-                      <span>Res: <strong className="text-m3-primary font-mono">{cfg.res_x && cfg.res_y ? `${cfg.res_x}×${cfg.res_y}` : 'Default'}</strong></span>
-                      <span>•</span>
-                      <span>Letterbox: <strong className={cfg.should_letterbox === false ? 'text-m3-primary' : 'text-m3-coral'}>{cfg.should_letterbox === false ? 'Off' : 'On'}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-1.5 shrink-0">
-                    <button
-                      onClick={() => handleToggleLockSingle(cfg)}
-                      className="w-7 h-7 rounded-full bg-m3-surface-container hover:bg-m3-surface-container-highest text-m3-on-surface border border-m3-outline-subtle transition-all cursor-pointer shadow-xs active:scale-90 flex items-center justify-center shrink-0"
-                      title={cfg.is_read_only ? 'Unlock File for Manual Edits' : 'Lock File as Read-Only'}
-                    >
-                      {cfg.is_read_only ? (
-                        <Unlock className="w-3 h-3 text-m3-primary" />
-                      ) : (
-                        <Lock className="w-3 h-3 text-m3-outline" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleApplySingle(cfg)}
-                      className="h-7 px-3 rounded-full bg-m3-primary/20 hover:bg-m3-primary/30 text-m3-primary text-[11px] font-bold border border-m3-primary/30 transition-all cursor-pointer shrink-0"
-                    >
-                      Write
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Config File Enforcement Info Callout */}
-          <div className="p-2.5 rounded-xl bg-m3-surface-container-lowest/80 border border-m3-outline-subtle/80 flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-m3-on-surface flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-m3-primary" />
-                <span>Config Enforcement</span>
-              </span>
-              <span className="text-[10px] font-mono text-m3-primary font-semibold">
-                {configs.filter((c) => c.is_read_only).length}/{configs.length} Files Read-Only
-              </span>
-            </div>
-            <p className="text-[10px] text-m3-on-surface-variant leading-relaxed">
-              Applying writes {stretchedW}×{stretchedH} and disables letterboxing. Locking files read-only prevents VALORANT from resetting your resolution back to 16:9 on exit.
-            </p>
-          </div>
-
-          {/* Action Row */}
-          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle text-xs mt-auto">
-            <label className="flex items-center space-x-1.5 text-[11px] text-m3-on-surface cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={lockReadOnly}
-                onChange={(e) => setLockReadOnly(e.target.checked)}
-                className="rounded border-m3-outline bg-m3-surface-container text-m3-primary focus:ring-0 w-3.5 h-3.5 cursor-pointer accent-m3-primary"
-              />
-              <span>Lock Read-Only</span>
-            </label>
-
-            <button
-              onClick={handleApplyToAll}
-              disabled={isApplyingAll || configs.length === 0}
-              className="h-7 px-3 rounded-full bg-m3-primary hover:bg-m3-primary/90 active:scale-[0.98] text-m3-on-primary font-bold text-[11px] transition-all shadow-xs disabled:opacity-50 cursor-pointer flex items-center space-x-1.5 shrink-0"
-            >
-              {isApplyingAll ? (
-                <RefreshCw className="w-3 h-3 animate-spin text-m3-on-primary" />
-              ) : (
-                <Zap className="w-3 h-3 text-m3-on-primary" />
-              )}
-              <span>
-                {isApplyingAll ? 'Syncing...' : `Sync All (${configs.length})`}
-              </span>
-            </button>
-          </div>
-        </section>
       </div>
 
       {/* Display Mode Lab — safely adds new resolutions to the available list */}

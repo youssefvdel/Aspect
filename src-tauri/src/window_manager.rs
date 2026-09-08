@@ -107,17 +107,60 @@ pub fn make_borderless(hwnd_val: isize) -> Result<String, String> {
             (0, 0, cx, cy)
         };
 
-        SetWindowPos(
-            hwnd,
-            HWND_TOP,
-            x,
-            y,
-            width,
-            height,
-            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
-        ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
+        // Borderless FULLSCREEN = strip the frame AND cover the whole monitor.
+        // Applied twice: games often re-assert their own size on the first
+        // style change — the second pass wins.
+        for _ in 0..2 {
+            SetWindowPos(
+                hwnd,
+                HWND_TOP,
+                x,
+                y,
+                width,
+                height,
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            )
+            .map_err(|e| format!("SetWindowPos failed: {}", e))?;
+        }
 
-        Ok(format!("Window set to borderless ({}x{})", width, height))
+        // Re-assert shortly after: Valorant reverts external resizes on some
+        // frames. A background nudge wins without blocking the UI.
+        // (HWND is a raw pointer, so the plain integer crosses threads.)
+        let hwnd_val = hwnd_val;
+        std::thread::spawn(move || {
+            let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+            for ms in [400u64, 1000] {
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+                if !IsWindow(hwnd).as_bool() {
+                    break;
+                }
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_TOP,
+                    x,
+                    y,
+                    width,
+                    height,
+                    SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+                );
+            }
+        });
+
+        // Read back what actually stuck, so the UI reports truth, not hope.
+        let mut final_rect = RECT::default();
+        let (fw, fh) = if GetWindowRect(hwnd, &mut final_rect).is_ok() {
+            (
+                final_rect.right - final_rect.left,
+                final_rect.bottom - final_rect.top,
+            )
+        } else {
+            (width, height)
+        };
+
+        Ok(format!(
+            "Borderless fullscreen: window now {}x{} on a {}x{} screen",
+            fw, fh, width, height
+        ))
     }
 }
 

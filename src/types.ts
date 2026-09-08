@@ -53,9 +53,51 @@ export interface ConfigFileInfo {
   display_name: string;
   is_read_only: boolean;
   fullscreen_mode: number | null;
+  last_confirmed_fullscreen?: number | null;
+  preferred_fullscreen?: number | null;
   should_letterbox: boolean | null;
+  last_letterbox?: boolean | null;
   res_x: number | null;
   res_y: number | null;
+  last_confirmed_res_x?: number | null;
+  last_confirmed_res_y?: number | null;
+  desired_w?: number | null;
+  desired_h?: number | null;
+  last_confirmed_desired_w?: number | null;
+  last_confirmed_desired_h?: number | null;
+}
+
+export interface ValorantApplyResult {
+  path: string;
+  display_name: string;
+  ok: boolean;
+  verified: boolean;
+  message: string;
+}
+
+export interface ValorantVerifyResult {
+  path: string;
+  display_name: string;
+  matches: boolean;
+  details: string;
+}
+
+export interface ValorantCustomOptions {
+  fullscreen_mode?: number | null;
+  letterbox?: boolean | null;
+  res?: [number, number] | null;
+  desired?: [number, number] | null;
+  lock_readonly: boolean;
+}
+
+export interface ValorantSettingRow {
+  key: string;
+  value: string;
+}
+
+export interface ValorantSection {
+  name: string;
+  rows: ValorantSettingRow[];
 }
 
 export interface QuickShortcut {
@@ -91,7 +133,8 @@ export type TabType =
   | 'custom_res'
   | 'gpu'
   | 'borderless'
-  | 'settings';
+  | 'settings'
+  | 'valorant';
 
 export interface UpdateInfo {
   has_update: boolean;

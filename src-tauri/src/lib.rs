@@ -226,6 +226,57 @@ fn update_valorant_config(
 }
 
 #[tauri::command]
+fn update_valorant_config_custom(
+    path: String,
+    options: game_config::CustomOptions,
+) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    game_config::update_config_custom(p, &options)
+}
+
+#[tauri::command]
+fn verify_valorant_configs(width: u32, height: u32) -> Result<Vec<game_config::VerifyResult>, String> {
+    Ok(game_config::verify_all_configs(width, height))
+}
+
+#[tauri::command]
+fn apply_custom_res_verbose(
+    width: u32,
+    height: u32,
+    lock_readonly: bool,
+) -> Result<Vec<game_config::ApplyResult>, String> {
+    let results = game_config::apply_to_all_configs_verbose(width, height, lock_readonly);
+    if results.is_empty() {
+        return Err("No VALORANT GameUserSettings.ini files found. Please launch VALORANT once to generate configuration files.".to_string());
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+fn get_valorant_config_raw(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    game_config::read_config_raw(p)
+}
+
+#[tauri::command]
+fn get_valorant_config_sections(path: String) -> Result<Vec<game_config::SectionInfo>, String> {
+    let p = std::path::Path::new(&path);
+    game_config::get_all_sections(p)
+}
+
+#[tauri::command]
+fn set_valorant_config_value(
+    path: String,
+    section: String,
+    key: String,
+    value: String,
+    lock_readonly: bool,
+) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    game_config::set_config_value(p, &section, &key, &value, lock_readonly)
+}
+
+#[tauri::command]
 fn get_quick_shortcuts() -> Result<Vec<shortcuts::QuickShortcut>, String> {
     Ok(shortcuts::load_shortcuts())
 }
@@ -569,6 +620,12 @@ pub fn run() {
             restore_window_framed,
             get_valorant_configs,
             update_valorant_config,
+            update_valorant_config_custom,
+            verify_valorant_configs,
+            apply_custom_res_verbose,
+            get_valorant_config_raw,
+            get_valorant_config_sections,
+            set_valorant_config_value,
             get_quick_shortcuts,
             check_requested_tab,
             trim_memory,

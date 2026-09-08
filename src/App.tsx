@@ -5,6 +5,7 @@ import { TopBar } from './components/TopBar';
 import { UnifiedStretch } from './components/UnifiedStretch';
 import { ResolutionVisualizer } from './components/ResolutionVisualizer';
 import { Settings } from './components/Settings';
+import { ValorantConfig } from './components/ValorantConfig';
 import { HardwareScaling } from './components/HardwareScaling';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
@@ -101,13 +102,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadAllTelemetry();
 
-    // Keyboard shortcut navigation (1-4)
+    // Keyboard shortcut navigation (1-5)
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === '1') setCurrentTab('switcher');
       if (e.key === '2') setCurrentTab('visualizer');
       if (e.key === '3') setCurrentTab('settings');
       if (e.key === '4') setCurrentTab('gpu');
+      if (e.key === '5') setCurrentTab('valorant');
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -138,7 +140,7 @@ export const App: React.FC = () => {
       try {
         const req = await checkRequestedTab();
         if (req) {
-          if (['switcher', 'visualizer', 'settings', 'gpu'].includes(req)) {
+          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant'].includes(req)) {
             setCurrentTab(req as TabType);
           } else if (req === 'borderless' || req === 'display' || req === 'monitors') {
             // Legacy alias: Window Stretcher merged into switcher grid
@@ -168,9 +170,6 @@ export const App: React.FC = () => {
     }
   }, [currentTab]);
 
-  // Unified grid tab fills viewport with no scroll; other tabs keep scroll.
-  // 'borderless' is a legacy alias that renders the same unified grid.
-  // Tabs that fit exactly within the viewport without body page scrolling
   const isFitViewportTab =
     currentTab === 'switcher' ||
     currentTab === 'borderless' ||
@@ -301,6 +300,8 @@ export const App: React.FC = () => {
                     onRefreshDisplayInfo={loadAllTelemetry}
                   />
                 )}
+
+                {currentTab === 'valorant' && <ValorantConfig />}
 
                 {currentTab === 'gpu' && (
                   <HardwareScaling

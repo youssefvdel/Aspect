@@ -1,16 +1,133 @@
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
+const SHOOTER_SECTION: &str = "[/Script/ShooterGame.ShooterGameUserSettings]";
+
+/// ini-preserve uses bare names ("Player", not "[Player]").
+fn bare_section(section: &str) -> &str {
+    let s = section.trim();
+    s.strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(s)
+}
+
+/// Collapse duplicate keys per section (first wins) before parsing.
+/// Heals files polluted by the old text-append bug; ini-preserve's
+/// map-style set() then guarantees no new duplicates can ever form.
+fn collapse_duplicates(text: &str) -> String {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = String::new();
+    for line in text.split('\n') {
+        // Work on \n-split text; tolerate CRLF leftovers.
+        let ln = line.strip_suffix('\r').unwrap_or(line);
+        let t = ln.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            cur = t.to_string();
+            out.push(ln.to_string());
+            continue;
+        }
+        if !cur.is_empty() && !t.is_empty() && !t.starts_with(';') && !t.starts_with('#') {
+            if let Some(eq) = t.find('=') {
+                let k = t[..eq].trim();
+                if !k.is_empty() {
+                    let id = format!("{}\x00{}", cur, k);
+                    if !seen.insert(id) {
+                        continue; // duplicate → drop
+                    }
+                }
+            }
+        }
+        out.push(ln.to_string());
+    }
+    out.join("\n")
+}
+
+/// Read + unlock + parse. Returns the document and the
+/// original permissions to reuse when storing.
+fn load_ini(path: &Path) -> Result<(ini_preserve::Ini, std::fs::Permissions), String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let perms = meta.permissions();
+    if perms.readonly() {
+        let mut p = perms.clone();
+        p.set_readonly(false);
+        fs::set_permissions(path, p).map_err(|e| e.to_string())?;
+    }
+    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let clean = collapse_duplicates(raw.trim_start_matches('\u{FEFF}'));
+    ini_preserve::Ini::parse(&clean)
+        .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
+        .map(|ini| (ini, perms))
+}
+
+/// Serialize back with UE4-style CRLF, then apply the lock state.
+/// Only values passed to set() change — layout, comments and spacing
+/// stay byte-identical to what the game wrote.
+fn store_ini(
+    path: &Path,
+    ini: &ini_preserve::Ini,
+    mut perms: std::fs::Permissions,
+    lock_read_only: bool,
+) -> Result<(), String> {
+    let text = ini.to_string().replace("\r\n", "\n").replace('\n', "\r\n");
+    fs::write(path, text).map_err(|e| e.to_string())?;
+    perms.set_readonly(lock_read_only);
+    fs::set_permissions(path, perms).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Full parsed view of a VALORANT GameUserSettings.ini.
+/// All value fields are Option so missing keys are visible instead of guessed.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ConfigFileInfo {
     pub path: PathBuf,
     pub display_name: String,
     pub is_read_only: bool,
     pub fullscreen_mode: Option<u32>,
+    pub last_confirmed_fullscreen: Option<u32>,
+    pub preferred_fullscreen: Option<u32>,
     pub should_letterbox: Option<bool>,
+    pub last_letterbox: Option<bool>,
     pub res_x: Option<u32>,
     pub res_y: Option<u32>,
+    pub last_confirmed_res_x: Option<u32>,
+    pub last_confirmed_res_y: Option<u32>,
+    pub desired_w: Option<u32>,
+    pub desired_h: Option<u32>,
+    pub last_confirmed_desired_w: Option<u32>,
+    pub last_confirmed_desired_h: Option<u32>,
+}
+
+/// Per-file result for apply operations — proves the write, not just claims it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ApplyResult {
+    pub path: PathBuf,
+    pub display_name: String,
+    pub ok: bool,
+    pub verified: bool,
+    pub message: String,
+}
+
+/// Per-file verification against an expected stretch target.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct VerifyResult {
+    pub path: PathBuf,
+    pub display_name: String,
+    pub matches: bool,
+    pub details: String,
+}
+
+/// Custom per-file options for the Valorant Config editor tab.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct CustomOptions {
+    pub fullscreen_mode: Option<u32>,
+    /// Some(true) = letterbox ON, Some(false) = OFF (stretch), None = leave alone
+    pub letterbox: Option<bool>,
+    pub res: Option<[u32; 2]>,
+    pub desired: Option<[u32; 2]>,
+    #[serde(default)]
+    pub lock_readonly: bool,
 }
 
 pub fn find_valorant_configs() -> Vec<ConfigFileInfo> {
@@ -54,21 +171,44 @@ fn parse_config(path: &Path) -> Option<ConfigFileInfo> {
     let _ = file.read_to_string(&mut content);
 
     let mut fullscreen_mode = None;
+    let mut last_confirmed_fullscreen = None;
+    let mut preferred_fullscreen = None;
     let mut should_letterbox = None;
+    let mut last_letterbox = None;
     let mut res_x = None;
     let mut res_y = None;
+    let mut last_confirmed_res_x = None;
+    let mut last_confirmed_res_y = None;
+    let mut desired_w = None;
+    let mut desired_h = None;
+    let mut last_confirmed_desired_w = None;
+    let mut last_confirmed_desired_h = None;
 
+    // Whitespace-tolerant like UE4 itself: "Key=value" and "Key = value"
+    // both parse (ini-preserve writes new keys spaced).
     for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("FullscreenMode=") {
-            fullscreen_mode = trimmed.trim_start_matches("FullscreenMode=").parse::<u32>().ok();
-        } else if trimmed.starts_with("bShouldLetterbox=") {
-            let val = trimmed.trim_start_matches("bShouldLetterbox=");
-            should_letterbox = Some(val.eq_ignore_ascii_case("true"));
-        } else if trimmed.starts_with("ResolutionSizeX=") {
-            res_x = trimmed.trim_start_matches("ResolutionSizeX=").parse::<u32>().ok();
-        } else if trimmed.starts_with("ResolutionSizeY=") {
-            res_y = trimmed.trim_start_matches("ResolutionSizeY=").parse::<u32>().ok();
+        let t = line.trim();
+        let eq = match t.find('=') {
+            Some(i) => i,
+            None => continue,
+        };
+        let k = t[..eq].trim();
+        let v = t[eq + 1..].trim();
+        match k {
+            "FullscreenMode" => fullscreen_mode = v.parse::<u32>().ok(),
+            "LastConfirmedFullscreenMode" => last_confirmed_fullscreen = v.parse::<u32>().ok(),
+            "PreferredFullscreenMode" => preferred_fullscreen = v.parse::<u32>().ok(),
+            "bLastConfirmedShouldLetterbox" => last_letterbox = Some(v.eq_ignore_ascii_case("true")),
+            "bShouldLetterbox" => should_letterbox = Some(v.eq_ignore_ascii_case("true")),
+            "LastUserConfirmedResolutionSizeX" => last_confirmed_res_x = v.parse::<u32>().ok(),
+            "LastUserConfirmedResolutionSizeY" => last_confirmed_res_y = v.parse::<u32>().ok(),
+            "ResolutionSizeX" => res_x = v.parse::<u32>().ok(),
+            "ResolutionSizeY" => res_y = v.parse::<u32>().ok(),
+            "LastUserConfirmedDesiredScreenWidth" => last_confirmed_desired_w = v.parse::<u32>().ok(),
+            "LastUserConfirmedDesiredScreenHeight" => last_confirmed_desired_h = v.parse::<u32>().ok(),
+            "DesiredScreenWidth" => desired_w = v.parse::<u32>().ok(),
+            "DesiredScreenHeight" => desired_h = v.parse::<u32>().ok(),
+            _ => {}
         }
     }
 
@@ -92,10 +232,138 @@ fn parse_config(path: &Path) -> Option<ConfigFileInfo> {
         display_name,
         is_read_only,
         fullscreen_mode,
+        last_confirmed_fullscreen,
+        preferred_fullscreen,
         should_letterbox,
+        last_letterbox,
         res_x,
         res_y,
+        last_confirmed_res_x,
+        last_confirmed_res_y,
+        desired_w,
+        desired_h,
+        last_confirmed_desired_w,
+        last_confirmed_desired_h,
     })
+}
+
+/// Read-back check: re-parse the file and confirm expected values landed.
+/// Returns Err with a concrete mismatch description when they didn't.
+fn verify_after_write(
+    path: &Path,
+    expect_fullscreen: Option<u32>,
+    expect_letterbox: Option<bool>,
+    expect_res: Option<(u32, u32)>,
+    expect_desired: Option<(u32, u32)>,
+) -> Result<(), String> {
+    let info = parse_config(path)
+        .ok_or_else(|| format!("Wrote {} but could not re-read it for verification", path.display()))?;
+
+    let mut mismatches: Vec<String> = Vec::new();
+
+    if let Some(exp) = expect_fullscreen {
+        if info.fullscreen_mode != Some(exp) {
+            mismatches.push(format!(
+                "FullscreenMode is {:?}, expected {}",
+                info.fullscreen_mode, exp
+            ));
+        }
+        // LastConfirmed/Preferred should follow when we write them.
+        if let Some(lc) = info.last_confirmed_fullscreen {
+            if lc != exp {
+                mismatches.push(format!("LastConfirmedFullscreenMode is {}, expected {}", lc, exp));
+            }
+        }
+    }
+    if let Some(exp_lb) = expect_letterbox {
+        if info.should_letterbox != Some(exp_lb) {
+            mismatches.push(format!(
+                "bShouldLetterbox is {:?}, expected {}",
+                info.should_letterbox,
+                if exp_lb { "True" } else { "False" }
+            ));
+        }
+    }
+    if let Some((w, h)) = expect_res {
+        if info.res_x != Some(w) || info.res_y != Some(h) {
+            mismatches.push(format!(
+                "ResolutionSize is {:?}x{:?}, expected {}x{}",
+                info.res_x, info.res_y, w, h
+            ));
+        }
+    }
+    if let Some((w, h)) = expect_desired {
+        if info.desired_w != Some(w) || info.desired_h != Some(h) {
+            mismatches.push(format!(
+                "DesiredScreen is {:?}x{:?}, expected {}x{}",
+                info.desired_w, info.desired_h, w, h
+            ));
+        }
+    }
+
+    if mismatches.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("Verification failed: {}", mismatches.join("; ")))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+
+fn write_config_inner(
+    path: &Path,
+    set_fullscreen: Option<u32>,
+    set_letterbox: Option<bool>,
+    set_res: Option<(u32, u32)>,
+    set_desired: Option<(u32, u32)>,
+    lock_read_only: bool,
+) -> Result<(), String> {
+    let sec = bare_section(SHOOTER_SECTION);
+    let (mut ini, perms) = load_ini(path)?;
+
+    // Map-style edits on an ordered map: existing keys updated in place,
+    // missing keys appended to the section. Duplicates are structurally
+    // impossible — there is no text appending anywhere on this path.
+    if let Some(fm) = set_fullscreen {
+        let v = fm.to_string();
+        ini.set(sec, "FullscreenMode", &v);
+        ini.set(sec, "LastConfirmedFullscreenMode", &v);
+        ini.set(sec, "PreferredFullscreenMode", &v);
+    }
+    if let Some(lb) = set_letterbox {
+        let v = if lb { "True" } else { "False" };
+        ini.set(sec, "bShouldLetterbox", v);
+        ini.set(sec, "bLastConfirmedShouldLetterbox", v);
+    }
+    if let Some((w, h)) = set_res {
+        ini.set(sec, "ResolutionSizeX", &w.to_string());
+        ini.set(sec, "ResolutionSizeY", &h.to_string());
+        ini.set(sec, "LastUserConfirmedResolutionSizeX", &w.to_string());
+        ini.set(sec, "LastUserConfirmedResolutionSizeY", &h.to_string());
+    }
+    if let Some((w, h)) = set_desired {
+        ini.set(sec, "DesiredScreenWidth", &w.to_string());
+        ini.set(sec, "DesiredScreenHeight", &h.to_string());
+        ini.set(sec, "LastUserConfirmedDesiredScreenWidth", &w.to_string());
+        ini.set(sec, "LastUserConfirmedDesiredScreenHeight", &h.to_string());
+    }
+
+    // Write unlocked first so verification reads the real bytes.
+    store_ini(path, &ini, perms.clone(), false)?;
+
+    // Verify BEFORE re-locking: re-read and confirm values actually landed.
+    if let Err(v) = verify_after_write(path, set_fullscreen, set_letterbox, set_res, set_desired) {
+        let mut p = perms.clone();
+        p.set_readonly(lock_read_only);
+        let _ = fs::set_permissions(path, p);
+        return Err(v);
+    }
+
+    let mut p = perms;
+    p.set_readonly(lock_read_only);
+    fs::set_permissions(path, p).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 pub fn update_config(
@@ -104,135 +372,240 @@ pub fn update_config(
     new_res: Option<(u32, u32)>,
     lock_read_only: bool,
 ) -> Result<(), String> {
-    // 1. If read-only, temporarily unlock to edit
-    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
-    let mut perms = meta.permissions();
-    if perms.readonly() {
-        perms.set_readonly(false);
-        fs::set_permissions(path, perms.clone()).map_err(|e| e.to_string())?;
-    }
+    let fm = if set_windowed_and_fill { Some(2) } else { None };
+    let lb = if set_windowed_and_fill { Some(false) } else { None };
+    // Keep DesiredScreen in sync with the resolution so the game can't
+    // snap back to a cached 16:9 DesiredScreen on next launch.
+    let desired = new_res;
+    write_config_inner(path, fm, lb, new_res, desired, lock_read_only)
+}
 
-    // 2. Read and modify lines
-    let mut content = String::new();
+/// Full custom write from the Valorant Config editor tab.
+/// Every field the user touches is verified by re-reading the file.
+pub fn update_config_custom(path: &Path, opts: &CustomOptions) -> Result<(), String> {
+    if opts.fullscreen_mode.is_none()
+        && opts.letterbox.is_none()
+        && opts.res.is_none()
+        && opts.desired.is_none()
     {
-        let mut file = File::open(path).map_err(|e| e.to_string())?;
-        file.read_to_string(&mut content).map_err(|e| e.to_string())?;
+        return Err("Nothing to write: pick at least one setting (fullscreen, letterbox, resolution)".to_string());
     }
-
-    let mut new_lines = Vec::new();
-    let mut found_fullscreen_mode = false;
-    let mut found_last_confirmed_fullscreen = false;
-    let mut found_preferred_fullscreen = false;
-    let mut found_letterbox = false;
-    let mut found_last_letterbox = false;
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        if set_windowed_and_fill && trimmed.starts_with("FullscreenMode=") {
-            new_lines.push("FullscreenMode=2".to_string());
-            found_fullscreen_mode = true;
-        } else if set_windowed_and_fill && trimmed.starts_with("LastConfirmedFullscreenMode=") {
-            new_lines.push("LastConfirmedFullscreenMode=2".to_string());
-            found_last_confirmed_fullscreen = true;
-        } else if set_windowed_and_fill && trimmed.starts_with("PreferredFullscreenMode=") {
-            new_lines.push("PreferredFullscreenMode=2".to_string());
-            found_preferred_fullscreen = true;
-        } else if set_windowed_and_fill && trimmed.starts_with("bShouldLetterbox=") {
-            new_lines.push("bShouldLetterbox=False".to_string());
-            found_letterbox = true;
-        } else if set_windowed_and_fill && trimmed.starts_with("bLastConfirmedShouldLetterbox=") {
-            new_lines.push("bLastConfirmedShouldLetterbox=False".to_string());
-            found_last_letterbox = true;
-        } else if let Some((w, h)) = new_res {
-            if trimmed.starts_with("ResolutionSizeX=") {
-                new_lines.push(format!("ResolutionSizeX={}", w));
-            } else if trimmed.starts_with("ResolutionSizeY=") {
-                new_lines.push(format!("ResolutionSizeY={}", h));
-            } else if trimmed.starts_with("LastUserConfirmedResolutionSizeX=") {
-                new_lines.push(format!("LastUserConfirmedResolutionSizeX={}", w));
-            } else if trimmed.starts_with("LastUserConfirmedResolutionSizeY=") {
-                new_lines.push(format!("LastUserConfirmedResolutionSizeY={}", h));
-            } else if trimmed.starts_with("DesiredScreenWidth=") {
-                new_lines.push(format!("DesiredScreenWidth={}", w));
-            } else if trimmed.starts_with("DesiredScreenHeight=") {
-                new_lines.push(format!("DesiredScreenHeight={}", h));
-            } else if trimmed.starts_with("LastUserConfirmedDesiredScreenWidth=") {
-                new_lines.push(format!("LastUserConfirmedDesiredScreenWidth={}", w));
-            } else if trimmed.starts_with("LastUserConfirmedDesiredScreenHeight=") {
-                new_lines.push(format!("LastUserConfirmedDesiredScreenHeight={}", h));
-            } else {
-                new_lines.push(line.to_string());
-            }
-        } else {
-            new_lines.push(line.to_string());
+    if let Some(fm) = opts.fullscreen_mode {
+        if fm > 2 {
+            return Err(format!("Invalid FullscreenMode={} (valid: 0, 1, 2)", fm));
         }
     }
-
-    // If keys were not found, ensure they are inserted under ShooterGameUserSettings
-    if set_windowed_and_fill {
-        let mut final_lines = Vec::new();
-        let mut inserted = false;
-        for line in new_lines {
-            final_lines.push(line.clone());
-            if !inserted && line.trim() == "[/Script/ShooterGame.ShooterGameUserSettings]" {
-                if !found_fullscreen_mode {
-                    final_lines.push("FullscreenMode=2".to_string());
-                }
-                if !found_last_confirmed_fullscreen {
-                    final_lines.push("LastConfirmedFullscreenMode=2".to_string());
-                }
-                if !found_preferred_fullscreen {
-                    final_lines.push("PreferredFullscreenMode=2".to_string());
-                }
-                if !found_letterbox {
-                    final_lines.push("bShouldLetterbox=False".to_string());
-                }
-                if !found_last_letterbox {
-                    final_lines.push("bLastConfirmedShouldLetterbox=False".to_string());
-                }
-                if let Some((w, h)) = new_res {
-                    final_lines.push(format!("ResolutionSizeX={}", w));
-                    final_lines.push(format!("ResolutionSizeY={}", h));
-                    final_lines.push(format!("LastUserConfirmedResolutionSizeX={}", w));
-                    final_lines.push(format!("LastUserConfirmedResolutionSizeY={}", h));
-                }
-                inserted = true;
-            }
+    let res = opts.res.map(|r| (r[0], r[1]));
+    let desired = opts.desired.map(|r| (r[0], r[1]));
+    if let Some((w, h)) = res {
+        if w == 0 || h == 0 || w > 7680 || h > 4320 {
+            return Err(format!("Invalid resolution {}x{} (range 1-7680 x 1-4320)", w, h));
         }
-        new_lines = final_lines;
     }
-
-    // 3. Write back
-    {
-        let mut file = File::create(path).map_err(|e| e.to_string())?;
-        file.write_all(new_lines.join("\r\n").as_bytes())
-            .map_err(|e| e.to_string())?;
-    }
-
-    // 4. Apply read-only lock if requested
-    perms.set_readonly(lock_read_only);
-    fs::set_permissions(path, perms).map_err(|e| e.to_string())?;
-
-    Ok(())
+    write_config_inner(
+        path,
+        opts.fullscreen_mode,
+        opts.letterbox,
+        res,
+        desired,
+        opts.lock_readonly,
+    )
 }
 
 pub fn apply_to_all_configs(w: u32, h: u32, lock_readonly: bool) -> Result<usize, String> {
-    let configs = find_valorant_configs();
-    if configs.is_empty() {
-        return Err("No VALORANT GameUserSettings.ini files found. Please launch VALORANT once to generate configuration files.".to_string());
+    let results = apply_to_all_configs_verbose(w, h, lock_readonly);
+    let ok_verified = results.iter().filter(|r| r.ok && r.verified).count();
+    if ok_verified == 0 {
+        let first_err = results
+            .iter()
+            .find(|r| !r.ok)
+            .map(|r| r.message.clone())
+            .unwrap_or_else(|| "Failed to update game configuration files".to_string());
+        return Err(first_err);
     }
-    let mut updated_count = 0;
-    for cfg in &configs {
-        if update_config(&cfg.path, true, Some((w, h)), lock_readonly).is_ok() {
-            updated_count += 1;
+    Ok(ok_verified)
+}
+
+/// Per-file apply with verification — backs the new editor tab + Sync All.
+pub fn apply_to_all_configs_verbose(w: u32, h: u32, lock_readonly: bool) -> Vec<ApplyResult> {
+    let configs = find_valorant_configs();
+    configs
+        .iter()
+        .map(|cfg| match update_config(&cfg.path, true, Some((w, h)), lock_readonly) {
+            Ok(()) => ApplyResult {
+                path: cfg.path.clone(),
+                display_name: cfg.display_name.clone(),
+                ok: true,
+                verified: true,
+                message: format!("{}x{} verified in file", w, h),
+            },
+            Err(e) => ApplyResult {
+                path: cfg.path.clone(),
+                display_name: cfg.display_name.clone(),
+                ok: false,
+                verified: false,
+                message: e,
+            },
+        })
+        .collect()
+}
+
+/// Verify every detected config against an expected stretch target.
+/// Letterbox is expected OFF (False) for stretch; pass None to skip that check.
+pub fn verify_all_configs(expected_w: u32, expected_h: u32) -> Vec<VerifyResult> {
+    find_valorant_configs()
+        .iter()
+        .map(|cfg| {
+            let res_ok = cfg.res_x == Some(expected_w) && cfg.res_y == Some(expected_h);
+            let fm_ok = cfg.fullscreen_mode == Some(2);
+            let lb_ok = cfg.should_letterbox == Some(false);
+            let matches = res_ok && fm_ok && lb_ok;
+            let details = if matches {
+                format!(
+                    "Verified: FullscreenMode=2, bShouldLetterbox=False, {}x{} in file",
+                    expected_w, expected_h
+                )
+            } else {
+                format!(
+                    "Mismatch: file has FullscreenMode={:?} (want 2), Letterbox={:?} (want False), Res={:?}x{:?} (want {}x{})",
+                    cfg.fullscreen_mode,
+                    cfg.should_letterbox,
+                    cfg.res_x,
+                    cfg.res_y,
+                    expected_w,
+                    expected_h
+                )
+            };
+            VerifyResult {
+                path: cfg.path.clone(),
+                display_name: cfg.display_name.clone(),
+                matches,
+                details,
+            }
+        })
+        .collect()
+}
+
+/// Raw file text for the "prove it" viewer in the editor tab.
+pub fn read_config_raw(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+/// One key=value row from the ShooterGame section — powers the
+/// "all settings with friendly names" list in the editor tab.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SettingRow {
+    pub key: String,
+    pub value: String,
+}
+
+/// One section of the ini file with its key=value rows — powers the
+/// friendly "every setting explained" editor tab.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SectionInfo {
+    pub name: String,
+    pub rows: Vec<SettingRow>,
+}
+
+/// Every section in the file with all key=value pairs in file order.
+/// Duplicates collapse last-wins (matches UE4): a polluted file shows
+/// each key once with the value the game actually uses.
+pub fn get_all_sections(path: &Path) -> Result<Vec<SectionInfo>, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let mut sections: Vec<SectionInfo> = Vec::new();
+    let mut cur: Option<String> = None;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            cur = Some(t.to_string());
+            if !sections.iter().any(|s| s.name == *t) {
+                sections.push(SectionInfo {
+                    name: t.to_string(),
+                    rows: Vec::new(),
+                });
+            }
+            continue;
+        }
+        let sec_name = match &cur {
+            Some(s) => s.clone(),
+            None => continue,
+        };
+        if t.is_empty() || t.starts_with(';') || t.starts_with('#') {
+            continue;
+        }
+        if let Some(eq) = t.find('=') {
+            let key = t[..eq].trim().to_string();
+            let value = t[eq + 1..].trim().to_string();
+            if key.is_empty() {
+                continue;
+            }
+            if let Some(sec) = sections.iter_mut().find(|s| s.name == sec_name) {
+                if let Some(existing) = sec.rows.iter_mut().find(|r| r.key == key) {
+                    existing.value = value;
+                } else {
+                    sec.rows.push(SettingRow { key, value });
+                }
+            }
         }
     }
-    if updated_count == 0 {
-        Err("Failed to update game configuration files".to_string())
-    } else {
-        Ok(updated_count)
+    Ok(sections)
+}
+
+/// Write a single key inside the given section (creates section/key if
+/// missing), then re-read to verify the byte actually landed.
+pub fn set_config_value(
+    path: &Path,
+    section: &str,
+    key: &str,
+    value: &str,
+    lock_read_only: bool,
+) -> Result<(), String> {
+    let key = key.trim();
+    let value = value.trim();
+    let section = section.trim();
+    if section.is_empty() {
+        return Err("Invalid section name: empty".to_string());
     }
+    if key.is_empty() || key.contains(['=', '[', ']', '\n', '\r']) {
+        return Err(format!("Invalid setting name: {}", key));
+    }
+    if value.contains(['\n', '\r']) {
+        return Err("Invalid setting value: must be a single line".to_string());
+    }
+
+    let (mut ini, perms) = load_ini(path)?;
+    ini.set(bare_section(section), key, value);
+    store_ini(path, &ini, perms.clone(), false)?;
+
+    // Verify by re-reading.
+    let sections = get_all_sections(path)?;
+    match sections
+        .iter()
+        .find(|s| s.name == section)
+        .and_then(|s| s.rows.iter().find(|r| r.key == key))
+    {
+        Some(r) if r.value == value => {}
+        Some(r) => {
+            let mut p = perms.clone();
+            p.set_readonly(lock_read_only);
+            let _ = fs::set_permissions(path, p);
+            return Err(format!(
+                "Verification failed: {} is '{}', expected '{}'",
+                key, r.value, value
+            ));
+        }
+        None => {
+            let mut p = perms.clone();
+            p.set_readonly(lock_read_only);
+            let _ = fs::set_permissions(path, p);
+            return Err(format!("Verification failed: {} missing after write", key));
+        }
+    }
+
+    let mut p = perms;
+    p.set_readonly(lock_read_only);
+    fs::set_permissions(path, p).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn set_letterbox_all(disable_letterbox: bool) -> Result<usize, String> {
@@ -292,3 +665,101 @@ pub fn is_letterbox_disabled_in_configs() -> bool {
     false
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn polluted_tmp(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join("aspect_ini_test");
+        let _ = fs::create_dir_all(&dir);
+        let p = dir.join(name);
+        // Simulate the polluted file: keys repeated 30x, as the old bug produced.
+        let mut text = String::from("[/Script/ShooterGame.ShooterGameUserSettings]\n");
+        for _ in 0..30 {
+            text.push_str("ResolutionSizeX=2090\nResolutionSizeY=1440\n");
+        }
+        text.push_str("FullscreenMode=2\nbShouldLetterbox=False\n");
+        fs::write(&p, &text).unwrap();
+        p
+    }
+
+    #[test]
+    fn update_heals_duplicates_to_single_keys() {
+        let p = polluted_tmp("heal.ini");
+        update_config(&p, true, Some((1280, 960)), false).unwrap();
+        let out = fs::read_to_string(&p).unwrap();
+        // Count by exact key (trimmed, before '='): ini-preserve may style
+        // new keys as "Key = value" — both forms are valid UE4 INI.
+        let count_key = |out: &str, key: &str| {
+            out.lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    match t.find('=') {
+                        Some(i) => t[..i].trim() == key,
+                        None => false,
+                    }
+                })
+                .count()
+        };
+        let has_kv = |out: &str, key: &str, val: &str| {
+            out.lines().any(|l| {
+                let t = l.trim();
+                match t.find('=') {
+                    Some(i) => t[..i].trim() == key && t[i + 1..].trim() == val,
+                    None => false,
+                }
+            })
+        };
+        for key in [
+            "ResolutionSizeX",
+            "ResolutionSizeY",
+            "LastUserConfirmedResolutionSizeX",
+            "LastUserConfirmedResolutionSizeY",
+            "FullscreenMode",
+            "LastConfirmedFullscreenMode",
+            "PreferredFullscreenMode",
+            "bShouldLetterbox",
+            "bLastConfirmedShouldLetterbox",
+            "DesiredScreenWidth",
+            "DesiredScreenHeight",
+        ] {
+            let n = count_key(&out, key);
+            assert_eq!(n, 1, "key {key} appears {n}x");
+        }
+        assert!(has_kv(&out, "ResolutionSizeX", "1280"));
+        assert!(has_kv(&out, "ResolutionSizeY", "960"));
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn single_key_write_roundtrips_and_creates_section() {
+        let p = polluted_tmp("single.ini");
+        // Section does not exist yet — must be created, exactly once.
+        set_config_value(&p, "[ScalabilityGroups]", "sg.ShadowQuality", "0", false).unwrap();
+        // Second write to the same key must update, never duplicate.
+        set_config_value(&p, "[ScalabilityGroups]", "sg.ShadowQuality", "3", false).unwrap();
+        let out = fs::read_to_string(&p).unwrap();
+        assert!(out.contains("[ScalabilityGroups]"));
+        let n = out
+            .lines()
+            .filter(|l| {
+                let t = l.trim();
+                match t.find('=') {
+                    Some(i) => t[..i].trim() == "sg.ShadowQuality",
+                    None => false,
+                }
+            })
+            .count();
+        assert_eq!(n, 1, "sg.ShadowQuality appears {n}x");
+        let has = out.lines().any(|l| {
+            let t = l.trim();
+            match t.find('=') {
+                Some(i) => t[..i].trim() == "sg.ShadowQuality" && t[i + 1..].trim() == "3",
+                None => false,
+            }
+        });
+        assert!(has, "sg.ShadowQuality=3 missing");
+        let _ = fs::remove_file(&p);
+    }
+}

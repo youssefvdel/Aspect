@@ -1,6 +1,6 @@
 [package]
 name = "aspect"
-version = "0.1.0"
+version = "0.1.1"
 description = "Aspect - Competitive Stretched Resolution & Utility"
 authors = ["you"]
 license = ""
@@ -35,4 +35,5 @@ windows = { version = "0.58", features = [
     "Win32_UI_Shell",
 ] }
 tauri-plugin-mcp-bridge = "0.13.0"
+ini-preserve = "0.1.3"
 

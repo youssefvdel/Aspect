@@ -248,9 +248,143 @@ export async function updateValorantConfig(
   await invoke('update_valorant_config', {
     path,
     setWindowed,
-    res: res ? { 0: res[0], 1: res[1] } : null,
+    res: res ?? null,
     lockReadonly,
   });
+}
+
+export async function updateValorantConfigCustom(
+  path: string,
+  options: import('../types').ValorantCustomOptions
+): Promise<void> {
+  if (!isTauri()) {
+    const cfg = mockConfigs.find((c) => c.path === path);
+    if (cfg) {
+      if (options.fullscreen_mode !== undefined && options.fullscreen_mode !== null) {
+        cfg.fullscreen_mode = options.fullscreen_mode;
+      }
+      if (options.letterbox !== undefined && options.letterbox !== null) {
+        cfg.should_letterbox = options.letterbox;
+      }
+      if (options.res) {
+        cfg.res_x = options.res[0];
+        cfg.res_y = options.res[1];
+      }
+      if (options.desired) {
+        cfg.desired_w = options.desired[0];
+        cfg.desired_h = options.desired[1];
+      }
+      cfg.is_read_only = options.lock_readonly;
+    }
+    return;
+  }
+  // Tauri snake_case mapping: lock_readonly / fullscreen_mode / letterbox / res / desired
+  await invoke('update_valorant_config_custom', {
+    path,
+    options: {
+      fullscreen_mode: options.fullscreen_mode ?? null,
+      letterbox: options.letterbox ?? null,
+      res: options.res ?? null,
+      desired: options.desired ?? null,
+      lock_readonly: options.lock_readonly,
+    },
+  });
+}
+
+export async function verifyValorantConfigs(
+  width: number,
+  height: number
+): Promise<import('../types').ValorantVerifyResult[]> {
+  if (!isTauri()) {
+    return mockConfigs.map((c) => {
+      const matches =
+        c.res_x === width && c.res_y === height && c.fullscreen_mode === 2 && c.should_letterbox === false;
+      return {
+        path: c.path,
+        display_name: c.display_name,
+        matches,
+        details: matches
+          ? `Verified: FullscreenMode=2, bShouldLetterbox=False, ${width}x${height} in file`
+          : `Mismatch: file has FullscreenMode=${c.fullscreen_mode}, Letterbox=${c.should_letterbox}, Res=${c.res_x}x${c.res_y} (want ${width}x${height})`,
+      };
+    });
+  }
+  return await invoke<import('../types').ValorantVerifyResult[]>('verify_valorant_configs', {
+    width,
+    height,
+  });
+}
+
+export async function applyCustomResVerbose(
+  width: number,
+  height: number,
+  lockReadonly: boolean
+): Promise<import('../types').ValorantApplyResult[]> {
+  if (!isTauri()) {
+    mockConfigs.forEach((c) => {
+      c.fullscreen_mode = 2;
+      c.should_letterbox = false;
+      c.res_x = width;
+      c.res_y = height;
+      c.is_read_only = lockReadonly;
+    });
+    return mockConfigs.map((c) => ({
+      path: c.path,
+      display_name: c.display_name,
+      ok: true,
+      verified: true,
+      message: `${width}x${height} verified in file`,
+    }));
+  }
+  return await invoke<import('../types').ValorantApplyResult[]>('apply_custom_res_verbose', {
+    width,
+    height,
+    lockReadonly,
+  });
+}
+
+export async function getValorantConfigRaw(path: string): Promise<string> {
+  if (!isTauri()) return '[ShooterGameUserSettings]\nFullscreenMode=2\nbShouldLetterbox=False\nResolutionSizeX=2090\nResolutionSizeY=1440\n';
+  return await invoke<string>('get_valorant_config_raw', { path });
+}
+
+export async function getValorantConfigSections(
+  path: string
+): Promise<import('../types').ValorantSection[]> {
+  if (!isTauri()) {
+    return [
+      {
+        name: '[/Script/ShooterGame.ShooterGameUserSettings]',
+        rows: [
+          { key: 'FullscreenMode', value: '2' },
+          { key: 'bShouldLetterbox', value: 'False' },
+          { key: 'ResolutionSizeX', value: '2090' },
+          { key: 'ResolutionSizeY', value: '1440' },
+          { key: 'FrameRateLimit', value: '0.000000' },
+          { key: 'bUseVSync', value: 'False' },
+        ],
+      },
+      {
+        name: '[ScalabilityGroups]',
+        rows: [
+          { key: 'sg.ShadowQuality', value: '0' },
+          { key: 'sg.TextureQuality', value: '0' },
+        ],
+      },
+    ];
+  }
+  return await invoke<import('../types').ValorantSection[]>('get_valorant_config_sections', { path });
+}
+
+export async function setValorantConfigValue(
+  path: string,
+  section: string,
+  key: string,
+  value: string,
+  lockReadonly: boolean
+): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('set_valorant_config_value', { path, section, key, value, lockReadonly });
 }
 
 export async function fetchQuickShortcuts(): Promise<QuickShortcut[]> {
@@ -607,9 +741,9 @@ export async function checkAppUpdates(): Promise<UpdateInfo> {
   if (!isTauri()) {
     return {
       has_update: false,
-      current_version: '0.1.0',
-      latest_version: '0.1.0',
-      release_title: 'Aspect v0.1.0',
+      current_version: '0.1.1',
+      latest_version: '0.1.1',
+      release_title: 'Aspect v0.1.1',
       release_notes: 'Running latest dev build.',
       published_at: new Date().toISOString(),
       html_url: 'https://github.com/youssefvdel/Aspect',

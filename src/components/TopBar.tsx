@@ -1,4 +1,4 @@
-import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles } from 'lucide-react';
+import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
 interface TopBarProps {
@@ -54,6 +54,11 @@ const TAB_METADATA: Record<
     title: 'Stretch Resolution & Game Config Settings',
     description: 'Customize your primary stretch target and sync custom resolutions across all game files',
     icon: Settings,
+  },
+  valorant: {
+    title: 'Valorant Config — Customize + Verify',
+    description: 'Per-profile fullscreen, letterbox, resolution editor with on-disk verification',
+    icon: FileCode2,
   },
 };
 

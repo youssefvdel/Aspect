@@ -5,6 +5,7 @@ import {
   Settings,
   Keyboard,
   Sparkles,
+  FileCode2,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
@@ -46,6 +47,12 @@ const SETTINGS_TABS: SidebarTab[] = [
     label: 'Stretch Setup',
     shortcut: '3',
     icon: Settings,
+  },
+  {
+    id: 'valorant',
+    label: 'Valorant Config',
+    shortcut: '5',
+    icon: FileCode2,
   },
   {
     id: 'gpu',
@@ -96,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {hasUpdate && (
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-pulse" />
             )}
-            <span>v0.1.0</span>
+            <span>v0.1.1</span>
           </button>
         </div>
 
@@ -280,7 +287,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Switch Tabs</span>
           </span>
           <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-            Keys 1 - 4
+            Keys 1 - 5
           </span>
         </div>
       </div>
