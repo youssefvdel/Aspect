@@ -13,7 +13,9 @@ pub struct UpdateInfo {
     pub download_url: Option<String>,
 }
 
-pub const CURRENT_VERSION: &str = "0.1.1";
+/// Always in sync with Cargo.toml — bump the package version, never this.
+/// (A hardcoded copy here is how 0.1.2 shipped while the UI still said 0.1.1.)
+pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_REPO: &str = "youssefvdel/Aspect";
 
 /// Compares two semver strings (e.g. "2.0.0" vs "v2.0.1").
@@ -55,7 +57,7 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
     cmd.args([
         "-s",
         "--max-time", "5",
-        "-H", "User-Agent: Aspect/0.1.1",
+        "-H", &format!("User-Agent: Aspect/{}", CURRENT_VERSION),
         "-H", "Accept: application/vnd.github.v3+json",
         &url,
     ]);
@@ -84,7 +86,7 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
                 has_update: false,
                 current_version: CURRENT_VERSION.to_string(),
                 latest_version: CURRENT_VERSION.to_string(),
-                release_title: "Aspect v0.1.1".to_string(),
+                release_title: format!("Aspect v{}", CURRENT_VERSION),
                 release_notes: "You are currently running the latest version of Aspect.".to_string(),
                 published_at: String::new(),
                 html_url: format!("https://github.com/{}", DEFAULT_REPO),

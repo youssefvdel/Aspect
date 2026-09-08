@@ -1,7 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Aspect",
-  "version": "0.1.2",
   "identifier": "com.aspect.utility",
   "build": {
     "frontendDist": "../dist",

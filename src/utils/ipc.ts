@@ -739,11 +739,13 @@ export async function listSupportedModes(): Promise<DisplayMode[]> {
 
 export async function checkAppUpdates(): Promise<UpdateInfo> {
   if (!isTauri()) {
+    // Dev-browser fallback only — version comes from package.json at build
+    // time, never hardcoded (bump script keeps it = Cargo.toml).
     return {
       has_update: false,
-      current_version: '0.1.1',
-      latest_version: '0.1.1',
-      release_title: 'Aspect v0.1.1',
+      current_version: __APP_VERSION__,
+      latest_version: __APP_VERSION__,
+      release_title: `Aspect v${__APP_VERSION__}`,
       release_notes: 'Running latest dev build.',
       published_at: new Date().toISOString(),
       html_url: 'https://github.com/youssefvdel/Aspect',
