@@ -124,6 +124,7 @@ export interface TrackerMatch {
   assists: number;
   acs: number;
   hsPct: number;
+  damage: number;
   startedAt: string;
 }
 
@@ -144,6 +145,16 @@ export interface TrackerPlayer {
 export interface TrackerMatchDetail {
   rounds: { winningTeam: string }[];
   players: TrackerPlayer[];
+  kills: TrackerDuel[];
+}
+
+export interface TrackerDuel {
+  round: number;
+  killerPuuid: string;
+  victimPuuid: string;
+  killerTeam: string;
+  victimTeam: string;
+  timeInRound: number;
 }
 
 export interface LocalRiotAccount {
