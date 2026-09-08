@@ -78,6 +78,7 @@ export async function fetchMmr(
     name,
     tag,
     region,
+    puuid: String(d.account?.puuid ?? ''),
     rank: String(cur.tier?.name ?? 'Unrated'),
     rr: Number(cur.rr ?? 0),
     peak: String(peak.tier?.name ?? '—'),
@@ -134,6 +135,32 @@ export async function fetchMatchHistory(
       damage: Number(dmg.made ?? 0),
     };
   }).filter((m) => m.id);
+  writeCache(cacheKey, out);
+  return out;
+}
+
+/** RR movement per recent game, for the trend chart. Cached 10 min. */
+export async function fetchMmrHistory(
+  region: string,
+  name: string,
+  tag: string,
+  apiKey: string
+): Promise<TrackerMmrPoint[]> {
+  const cacheKey = `aspect_tracker_mmrh_${region}_${name}_${tag}`;
+  const hit = readCache<TrackerMmrPoint[]>(cacheKey);
+  if (hit) return hit;
+
+  const url = `${API}/valorant/v1/mmr-history/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const j = (await getJson(url, apiKey)) as any;
+  const list: unknown[] = Array.isArray(j?.data) ? j.data : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const out: TrackerMmrPoint[] = (list as any[]).map((g) => ({
+    tier: String(g?.currenttierpatched ?? '?'),
+    rr: Number(g?.ranking_in_tier ?? 0),
+    change: Number(g?.mmr_change_to_last_game ?? 0),
+    matchId: String(g?.match_id ?? ''),
+  }));
   writeCache(cacheKey, out);
   return out;
 }

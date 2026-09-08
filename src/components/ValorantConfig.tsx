@@ -38,7 +38,7 @@ interface DropOption {
   hint?: string;
 }
 
-const CustomDropdown: React.FC<{
+export const CustomDropdown: React.FC<{
   value: string;
   options: DropOption[];
   onChange: (v: string) => void;

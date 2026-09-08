@@ -104,6 +104,7 @@ export interface TrackerProfile {
   name: string;
   tag: string;
   region: string;
+  puuid: string;
   rank: string;
   rr: number;
   peak: string;
@@ -129,6 +130,7 @@ export interface TrackerMatch {
 }
 
 export interface TrackerPlayer {
+  puuid: string;
   name: string;
   tag: string;
   team: string;
@@ -155,6 +157,13 @@ export interface TrackerDuel {
   killerTeam: string;
   victimTeam: string;
   timeInRound: number;
+}
+
+export interface TrackerMmrPoint {
+  tier: string;
+  rr: number;
+  change: number;
+  matchId: string;
 }
 
 export interface LocalRiotAccount {
@@ -197,7 +206,8 @@ export type TabType =
   | 'gpu'
   | 'borderless'
   | 'settings'
-  | 'valorant';
+  | 'valorant'
+  | 'tracker';
 
 export interface UpdateInfo {
   has_update: boolean;

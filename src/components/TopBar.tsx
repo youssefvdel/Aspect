@@ -1,4 +1,4 @@
-import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2 } from 'lucide-react';
+import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, Activity } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
 interface TopBarProps {
@@ -59,6 +59,11 @@ const TAB_METADATA: Record<
     title: 'Valorant Config — Customize + Verify',
     description: 'Per-profile fullscreen, letterbox, resolution editor with on-disk verification',
     icon: FileCode2,
+  },
+  tracker: {
+    title: 'Tracker — Rank, Matches, Tips',
+    description: 'Post-match insights, scoreboards and rule-based tips. Light by design.',
+    icon: Activity,
   },
 };
 

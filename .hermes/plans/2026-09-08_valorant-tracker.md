@@ -119,6 +119,23 @@ Tracker tab = occasional HTTPS polling + JSON render. Tauri+React already does t
 
 **Verify:** with Riot Client open, Tracker tab shows your ID without typing; with client closed, manual inputs appear. Test both states. **Commit:** `feat(tracker): auto-detect local Riot account`.
 
+### Task 2c: Local live match state (no Overwolf needed)
+
+**Objective:** Near-live "LIVE" badge + live scoreboard while a match runs, using the same local client the reviewers confirmed (rank-yoinker proves the technique).
+
+**How it works:** While playing, poll two local endpoints (same lockfile auth as Task 2b, 30–60s interval only): `GET /chat/v4/presences` → MENUS/PREGAME/INGAME state; when INGAME, `GET /core-game/v1/players/{puuid}` → MatchID, then `GET /core-game/v1/matches/{id}` → live scoreboard. Bonus from the same session: puuid via `/entitlements/v1/token` (more reliable than aliases), region/shard parsed from `VALORANT/Saved/Logs/ShooterGame.log` (`pd.<region>.a.pvp.net`) — kills manual region input too.
+
+**Files:**
+- Modify: `src-tauri/src/tracker.rs` (append `local_game_state`, `local_live_match` commands reusing the lockfile+curl helper)
+- Modify: `src/utils/tracker.ts` (append callers + `TrackerLiveMatch` type in `src/types.ts`)
+
+**Steps:**
+1. Extract a `lockfile_auth()` helper returning `(port, password)` so all three commands share it (no duplication).
+2. Poll ONLY while the Tracker tab is open and shows INGAME; stop on tab switch (perf budget: no background polling, ever).
+3. `cargo test` passes, `npm run build` passes.
+
+**Verify:** queue into a match with client open → tab shows LIVE + live score; after match, HenrikDev history picks it up. **Commit:** `feat(tracker): local live match state`.
+
 ### Task 3: Cache + match history fetchers
 
 **Objective:** `fetchMatchHistory` + `fetchMatchDetail` with 10-min localStorage cache and 429 backoff.

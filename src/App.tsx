@@ -6,6 +6,7 @@ import { UnifiedStretch } from './components/UnifiedStretch';
 import { ResolutionVisualizer } from './components/ResolutionVisualizer';
 import { Settings } from './components/Settings';
 import { ValorantConfig } from './components/ValorantConfig';
+import { Tracker } from './components/Tracker';
 import { HardwareScaling } from './components/HardwareScaling';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
@@ -110,6 +111,7 @@ export const App: React.FC = () => {
       if (e.key === '3') setCurrentTab('settings');
       if (e.key === '4') setCurrentTab('gpu');
       if (e.key === '5') setCurrentTab('valorant');
+      if (e.key === '6') setCurrentTab('tracker');
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -140,7 +142,7 @@ export const App: React.FC = () => {
       try {
         const req = await checkRequestedTab();
         if (req) {
-          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant'].includes(req)) {
+          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant', 'tracker'].includes(req)) {
             setCurrentTab(req as TabType);
           } else if (req === 'borderless' || req === 'display' || req === 'monitors') {
             // Legacy alias: Window Stretcher merged into switcher grid
@@ -302,6 +304,8 @@ export const App: React.FC = () => {
                 )}
 
                 {currentTab === 'valorant' && <ValorantConfig />}
+
+                {currentTab === 'tracker' && <Tracker />}
 
                 {currentTab === 'gpu' && (
                   <HardwareScaling

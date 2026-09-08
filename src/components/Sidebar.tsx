@@ -6,6 +6,7 @@ import {
   Keyboard,
   Sparkles,
   FileCode2,
+  Activity,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
@@ -37,6 +38,12 @@ const UTILITY_TABS: SidebarTab[] = [
     label: 'Stretch Preview',
     shortcut: '2',
     icon: Eye,
+  },
+  {
+    id: 'tracker',
+    label: 'Tracker',
+    shortcut: '6',
+    icon: Activity,
   },
 ];
 
@@ -287,7 +294,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Switch Tabs</span>
           </span>
           <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-            Keys 1 - 5
+            Keys 1 - 6
           </span>
         </div>
       </div>
