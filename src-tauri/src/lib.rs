@@ -4,6 +4,7 @@ mod display;
 mod game_config;
 mod gpu;
 mod shortcuts;
+mod tracker;
 mod window_manager;
 mod updater;
 
@@ -626,6 +627,7 @@ pub fn run() {
             get_valorant_config_raw,
             get_valorant_config_sections,
             set_valorant_config_value,
+            detect_local_account,
             get_quick_shortcuts,
             check_requested_tab,
             trim_memory,
