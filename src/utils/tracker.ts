@@ -122,7 +122,7 @@ export async function fetchMatchHistory(
       map: String(meta.map?.name ?? '?'),
       mode: String(meta.mode ?? '?'),
       agent: String(st.character?.name ?? '?'),
-      result: us > them ? 'win' : us < them ? 'loss' : 'draw',
+      result: (us > them ? 'win' : us < them ? 'loss' : 'draw') as TrackerMatch['result'],
       scoreUs: us,
       scoreThem: them,
       kills: Number(st.kills ?? 0),
