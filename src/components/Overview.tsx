@@ -1,8 +1,20 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Check, RefreshCw, ShieldCheck, Trophy } from 'lucide-react';
 import type { TrackerMmrPoint } from '../types';
 import { queueLabel, shortMapName, tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
+import { useCountUp } from '../hooks/useCountUp';
+import { TrackerSkeletons } from './TrackerSkeletons';
+
+const rise = {
+  hidden: { opacity: 0, y: 14 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.06, duration: 0.35, ease: 'easeOut' as const },
+  }),
+};
 
 const fmtDate = (ms: number): string => {
   if (!ms) return '';
@@ -13,12 +25,36 @@ const fmtDate = (ms: number): string => {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 };
 
-const StatTile: React.FC<{ label: string; value: string; sub?: string }> = ({ label, value, sub }) => (
-  <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+const Count: React.FC<{ value: number; decimals?: number; suffix?: string }> = ({
+  value,
+  decimals = 0,
+  suffix = '',
+}) => {
+  const v = useCountUp(value, 900, true);
+  return (
+    <span className="tabular-nums">
+      {v.toFixed(decimals)}
+      {suffix}
+    </span>
+  );
+};
+
+const StatTile: React.FC<{ label: string; value: number; decimals?: number; suffix?: string; sub?: string; index: number }> = ({
+  label,
+  value,
+  decimals = 0,
+  suffix = '',
+  sub,
+  index,
+}) => (
+  <motion.div variants={rise} custom={index}
+    className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
     <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">{label}</span>
-    <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums truncate">{value}</span>
+    <span className="font-display font-extrabold text-xl text-m3-on-surface truncate">
+      <Count value={value} decimals={decimals} suffix={suffix} />
+    </span>
     {sub && <span className="text-[10px] text-m3-outline truncate">{sub}</span>}
-  </div>
+  </motion.div>
 );
 
 export const Overview: React.FC = () => {
@@ -26,14 +62,23 @@ export const Overview: React.FC = () => {
     useTrackerData();
 
   const losses = profile ? Math.max(0, profile.games - profile.wins) : 0;
-  const winPct = profile && profile.games > 0 ? ((profile.wins / profile.games) * 100).toFixed(1) : '—';
+  const winPct = profile && profile.games > 0 ? (profile.wins / profile.games) * 100 : 0;
   const form = games.slice(0, 10);
   const formW = form.filter((g) => g.change > 0).length;
   const maxAbs = Math.max(10, ...games.map((p) => Math.abs(p.change)));
   const prevActs = (profile?.seasons ?? []).slice(1, 4);
+  const rrNow = useCountUp(profile?.rr ?? 0, 900, !!profile);
+
+  if (isLoading && !profile) {
+    return (
+      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+        <TrackerSkeletons />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
       {banner && (
         <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
@@ -48,15 +93,20 @@ export const Overview: React.FC = () => {
 
       {/* Hero: current rank + peak */}
       {profile ? (
-        <section className="rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-4 flex items-center gap-4 shrink-0 shadow-m3-1">
-          <div className="w-14 h-14 rounded-2xl bg-m3-primary-container border border-m3-primary/40 flex items-center justify-center shrink-0">
+        <motion.section variants={rise} custom={0}
+          className="rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-4 flex items-center gap-4 shrink-0 shadow-m3-1">
+          <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            className="w-14 h-14 rounded-2xl bg-m3-primary-container border border-m3-primary/40 flex items-center justify-center shrink-0">
             <Trophy className="w-7 h-7 text-m3-primary" />
-          </div>
+          </motion.div>
           <div className="flex-1 min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">Current rank</div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-display font-black text-2xl text-m3-on-surface">{profile.rank}</span>
-              <span className="font-mono text-sm text-m3-primary font-bold">{profile.rr} RR</span>
+              <span className="font-mono text-sm text-m3-primary font-bold tabular-nums">
+                {Math.round(rrNow)} RR
+              </span>
             </div>
             <div className="text-[11px] text-m3-outline mt-0.5">
               {profile.name}#{profile.tag}
@@ -70,7 +120,7 @@ export const Overview: React.FC = () => {
             className="w-8 h-8 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0">
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-        </section>
+        </motion.section>
       ) : (
         !isLoading && (
           <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant shrink-0">
@@ -82,34 +132,39 @@ export const Overview: React.FC = () => {
       {/* Season tiles */}
       {profile && (
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-          <StatTile label="Win %" value={typeof winPct === 'string' && winPct !== '—' ? `${winPct}%` : '—'} sub="this season" />
-          <StatTile label="Wins" value={String(profile.wins)} sub={`${losses} losses`} />
-          <StatTile label="Games" value={String(profile.games)} sub="competitive" />
-          <StatTile label="Last 10" value={`${formW}W–${form.length - formW}L`} sub="recent form" />
+          <StatTile index={1} label="Win %" value={winPct} decimals={1} suffix="%" sub="this season" />
+          <StatTile index={2} label="Wins" value={profile.wins} sub={`${losses} losses`} />
+          <StatTile index={3} label="Games" value={profile.games} sub="competitive" />
+          <StatTile index={4} label="Last 10" value={formW} sub={`${formW}W–${form.length - formW}L form`} />
         </section>
       )}
 
       {/* RR trend */}
       {games.length > 0 && (
-        <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shrink-0">
+        <motion.section variants={rise} custom={5}
+          className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shrink-0">
           <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary mb-2">RR trend</h4>
           <div className="flex items-end gap-1 h-16">
-            {[...games].slice(0, 20).reverse().map((p) => {
+            {[...games].slice(0, 20).reverse().map((p, i) => {
               const h = Math.max(8, Math.round((Math.abs(p.change) / maxAbs) * 100));
               return (
-                <div key={p.matchId || p.when} title={`${p.tier}: ${p.change > 0 ? '+' : ''}${p.change} RR`}
-                  className={`flex-1 rounded-sm ${p.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`}
-                  style={{ height: `${h}%` }} />
+                <motion.div key={p.matchId || p.when}
+                  title={`${p.tier}: ${p.change > 0 ? '+' : ''}${p.change} RR`}
+                  initial={{ height: '8%' }}
+                  animate={{ height: `${h}%` }}
+                  transition={{ delay: 0.3 + i * 0.03, type: 'spring', stiffness: 200, damping: 20 }}
+                  className={`flex-1 rounded-sm ${p.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
               );
             })}
           </div>
-        </section>
+        </motion.section>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 shrink-0">
         {/* Previous acts */}
         {prevActs.length > 0 && (
-          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
+          <motion.section variants={rise} custom={6}
+            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
             <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary mb-2">Previous acts</h4>
             <div className="flex flex-col gap-1.5">
               {prevActs.map((s) => (
@@ -122,11 +177,12 @@ export const Overview: React.FC = () => {
                 </div>
               ))}
             </div>
-          </section>
+          </motion.section>
         )}
 
         {/* Per-round stats unlock via live tracking */}
-        <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex items-start gap-2.5">
+        <motion.section variants={rise} custom={7}
+          className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 text-m3-tertiary shrink-0 mt-0.5" />
           <div className="text-[11px] leading-snug">
             <span className="font-bold text-m3-on-surface">K/D • HS% • ADR unlock while you play. </span>
@@ -135,14 +191,14 @@ export const Overview: React.FC = () => {
               keeps the stats on your PC.
             </span>
           </div>
-        </section>
+        </motion.section>
       </div>
 
       {/* Recent games preview */}
       {games.length > 0 && (
         <section className="flex flex-col gap-1.5 shrink-0">
-          {games.slice(0, 5).map((g: TrackerMmrPoint) => (
-            <div key={g.matchId || g.when}
+          {games.slice(0, 5).map((g: TrackerMmrPoint, i: number) => (
+            <motion.div key={g.matchId || g.when} variants={rise} custom={8 + i}
               className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2.5 py-2 flex items-center gap-2.5">
               <span className={`w-1 self-stretch rounded-full shrink-0 ${g.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
               <div className="flex-1 min-w-0">
@@ -159,10 +215,10 @@ export const Overview: React.FC = () => {
                   {g.tier} • {fmtDate(g.when)}
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
         </section>
       )}
-    </div>
+    </motion.div>
   );
 };

@@ -1,8 +1,10 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import type { TrackerMmrPoint } from '../types';
 import { queueLabel, shortMapName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
+import { TrackerSkeletons } from './TrackerSkeletons';
 
 const fmtDate = (ms: number): string => {
   if (!ms) return '';
@@ -13,8 +15,12 @@ const fmtDate = (ms: number): string => {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 };
 
-const GameRow: React.FC<{ g: TrackerMmrPoint; queue: string; map: string }> = ({ g, queue, map }) => (
-  <div className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2.5 py-2 flex items-center gap-2.5">
+const GameRow: React.FC<{ g: TrackerMmrPoint; queue: string; map: string; index: number }> = ({ g, queue, map, index }) => (
+  <motion.div
+    initial={{ opacity: 0, x: -12 }}
+    animate={{ opacity: 1, x: 0 }}
+    transition={{ delay: Math.min(index * 0.04, 0.5), duration: 0.3, ease: 'easeOut' }}
+    className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2.5 py-2 flex items-center gap-2.5">
     <span className={`w-1 self-stretch rounded-full shrink-0 ${g.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -28,12 +34,20 @@ const GameRow: React.FC<{ g: TrackerMmrPoint; queue: string; map: string }> = ({
         {g.tier} • {g.rr} RR • {fmtDate(g.when)}
       </div>
     </div>
-  </div>
+  </motion.div>
 );
 
 export const MatchHistory: React.FC = () => {
   const { profile, games, queueById, mapById, isLoading, banner, setBanner } = useTrackerData();
   const maxAbs = Math.max(10, ...games.map((p) => Math.abs(p.change)));
+
+  if (isLoading && games.length === 0) {
+    return (
+      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+        <TrackerSkeletons />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
@@ -54,12 +68,15 @@ export const MatchHistory: React.FC = () => {
         <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shrink-0">
           <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary mb-2">RR trend</h4>
           <div className="flex items-end gap-1 h-16">
-            {[...games].slice(0, 20).reverse().map((p) => {
+            {[...games].slice(0, 20).reverse().map((p, i) => {
               const h = Math.max(8, Math.round((Math.abs(p.change) / maxAbs) * 100));
               return (
-                <div key={p.matchId || p.when} title={`${p.tier}: ${p.change > 0 ? '+' : ''}${p.change} RR`}
-                  className={`flex-1 rounded-sm ${p.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`}
-                  style={{ height: `${h}%` }} />
+                <motion.div key={p.matchId || p.when}
+                  title={`${p.tier}: ${p.change > 0 ? '+' : ''}${p.change} RR`}
+                  initial={{ height: '8%' }}
+                  animate={{ height: `${h}%` }}
+                  transition={{ delay: i * 0.03, type: 'spring', stiffness: 200, damping: 20 }}
+                  className={`flex-1 rounded-sm ${p.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
               );
             })}
           </div>
@@ -69,8 +86,8 @@ export const MatchHistory: React.FC = () => {
       {/* Games */}
       {games.length > 0 && (
         <div className="flex flex-col gap-1.5 shrink-0">
-          {games.map((g) => (
-            <GameRow key={g.matchId || g.when} g={g}
+          {games.map((g, i) => (
+            <GameRow key={g.matchId || g.when} g={g} index={i}
               queue={queueLabel(queueById[g.matchId] ?? '')}
               map={mapById[g.matchId] ?? shortMapName(g.mapId, {})} />
           ))}
