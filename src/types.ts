@@ -100,6 +100,58 @@ export interface ValorantSection {
   rows: ValorantSettingRow[];
 }
 
+export interface TrackerProfile {
+  name: string;
+  tag: string;
+  region: string;
+  rank: string;
+  rr: number;
+  peak: string;
+  wins: number;
+  games: number;
+}
+
+export interface TrackerMatch {
+  id: string;
+  map: string;
+  mode: string;
+  agent: string;
+  result: 'win' | 'loss' | 'draw';
+  scoreUs: number;
+  scoreThem: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  acs: number;
+  hsPct: number;
+  startedAt: string;
+}
+
+export interface TrackerPlayer {
+  name: string;
+  tag: string;
+  team: string;
+  agent: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  headshots: number;
+  bodyshots: number;
+  legshots: number;
+}
+
+export interface TrackerMatchDetail {
+  rounds: { winningTeam: string }[];
+  players: TrackerPlayer[];
+}
+
+export interface LocalRiotAccount {
+  game_name: string;
+  tagline: string;
+  puuid: string;
+}
+
 export interface QuickShortcut {
   id: string;
   name: string;
