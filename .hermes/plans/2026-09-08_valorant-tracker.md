@@ -136,6 +136,24 @@ Tracker tab = occasional HTTPS polling + JSON render. Tauri+React already does t
 
 **Verify:** queue into a match with client open → tab shows LIVE + live score; after match, HenrikDev history picks it up. **Commit:** `feat(tracker): local live match state`.
 
+### Task 2d: Keyless direct Riot calls via local entitlements (kill the API key)
+
+**Objective:** Tracker works with ZERO signup — no HenrikDev key for the user. Big trackers hide their company key on their servers; we instead borrow the logged-in client's own credentials locally (rank-yoinker proves the pattern; Vanguard doesn't police loopback reads).
+
+**How it works:** `GET /entitlements/v1/token` on the local client (lockfile auth) returns `{ accessToken, entitlements JWT, subject=puuid }`. With headers `Authorization: Bearer <token>` + `X-Riot-Entitlements-JWT` + `X-Riot-ClientPlatform`/`X-Riot-ClientVersion` (parsed once from `VALORANT/Saved/Logs/ShooterGame.log`, same as VRY), call Riot directly: `https://pd.{eu,na,ap,kr}.a.pvp.net/mmr/v1/players/{puuid}`, `/match-history/v1/history/{puuid}?startIndex=0&endIndex=20`, `/match/v1/matches/{id}`. HenrikDev (user key) drops to fallback for when the client is closed.
+
+**Files:**
+- Modify: `src-tauri/src/tracker.rs` (append `local_entitlements`, `riot_direct_get` commands reusing `lockfile_auth()`)
+- Modify: `src/utils/tracker.ts` (try direct-first, HenrikDev-fallback; key field becomes optional)
+
+**Steps:**
+1. `local_entitlements` returns token triple; `riot_direct_get(path, shard)` performs the authed call from Rust (browser can't reach Riot: CORS + no cert issue here, but Riot blocks browser origins — Rust stays the caller).
+2. Shard from log region (`eu`→`pd.eu.a.pvp.net`); default `eu`, manual override stays.
+3. Tokens expire (~1h): on 401 from Riot, refetch entitlements once and retry, then fall back to HenrikDev.
+4. `cargo test` passes, `npm run build` passes.
+
+**Verify:** client open + NO HenrikDev key configured → rank + history load. Client closed + key configured → HenrikDev path loads. **Commit:** `feat(tracker): keyless direct Riot calls`.
+
 ### Task 3: Cache + match history fetchers
 
 **Objective:** `fetchMatchHistory` + `fetchMatchDetail` with 10-min localStorage cache and 429 backoff.

@@ -13,10 +13,17 @@ import type { TrackerMatch, TrackerMatchDetail, TrackerMmrPoint, TrackerProfile 
 import { CustomDropdown } from './ValorantConfig';
 import {
   detectLocalAccount,
+  fetchCompetitiveUpdates,
+  fetchHistoryIds,
   fetchMatchDetail,
+  fetchMatchDetailDirect,
   fetchMatchHistory,
   fetchMmr,
+  fetchMmrDirect,
   fetchMmrHistory,
+  gameData,
+  getEntitlements,
+  toHistoryRow,
 } from '../utils/tracker';
 import { buildTips } from '../utils/trackerTips';
 
@@ -45,12 +52,12 @@ const lsSet = (k: string, v: string): void => {
 const MatchRow: React.FC<{
   m: TrackerMatch;
   rrDelta: number | null;
-  apiKey: string;
+  loadDetail: (id: string) => Promise<TrackerMatchDetail>;
   puuid: string;
   expanded: boolean;
   onToggle: () => void;
   onBanner: (msg: string) => void;
-}> = ({ m, rrDelta, apiKey, puuid, expanded, onToggle, onBanner }) => {
+}> = ({ m, rrDelta, loadDetail, puuid, expanded, onToggle, onBanner }) => {
   const [detail, setDetail] = useState<TrackerMatchDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -63,7 +70,7 @@ const MatchRow: React.FC<{
     if (detail) return;
     setLoadingDetail(true);
     try {
-      setDetail(await fetchMatchDetail(m.id, apiKey));
+      setDetail(await loadDetail(m.id));
     } catch (e) {
       onBanner(`Match detail failed: ${String(e)}`);
     } finally {
@@ -169,6 +176,9 @@ export const Tracker: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [mode, setMode] = useState<'direct' | 'henrik'>('direct');
+  const [histTotal, setHistTotal] = useState(0);
   const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => lsSet('aspect_tracker_region', region), [region]);
@@ -199,33 +209,105 @@ export const Tracker: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Keyless path: local client credentials straight to Riot. */
+  const loadDirect = async (start: number, append: boolean) => {
+    const ent = await getEntitlements();
+    if (ent.puuid) setPuuid(ent.puuid);
+    let accName = '';
+    let accTag = '';
+    try {
+      const acc = await detectLocalAccount();
+      accName = acc.game_name;
+      accTag = acc.tagline;
+      setName(accName);
+      setTag(accTag);
+    } catch {}
+    const [prof, comp, hist] = await Promise.all([
+      fetchMmrDirect(region),
+      fetchCompetitiveUpdates(region),
+      fetchHistoryIds(region, start, 5),
+    ]);
+    setProfile({ ...prof, name: accName || name, tag: accTag || tag });
+    setMmrHist(comp);
+    const { maps } = await gameData();
+    const rows: TrackerMatch[] = [];
+    const details = await Promise.all(
+      hist.ids.map((x) =>
+        fetchMatchDetailDirect(region, x.id)
+          .then((d) => ({ d, x }))
+          .catch(() => null)
+      )
+    );
+    for (const item of details) {
+      if (!item) continue;
+      const row = toHistoryRow(item.d, item.x.id, ent.puuid, item.x.queue, item.x.when, maps);
+      if (row) rows.push(row);
+    }
+    if (rows.length === 0) throw new Error('No readable matches — Riot may have changed its format.');
+    setHistory((prev) => (append ? [...prev, ...rows] : rows));
+    setHistTotal(hist.total);
+    setMode('direct');
+    setExpandedId(null);
+  };
+
+  /** Fallback path: HenrikDev API with pasted key (works with client closed). */
+  const loadHenrik = async () => {
+    if (!name.trim() || !tag.trim()) throw new Error('Enter your Riot ID (name + tag) or use Detect.');
+    if (!apiKey.trim()) throw new Error('No client session and no API key — open Riot Client or paste a key.');
+    const [prof, hist, mh] = await Promise.all([
+      fetchMmr(region, name.trim(), tag.trim(), apiKey.trim()),
+      fetchMatchHistory(region, name.trim(), tag.trim(), apiKey.trim()),
+      fetchMmrHistory(region, name.trim(), tag.trim(), apiKey.trim()),
+    ]);
+    setProfile(prof);
+    setHistory(hist);
+    setMmrHist(mh);
+    if (prof.puuid) setPuuid(prof.puuid);
+    setMode('henrik');
+    setExpandedId(null);
+  };
+
   const load = async () => {
-    if (!name.trim() || !tag.trim()) {
-      setBanner('Enter your Riot ID (name + tag) or use Detect.');
-      return;
-    }
-    if (!apiKey.trim()) {
-      setBanner('Paste your free HenrikDev API key first (docs.henrikdev.xyz → dashboard → API Keys).');
-      return;
-    }
     setIsLoading(true);
     setBanner(null);
     try {
-      const [prof, hist, mh] = await Promise.all([
-        fetchMmr(region, name.trim(), tag.trim(), apiKey.trim()),
-        fetchMatchHistory(region, name.trim(), tag.trim(), apiKey.trim()),
-        fetchMmrHistory(region, name.trim(), tag.trim(), apiKey.trim()),
-      ]);
-      setProfile(prof);
-      setHistory(hist);
-      setMmrHist(mh);
-      if (prof.puuid) setPuuid(prof.puuid);
-      setExpandedId(null);
+      try {
+        await loadDirect(0, false);
+      } catch (directErr) {
+        if (!apiKey.trim()) throw directErr;
+        await loadHenrik();
+      }
     } catch (e) {
       setBanner(String(e instanceof Error ? e.message : e));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadMore = async () => {
+    if (mode !== 'direct') return;
+    setLoadingMore(true);
+    try {
+      await loadDirect(history.length, true);
+    } catch (e) {
+      setBanner(String(e instanceof Error ? e.message : e));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const loadDetail = async (id: string): Promise<TrackerMatchDetail> => {
+    if (mode === 'direct') {
+      try {
+        const d = await fetchMatchDetailDirect(region, id);
+        if (d.players.length > 0) return d;
+      } catch {}
+      if (apiKey.trim() && name.trim() && tag.trim()) {
+        return fetchMatchDetail(id, apiKey.trim());
+      }
+      throw new Error('Match detail unavailable.');
+    }
+    return fetchMatchDetail(id, apiKey.trim());
   };
 
   const detect = async () => {
@@ -281,7 +363,7 @@ export const Tracker: React.FC = () => {
             className="h-8 px-2.5 rounded-lg bg-m3-surface-container-lowest border border-m3-outline-subtle text-[11px] font-semibold focus:outline-none focus:border-m3-primary w-36" />
           <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Tag (zngr)"
             className="h-8 px-2.5 rounded-lg bg-m3-surface-container-lowest border border-m3-outline-subtle text-[11px] font-semibold focus:outline-none focus:border-m3-primary w-24" />
-          <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="HenrikDev API key" type="password" spellCheck={false}
+          <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="HenrikDev key — fallback only, optional" type="password" spellCheck={false}
             className="h-8 px-2.5 rounded-lg bg-m3-surface-container-lowest border border-m3-outline-subtle text-[11px] font-mono focus:outline-none focus:border-m3-primary flex-1 min-w-36" />
           <button onClick={detect} disabled={isDetecting}
             className="h-8 px-3 rounded-full bg-m3-surface-container-high border border-m3-primary/40 text-m3-primary text-[11px] font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
@@ -346,19 +428,26 @@ export const Tracker: React.FC = () => {
               key={m.id}
               m={m}
               rrDelta={rrByMatch.has(m.id) ? rrByMatch.get(m.id)! : null}
-              apiKey={apiKey.trim()}
+              loadDetail={loadDetail}
               puuid={puuid}
               expanded={expandedId === m.id}
               onToggle={() => setExpandedId((cur) => (cur === m.id ? null : m.id))}
               onBanner={setBanner}
             />
           ))}
+          {mode === 'direct' && history.length < histTotal && (
+            <button onClick={loadMore} disabled={loadingMore}
+              className="h-8 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-bold text-m3-on-surface flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">
+              {loadingMore ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
+              <span>{loadingMore ? 'Loading…' : `Load more (${history.length}/${histTotal})`}</span>
+            </button>
+          )}
         </div>
       )}
 
       {!profile && !isLoading && (
         <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant shrink-0">
-          Detect your account or type your Riot ID, paste your API key, hit Load.
+          Hit Load — with the Riot Client open it just works, no key needed. Key is only a fallback for when the client is closed.
         </div>
       )}
     </div>

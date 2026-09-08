@@ -8,11 +8,16 @@ pub struct LocalRiotAccount {
     pub puuid: String,
 }
 
-/// Reads the logged-in Riot account from the local Riot Client lockfile —
-/// the same technique desktop trackers use. No password is ever logged or
-/// stored; it lives only in the curl argument for one local call.
-#[tauri::command]
-pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalEntitlements {
+    pub access_token: String,
+    pub entitlements: String,
+    pub puuid: String,
+}
+
+/// name:pid:port:password:protocol. Stale lockfile (dead client) surfaces
+/// as a connect failure downstream with a clear message.
+fn lockfile_auth() -> Result<(String, String), String> {
     let lockfile = std::env::var("LOCALAPPDATA")
         .map(|la| {
             std::path::PathBuf::from(la)
@@ -22,43 +27,54 @@ pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
                 .join("lockfile")
         })
         .map_err(|_| "Riot Client not found on this PC.".to_string())?;
-
     let content = std::fs::read_to_string(&lockfile)
         .map_err(|_| "Riot Client lockfile missing — launch Riot Client or Valorant first.".to_string())?;
     let parts: Vec<&str> = content.trim().split(':').collect();
     if parts.len() < 5 {
         return Err("Unreadable lockfile — relaunch the Riot Client and retry.".to_string());
     }
-    // Format: name:pid:port:password:protocol. A stale lockfile (dead pid)
-    // fails at connect below with a clear message.
-    let (port, password) = (parts[2], parts[3]);
-    let url = format!("https://127.0.0.1:{}/player-account/aliases/v1/active", port);
+    Ok((parts[2].to_string(), parts[3].to_string()))
+}
 
+fn curl_args() -> Command {
     let mut cmd = Command::new("curl");
-    cmd.args([
-        "-s",
-        "-k",
-        "--max-time",
-        "5",
-        "-u",
-        &format!("riot:{}", password),
-        &url,
-    ]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
+    cmd
+}
 
-    let output = cmd
+/// GET against the local client (self-signed cert). Password lives only in
+/// the curl argument for one local call — never logged or stored.
+fn local_get(port: &str, password: &str, path: &str) -> Result<serde_json::Value, String> {
+    let url = format!("https://127.0.0.1:{}{}", port, path);
+    let output = curl_args()
+        .args([
+            "-s",
+            "-k",
+            "--max-time",
+            "5",
+            "-u",
+            &format!("riot:{}", password),
+            &url,
+        ])
         .output()
         .map_err(|e| format!("Local query failed: {}", e))?;
     if !output.status.success() {
         return Err("Riot Client not responding — launch it and retry.".to_string());
     }
-    let v: serde_json::Value =
-        serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
-            .map_err(|_| "Unexpected local response.".to_string())?;
+    serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+        .map_err(|_| "Unexpected local response.".to_string())
+}
+
+/// Reads the logged-in Riot account from the local Riot Client lockfile —
+/// the same technique desktop trackers use.
+#[tauri::command]
+pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
+    let (port, password) = lockfile_auth()?;
+    let v = local_get(&port, &password, "/player-account/aliases/v1/active")?;
     let game_name = v
         .get("game_name")
         .and_then(|s| s.as_str())
@@ -76,4 +92,100 @@ pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
             .unwrap_or("")
             .to_string(),
     })
+}
+
+/// Entitlements triple for direct Riot calls (refetch when Riot 401s).
+#[tauri::command]
+pub fn local_entitlements() -> Result<LocalEntitlements, String> {
+    let (port, password) = lockfile_auth()?;
+    let v = local_get(&port, &password, "/entitlements/v1/token")?;
+    Ok(LocalEntitlements {
+        access_token: v
+            .get("accessToken")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        entitlements: v
+            .get("token")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        puuid: v
+            .get("subject")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+/// Client version for the X-Riot-ClientVersion header, read from the
+/// latest game log (e.g. "CI server version: release-13.05-shipping-11-…").
+#[tauri::command]
+pub fn local_client_version() -> Result<String, String> {
+    let log_path = std::env::var("LOCALAPPDATA")
+        .map(|la| {
+            std::path::PathBuf::from(la)
+                .join("VALORANT")
+                .join("Saved")
+                .join("Logs")
+                .join("ShooterGame.log")
+        })
+        .map_err(|_| "VALORANT logs not found.".to_string())?;
+    let content = std::fs::read_to_string(&log_path).map_err(|_| "Game log missing.".to_string())?;
+    // Scan the tail: newest version line wins.
+    let tail: String = content.chars().rev().take(200_000).collect::<String>().chars().rev().collect();
+    for line in tail.lines().rev() {
+        if let Some(i) = line.find("CI server version:") {
+            let v = line[i + "CI server version:".len()..].trim().to_string();
+            if !v.is_empty() {
+                return Ok(v);
+            }
+        }
+    }
+    Err("Client version not found in logs.".to_string())
+}
+
+/// Generic authed GET against Riot's servers. Tokens stay in arguments;
+/// the raw body returns so the frontend parses defensively.
+#[tauri::command]
+pub fn riot_direct_get(
+    host: String,
+    path: String,
+    access_token: String,
+    entitlements: String,
+    client_platform: String,
+    client_version: String,
+) -> Result<String, String> {
+    if host.contains(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
+        return Err("Invalid host.".to_string());
+    }
+    if path.contains([' ', '\n', '\r']) {
+        return Err("Invalid path.".to_string());
+    }
+    let url = format!("https://{}{}", host, path);
+    let output = curl_args()
+        .args([
+            "-s",
+            "--max-time",
+            "10",
+            "-H",
+            &format!("Authorization: Bearer {}", access_token),
+            "-H",
+            &format!("X-Riot-Entitlements-JWT: {}", entitlements),
+            "-H",
+            &format!("X-Riot-ClientPlatform: {}", client_platform),
+            "-H",
+            &format!("X-Riot-ClientVersion: {}", client_version),
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Riot query failed: {}", e))?;
+    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        if body.contains("\"statusCode\":401") || body.contains("FORBIDDEN") {
+            return Err("RIOT_EXPIRED".to_string());
+        }
+        return Err(format!("Riot error: {}", body.chars().take(160).collect::<String>()));
+    }
+    Ok(body)
 }
