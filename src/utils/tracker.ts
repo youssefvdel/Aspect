@@ -4,6 +4,7 @@ const API = 'https://api.henrikdev.xyz';
 
 const err = async (res: Response): Promise<never> => {
   if (res.status === 404) throw new Error('Riot ID not found or profile is private.');
+  if (res.status === 401) throw new Error('Bad/missing API key — paste a HenrikDev key in settings.');
   if (res.status === 429) throw new Error('Tracker rate-limited — wait a minute and retry.');
   throw new Error(`Tracker error ${res.status}.`);
 };
@@ -12,12 +13,13 @@ const err = async (res: Response): Promise<never> => {
 export async function fetchMmr(
   region: string,
   name: string,
-  tag: string
+  tag: string,
+  apiKey: string
 ): Promise<TrackerProfile> {
   const url = `${API}/valorant/v3/mmr/${region}/pc/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { headers: { Authorization: apiKey } });
   } catch {
     throw new Error('Tracker unreachable — check your connection.');
   }

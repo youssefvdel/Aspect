@@ -14,7 +14,7 @@
 
 ### Data sources ranked
 
-1. **HenrikDev unofficial API (`https://api.henrikdev.xyz`)** — USE THIS. Free, keyless, CORS-open, community standard.
+1. **HenrikDev unofficial API (`https://api.henrikdev.xyz`)** — USE THIS, with one change: **since v4.0.0 an API key is required** (was keyless; botting forced auth). Key is free from their dashboard; user pastes it once, stored in localStorage, sent as `Authorization` header. All endpoints below stay the same.
    - `GET /valorant/v3/mmr/{region}/{platform}/{name}/{tag}` → current rank, RR, peak, wins/games.
    - `GET /valorant/v1/mmr-history/{region}/{name}/{tag}` → recent games with RR movement (trend chart).
    - `GET /valorant/v1/stored-matches/{region}/{name}/{tag}` → recent matches (map, mode, agent, KDA, score).
@@ -96,7 +96,7 @@ Tracker tab = occasional HTTPS polling + JSON render. Tauri+React already does t
 - Create: `src/utils/tracker.ts` with ONE function `fetchMmr(region, name, tag)` + typed parse with fallbacks.
 
 **Steps:**
-1. Write `fetchMmr` using plain `fetch()`, defensive field access, throws friendly errors on 404 (wrong ID/private) and 429 (rate-limited).
+1. Write `fetchMmr` using plain `fetch()` with `Authorization: <key>` header (key from localStorage, pasted once in the Tracker tab), defensive field access, throws friendly errors on 404 (wrong ID/private), 401 (missing/bad key), and 429 (rate-limited).
 2. Temporarily call it from dev console via `npm run dev` (paste a test call, check Network + console).
 3. Keep the function, delete the temp call.
 
