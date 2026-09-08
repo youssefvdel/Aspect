@@ -496,7 +496,17 @@ pub fn run() {
     };
 
     // MCP Bridge plugin enabled for automation and live MCP verification
-    let builder = tauri::Builder::default().plugin(tauri_plugin_mcp_bridge::init());
+    // Single-instance: re-running the exe/shortcut while Aspect sits in the
+    // tray focuses the existing window instead of spawning a second copy.
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_mcp_bridge::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }));
 
     builder
         .manage(app_state)
