@@ -332,7 +332,8 @@ export const queueLabel = (q: string): string => {
   if (s === 'deathmatch') return 'Deathmatch';
   if (s === 'spikerush') return 'Spike Rush';
   if (s === 'swiftplay') return 'Swiftplay';
-  return s ? s[0].toUpperCase() + s.slice(1) : 'Custom';
+  if (s === 'custom') return 'Custom';
+  return s ? s[0].toUpperCase() + s.slice(1) : '—';
 };
 
 const normTeam = (t: unknown): string => {

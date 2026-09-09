@@ -181,7 +181,7 @@ export const MatchHistory: React.FC = () => {
         <div className="flex flex-col gap-1.5 shrink-0">
           {games.map((g, i) => (
             <GameRow key={g.matchId || g.when} g={g} index={i}
-              queue={queueLabel(queueById[g.matchId] ?? '')}
+              queue={queueLabel(detailsById[g.matchId]?.queue || queueById[g.matchId] || '')}
               map={mapById[g.matchId] ?? shortMapName(g.mapId, {})}
               detail={detailsById[g.matchId]}
               puuid={puuid} />
