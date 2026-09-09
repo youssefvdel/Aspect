@@ -6,8 +6,7 @@ import { UnifiedStretch } from './components/UnifiedStretch';
 import { ResolutionVisualizer } from './components/ResolutionVisualizer';
 import { Settings } from './components/Settings';
 import { ValorantConfig } from './components/ValorantConfig';
-import { Overview } from './components/Overview';
-import { MatchHistory } from './components/MatchHistory';
+import { TrackerView } from './components/TrackerView';
 import { HardwareScaling } from './components/HardwareScaling';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
@@ -307,9 +306,9 @@ export const App: React.FC = () => {
 
                 {currentTab === 'valorant' && <ValorantConfig />}
 
-                {currentTab === 'overview' && <Overview />}
-
-                {currentTab === 'matches' && <MatchHistory />}
+                {(currentTab === 'overview' || currentTab === 'matches') && (
+                  <TrackerView initialSubTab={currentTab === 'matches' ? 'matches' : 'overview'} />
+                )}
 
                 {currentTab === 'gpu' && (
                   <HardwareScaling

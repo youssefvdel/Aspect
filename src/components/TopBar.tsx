@@ -1,4 +1,4 @@
-import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, LayoutDashboard, History } from 'lucide-react';
+import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, LayoutDashboard } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
 interface TopBarProps {
@@ -61,14 +61,14 @@ const TAB_METADATA: Record<
     icon: FileCode2,
   },
   overview: {
-    title: 'Tracker Overview',
-    description: 'Rank, season stats, form and previous acts — live from Riot, no key',
+    title: 'Valorant Tracker',
+    description: 'Overview, match history, performance, agents, and maps — live from Riot + TRN',
     icon: LayoutDashboard,
   },
   matches: {
-    title: 'Match History',
-    description: 'Last 20 games with map, mode and RR earned',
-    icon: History,
+    title: 'Valorant Tracker',
+    description: 'Overview, match history, performance, agents, and maps — live from Riot + TRN',
+    icon: LayoutDashboard,
   },
 };
 

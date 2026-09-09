@@ -7,7 +7,6 @@ import {
   Sparkles,
   FileCode2,
   LayoutDashboard,
-  History,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 import { TrackerMini } from './TrackerMini';
@@ -52,15 +51,9 @@ const UTILITY_TABS: SidebarTab[] = [
 const TRACKER_TABS: SidebarTab[] = [
   {
     id: 'overview',
-    label: 'Overview',
+    label: 'Tracker',
     shortcut: '6',
     icon: LayoutDashboard,
-  },
-  {
-    id: 'matches',
-    label: 'Match History',
-    shortcut: '7',
-    icon: History,
   },
 ];
 
