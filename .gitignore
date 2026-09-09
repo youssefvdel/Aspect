@@ -15,6 +15,7 @@ src-tauri/target/
 tsconfig.tsbuildinfo
 
 # Editor directories and files
+.hermes/
 .vscode/*
 !.vscode/extensions.json
 .idea

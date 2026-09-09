@@ -3,17 +3,22 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW,
-    GetWindowTextW, IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
-    GWL_STYLE, HWND_TOP, SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED, SWP_SHOWWINDOW,
-    WINDOW_STYLE, WS_BORDER, WS_CAPTION, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
-    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+    EnumWindows, GetClassNameW, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
+    GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, SetWindowLongPtrW,
+    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, SM_CXSCREEN, SM_CYSCREEN,
+    SWP_FRAMECHANGED, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
+    WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
+    WS_SYSMENU, WS_THICKFRAME,
 };
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
     pub hwnd: isize,
     pub title: String,
+    #[serde(default)]
+    pub class_name: String,
+    #[serde(default)]
+    pub is_game: bool,
 }
 
 pub fn list_visible_windows() -> Vec<WindowInfo> {
@@ -62,16 +67,119 @@ unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL 
                 && trimmed != "Windows Input Experience"
                 && !trimmed.starts_with("Settings")
                 && trimmed != "True Stretch Toolkit"
+                && trimmed != "Aspect"
             {
+                let mut class_buf = [0u16; 128];
+                let class_len = GetClassNameW(hwnd, &mut class_buf);
+                let class_name = if class_len > 0 {
+                    String::from_utf16_lossy(&class_buf[..class_len as usize])
+                } else {
+                    String::new()
+                };
+
+                let is_game = is_game_window(hwnd, trimmed, &class_name);
+
                 let windows = &mut *(lparam.0 as *mut Vec<WindowInfo>);
                 windows.push(WindowInfo {
                     hwnd: hwnd.0 as isize,
                     title: trimmed.to_string(),
+                    class_name,
+                    is_game,
                 });
             }
         }
 
         BOOL(1)
+    }
+}
+
+pub fn is_valorant_game_window(_hwnd: HWND, title: &str, class_name: &str) -> bool {
+    let trimmed = title.trim();
+    let lower = trimmed.to_lowercase();
+
+    // 1. Filter out companion apps, trackers, overlays, and launchers.
+    // "Valorant Tracker", "Overwolf", "Blitz", "Riot Client", etc.
+    if lower.contains("tracker")
+        || lower.contains("overwolf")
+        || lower.contains("blitz")
+        || lower.contains("riot client")
+        || lower.contains("aspect")
+        || lower.contains("discord")
+        || lower.contains("obs")
+        || lower.contains("chrome")
+        || lower.contains("edge")
+    {
+        return false;
+    }
+
+    // 2. Valorant's real game client is an Unreal Engine 4 window ("UnrealWindow").
+    // Third-party trackers and Electron wrappers are NEVER "UnrealWindow".
+    if class_name == "UnrealWindow" {
+        return lower == "valorant" || lower.starts_with("valorant");
+    }
+
+    // 3. Fallback: exact match on title "VALORANT" if class_name is unavailable
+    lower == "valorant"
+}
+
+pub fn is_game_window(hwnd: HWND, title: &str, class_name: &str) -> bool {
+    if is_valorant_game_window(hwnd, title, class_name) {
+        return true;
+    }
+    let lower = title.trim().to_lowercase();
+    if lower.contains("tracker")
+        || lower.contains("overwolf")
+        || lower.contains("blitz")
+        || lower.contains("riot client")
+        || lower.contains("aspect")
+    {
+        return false;
+    }
+    lower.contains("counter-strike") || lower.contains("cs2") || lower.contains("aimlabs")
+}
+
+pub fn find_valorant_game_window() -> Option<WindowInfo> {
+    let windows = list_visible_windows();
+    for w in windows {
+        let hwnd = HWND(w.hwnd as *mut std::ffi::c_void);
+        if is_valorant_game_window(hwnd, &w.title, &w.class_name) {
+            return Some(w);
+        }
+    }
+    None
+}
+
+pub fn is_window_borderless_fullscreen(hwnd: HWND) -> bool {
+    unsafe {
+        if !IsWindow(hwnd).as_bool() {
+            return false;
+        }
+
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let is_popup = (style & WS_POPUP.0) != 0;
+        let has_caption = (style & (WS_CAPTION.0 | WS_THICKFRAME.0)) != 0;
+
+        if !is_popup || has_caption {
+            return false;
+        }
+
+        let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+
+        if GetMonitorInfoW(h_mon, &mut mi).as_bool() {
+            let mut wr = RECT::default();
+            if GetWindowRect(hwnd, &mut wr).is_ok() {
+                let mon_w = mi.rcMonitor.right - mi.rcMonitor.left;
+                let mon_h = mi.rcMonitor.bottom - mi.rcMonitor.top;
+                let win_w = wr.right - wr.left;
+                let win_h = wr.bottom - wr.top;
+                return win_w == mon_w && win_h == mon_h;
+            }
+        }
+        false
     }
 }
 

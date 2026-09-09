@@ -38,7 +38,7 @@ interface DropOption {
   hint?: string;
 }
 
-const CustomDropdown: React.FC<{
+export const CustomDropdown: React.FC<{
   value: string;
   options: DropOption[];
   onChange: (v: string) => void;
@@ -177,9 +177,6 @@ const DEFS: Record<string, SettingDef> = {
   bUseHDRDisplayOutput: { title: 'HDR Output', desc: 'High dynamic range output, only matters on an HDR monitor.', editor: 'bool', boolLabels: BOOL_OFF_ON, group: 'Performance' },
   HDRDisplayOutputNits: { title: 'HDR Peak Brightness', desc: 'Monitor peak brightness in nits (common: 400 / 600 / 1000). Only matters with HDR on.', editor: 'int', group: 'Performance' },
 
-  AudioQualityLevel: { title: 'Audio Quality', desc: 'Engine audio tier. Valorant runs at 0 (standard) — the game manages this.', editor: 'int', group: 'Audio' },
-  LastConfirmedAudioQualityLevel: { title: 'Confirmed Audio Quality', desc: 'Last confirmed audio tier.', editor: 'int', group: 'Audio', auto: true },
-
   'sg.ResolutionQuality': { title: 'Render Scale %', desc: 'Percent of resolution actually rendered. 100 = full sharpness. Lower = blurrier but faster.', editor: 'float', group: 'Graphics' },
   'sg.ViewDistanceQuality': { title: 'View Distance', desc: 'Detail of far-away objects. High keeps distant enemies crisp.', editor: 'sgQuality', group: 'Graphics' },
   'sg.AntiAliasingQuality': { title: 'Anti-Aliasing', desc: 'Smooths jagged edges. MSAA in Valorant is handled in-game; this is the ini mirror.', editor: 'sgQuality', group: 'Graphics' },
@@ -201,14 +198,13 @@ const DEFS: Record<string, SettingDef> = {
   LastGPUBenchmarkMultiplier: { title: 'GPU Score Multiplier', desc: 'Scaling factor derived from the GPU benchmark.', editor: 'float', group: 'Game-Managed', auto: true },
 };
 
-const GROUP_ORDER = ['Resolution', 'Display', 'Graphics', 'Performance', 'Audio', 'Window & Monitor', 'Engine', 'More Settings'];
+const GROUP_ORDER = ['Resolution', 'Display', 'Graphics', 'Performance', 'Window & Monitor', 'Engine', 'More Settings'];
 
 const GROUP_HINTS: Record<string, string> = {
   Resolution: 'Set once — writes to render, desired and confirmed copies together.',
   Display: 'How the game takes over your screen — the core of stretched.',
   Graphics: 'Eye candy. Lower = more FPS. 0 Low · 1 Medium · 2 High · 3 Epic.',
   Performance: 'Frame pacing, sync and HDR.',
-  Audio: 'Engine audio tier.',
   'Window & Monitor': 'Where the game window lives.',
   Engine: 'Low-level engine switches.',
   'More Settings': 'Keys this tool has no description for yet. Raw key shown.',
@@ -237,6 +233,7 @@ const HIDDEN_KEYS = new Set([
   'LastCPUBenchmarkResult',
   'LastGPUBenchmarkResult',
   'LastGPUBenchmarkMultiplier',
+  'AudioQualityLevel',
   'LastConfirmedAudioQualityLevel',
   'LastConfirmedDefaultMonitorDeviceID',
   'LastConfirmedDefaultMonitorIndex',
@@ -378,7 +375,7 @@ const UnifiedResolution: React.FC<{
   onReloadFile: () => void;
 }> = ({ sections, filePath, lockReadonly, onSaved, onReloadFile }) => {
   const current = useMemo(() => {
-    let w = '2090';
+    let w = '2088';
     let h = '1440';
     for (const sec of sections) {
       for (const row of sec.rows) {
@@ -497,18 +494,18 @@ const FileCard: React.FC<{
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-xs text-m3-on-surface">{cfg.display_name}</span>
             {verify ? (
-              verify.matches ? (
-                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-m3-tertiary text-m3-on-tertiary flex items-center gap-1">
-                  <ShieldCheck className="w-2.5 h-2.5" /> VERIFIED
+              verify.is_healthy ?? verify.matches ? (
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-m3-mint/20 text-m3-mint border border-m3-mint/40 flex items-center gap-1">
+                  <ShieldCheck className="w-2.5 h-2.5" /> 100% HEALTHY
                 </span>
               ) : (
-                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
-                  <TriangleAlert className="w-2.5 h-2.5" /> MISMATCH
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-m3-coral/20 text-m3-coral border border-m3-coral/40 flex items-center gap-1">
+                  <TriangleAlert className="w-2.5 h-2.5" /> HEALTH {verify.health_score ?? 0}%
                 </span>
               )
             ) : (
               <span className="px-1.5 py-0.5 text-[9px] font-mono rounded-full bg-m3-surface-container-high text-m3-outline border border-m3-outline-subtle">
-                UNVERIFIED
+                UNCHECKED
               </span>
             )}
             {cfg.is_read_only ? (
@@ -552,9 +549,28 @@ const FileCard: React.FC<{
         </div>
       </div>
 
-      {verify && !verify.matches && (
-        <div className="px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-[10px] text-red-300 leading-snug">
-          {verify.details}
+      {verify && (!verify.matches || (verify.is_healthy === false)) && (
+        <div className="px-2.5 py-2 rounded-xl bg-m3-coral/10 border border-m3-coral/30 text-[11px] text-m3-coral leading-snug space-y-1">
+          <div className="font-bold flex items-center gap-1.5">
+            <TriangleAlert className="w-3 h-3 shrink-0" />
+            <span>Health Issues ({verify.issues?.length || 1}):</span>
+          </div>
+          {verify.issues && verify.issues.length > 0 ? (
+            <ul className="list-disc list-inside space-y-0.5 text-[10px] opacity-90 pl-1">
+              {verify.issues.map((issue, idx) => (
+                <li key={idx}>{issue}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[10px]">{verify.details}</p>
+          )}
+        </div>
+      )}
+
+      {verify && (verify.is_healthy ?? verify.matches) && (
+        <div className="px-2.5 py-1.5 rounded-xl bg-m3-mint/10 border border-m3-mint/30 text-[10px] text-m3-mint leading-snug flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+          <span>{verify.details}</span>
         </div>
       )}
 
@@ -602,7 +618,7 @@ export const ValorantConfig: React.FC = () => {
   const [configs, setConfigs] = useState<ConfigFileInfo[]>([]);
   const [sectionsMap, setSectionsMap] = useState<Record<string, ValorantSection[]>>({});
   const [verifyMap, setVerifyMap] = useState<Record<string, ValorantVerifyResult>>({});
-  const [targetW, setTargetW] = useState('2090');
+  const [targetW, setTargetW] = useState('2088');
   const [targetH, setTargetH] = useState('1440');
   const [lockAll, setLockAll] = useState(true);
   const [search, setSearch] = useState('');
@@ -698,8 +714,13 @@ export const ValorantConfig: React.FC = () => {
       for (const r of ver) m[r.path] = r;
       setVerifyMap(m);
       const ok = results.filter((r) => r.ok && r.verified).length;
+      const healthy = Object.values(m).filter((v) => v.is_healthy ?? v.matches).length;
       const fail = results.filter((r) => !r.ok).map((r) => `${r.display_name}: ${r.message}`).join(' | ');
-      setBanner(fail ? `Synced ${ok}/${results.length}. Failures: ${fail}` : `Synced + verified ${ok}/${results.length} file(s) at ${w}x${h}.`);
+      setBanner(
+        fail
+          ? `Synced ${ok}/${results.length}. Failures: ${fail}`
+          : `Synced & checked ${ok}/${results.length} file(s) at ${w}×${h} (${healthy}/${results.length} 100% Healthy)! Anti-letterbox, Borderless Fullscreen (Mode 2), and (0,0) alignment applied.`
+      );
     } catch (e) {
       setBanner(`Sync failed: ${String(e)}`);
     } finally {
@@ -783,6 +804,10 @@ export const ValorantConfig: React.FC = () => {
               <span>{isSyncing ? 'Syncing…' : `Sync all (${configs.length})`}</span>
             </button>
           </div>
+        </div>
+        <div className="text-[10px] text-m3-outline flex items-center gap-1.5 pt-1 border-t border-m3-outline-subtle/40">
+          <span className="font-semibold text-m3-tertiary">Gold Standard (1.450:1):</span>
+          <span><strong>2088×1440</strong> and <strong>1568×1080</strong> are 8-pixel aligned for universal hardware compatibility across AMD Radeon, NVIDIA GeForce, and Intel Arc.</span>
         </div>
       </section>
 

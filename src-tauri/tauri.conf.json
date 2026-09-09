@@ -1,12 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Aspect",
+  "version": "../package.json",
   "identifier": "com.aspect.utility",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:ui"
   },
   "app": {
     "withGlobalTauri": true,
@@ -29,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/trnfetch"],
     "icon": [
       "icons/icon.ico",
       "icons/icon.png",

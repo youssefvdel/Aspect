@@ -46,6 +46,8 @@ export interface GpuSettingsReport {
 export interface WindowInfo {
   hwnd: number;
   title: string;
+  class_name?: string;
+  is_game?: boolean;
 }
 
 export interface ConfigFileInfo {
@@ -80,6 +82,9 @@ export interface ValorantVerifyResult {
   display_name: string;
   matches: boolean;
   details: string;
+  health_score?: number;
+  is_healthy?: boolean;
+  issues?: string[];
 }
 
 export interface ValorantCustomOptions {
@@ -98,6 +103,96 @@ export interface ValorantSettingRow {
 export interface ValorantSection {
   name: string;
   rows: ValorantSettingRow[];
+}
+
+export interface TrackerProfile {
+  name: string;
+  tag: string;
+  region: string;
+  puuid: string;
+  rank: string;
+  tier: number;
+  rr: number;
+  peak: string;
+  wins: number;
+  games: number;
+  currentSeasonId: string;
+  seasons: { id: string; games: number; wins: number; tier: number }[];
+}
+
+export interface TrackerMatch {
+  id: string;
+  map: string;
+  mode: string;
+  agent: string;
+  result: 'win' | 'loss' | 'draw';
+  scoreUs: number;
+  scoreThem: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  acs: number;
+  hsPct: number;
+  damage: number;
+  startedAt: string;
+}
+
+export interface TrackerPlayer {
+  puuid: string;
+  name: string;
+  tag: string;
+  team: string;
+  agent: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  damageTaken: number;
+  score: number;
+  rounds: number;
+  playtimeMs: number;
+  headshots: number;
+  bodyshots: number;
+  legshots: number;
+  accountLevel?: number;
+  tier?: number;
+}
+
+export interface TrackerMatchDetail {
+  rounds: { winningTeam: string; roundResult?: string; ceremony?: string }[];
+  players: TrackerPlayer[];
+  kills: TrackerDuel[];
+  mapId: string;
+  teamScore: Record<string, number>;
+  queue: string;
+  when: number;
+  durationMs?: number;
+}
+
+export interface TrackerDuel {
+  round: number;
+  killerPuuid: string;
+  victimPuuid: string;
+  killerTeam: string;
+  victimTeam: string;
+  timeInRound: number;
+  weapon: string;
+  assists: string[];
+}
+
+export interface TrackerMmrPoint {
+  tier: string;
+  rr: number;
+  change: number;
+  matchId: string;
+  mapId: string;
+  when: number;
+}
+
+export interface LocalRiotAccount {
+  game_name: string;
+  tagline: string;
+  puuid: string;
 }
 
 export interface QuickShortcut {
@@ -134,7 +229,9 @@ export type TabType =
   | 'gpu'
   | 'borderless'
   | 'settings'
-  | 'valorant';
+  | 'valorant'
+  | 'overview'
+  | 'matches';
 
 export interface UpdateInfo {
   has_update: boolean;

@@ -13,8 +13,6 @@ pub struct UpdateInfo {
     pub download_url: Option<String>,
 }
 
-/// Always in sync with Cargo.toml — bump the package version, never this.
-/// (A hardcoded copy here is how 0.1.2 shipped while the UI still said 0.1.1.)
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_REPO: &str = "youssefvdel/Aspect";
 
@@ -53,11 +51,12 @@ pub fn is_newer_version(current: &str, remote: &str) -> bool {
 pub fn check_for_updates() -> Result<UpdateInfo, String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", DEFAULT_REPO);
 
+    let user_agent = format!("User-Agent: Aspect/{}", CURRENT_VERSION);
     let mut cmd = Command::new("curl");
     cmd.args([
         "-s",
         "--max-time", "5",
-        "-H", &format!("User-Agent: Aspect/{}", CURRENT_VERSION),
+        "-H", &user_agent,
         "-H", "Accept: application/vnd.github.v3+json",
         &url,
     ]);

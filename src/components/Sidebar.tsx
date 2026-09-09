@@ -1,19 +1,26 @@
+import { useEffect, useState } from 'react';
 import {
   Cpu,
   Sliders,
-  Eye,
   Settings,
   Keyboard,
   Sparkles,
-  FileCode2,
+  LayoutDashboard,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
+import { TrackerMini } from './TrackerMini';
+import { APP_VERSION, appVersion } from '../utils/version';
 
 interface SidebarTab {
   id: TabType;
   label: string;
   shortcut: string;
   icon: React.ComponentType<{ className?: string }>;
+}
+
+interface TabGroup {
+  title: string;
+  tabs: SidebarTab[];
 }
 
 interface SidebarProps {
@@ -25,40 +32,33 @@ interface SidebarProps {
   onOpenUpdates?: () => void;
 }
 
+/* Tracker group — keyless Riot data, zero signup. */
+const TRACKER_TABS: SidebarTab[] = [
+  {
+    id: 'overview',
+    label: 'Tracker',
+    shortcut: '1',
+    icon: LayoutDashboard,
+  },
+];
+
+/* Utility group — resolution toggle and stretch simulator. */
 const UTILITY_TABS: SidebarTab[] = [
   {
     id: 'switcher',
     label: 'Resolution Switch',
-    shortcut: '1',
-    icon: Sliders,
-  },
-  {
-    id: 'visualizer',
-    label: 'Stretch Preview',
     shortcut: '2',
-    icon: Eye,
+    icon: Sliders,
   },
 ];
 
-/* Settings group — setup + custom builder merged in one tab, GPU stands alone. */
+/* Settings group — stretch setup, config editor, and GPU scaling. */
 const SETTINGS_TABS: SidebarTab[] = [
   {
     id: 'settings',
-    label: 'Stretch Setup',
+    label: 'Settings',
     shortcut: '3',
     icon: Settings,
-  },
-  {
-    id: 'valorant',
-    label: 'Valorant Config',
-    shortcut: '5',
-    icon: FileCode2,
-  },
-  {
-    id: 'gpu',
-    label: 'GPU Scaling',
-    shortcut: '4',
-    icon: Cpu,
   },
 ];
 
@@ -72,11 +72,74 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenUpdates,
 }) => {
   const isStretched = displayInfo?.active_profile === 'stretched';
+  const [appVer, setAppVer] = useState(APP_VERSION);
+
+  useEffect(() => {
+    appVersion().then(setAppVer);
+  }, []);
+
+  const renderGroup = (group: TabGroup, isFirst: boolean) => (
+    <div key={group.title}>
+      <div className={`flex items-center gap-2 px-3 pb-1.5 ${isFirst ? 'pt-1' : 'pt-3'}`} aria-hidden="true">
+        <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">
+          {group.title}
+        </span>
+        <div className="flex-1 h-px bg-m3-outline-subtle" />
+      </div>
+      <nav className="space-y-1">
+        {group.tabs.map((tab) => {
+          const Icon = tab.icon;
+          // Active highlighting considers sub-tabs
+          const isActive =
+            (tab.id === 'overview' && (currentTab === 'overview' || currentTab === 'matches')) ||
+            (tab.id === 'switcher' && (currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless')) ||
+            (tab.id === 'settings' && (currentTab === 'settings' || currentTab === 'valorant' || currentTab === 'gpu'));
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onSelectTab(tab.id)}
+              className={`relative w-full group flex items-center justify-between px-3 py-1.5 rounded-full text-left transition-all duration-150 cursor-pointer ${
+                isActive
+                  ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
+                  : 'text-m3-on-surface-variant hover:bg-m3-surface-container/60 hover:text-m3-on-surface'
+              }`}
+            >
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <Icon
+                  className={`w-4 h-4 shrink-0 transition-colors ${
+                    isActive
+                      ? 'text-m3-primary'
+                      : 'text-m3-outline group-hover:text-m3-on-surface'
+                  }`}
+                />
+                <div
+                  className={`text-xs font-semibold leading-tight truncate ${
+                    isActive ? 'text-m3-on-primary-container font-display' : 'text-m3-on-surface-variant'
+                  }`}
+                >
+                  {tab.label}
+                </div>
+              </div>
+              <span
+                className={`w-5 h-5 rounded-full font-mono text-[10px] font-semibold flex items-center justify-center transition-colors shrink-0 ${
+                  isActive
+                    ? 'bg-m3-surface-container-highest text-m3-primary'
+                    : 'bg-m3-surface-container text-m3-outline group-hover:text-m3-on-surface'
+                }`}
+              >
+                {tab.shortcut}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
 
   return (
-    <aside className="w-68 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30">
+    <aside className="w-68 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30 overflow-hidden">
       {/* Brand & Top Section */}
-      <div className="flex flex-col">
+      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto custom-scrollbar">
         {/* App Identity */}
         <div className="p-4 sm:p-5 border-b border-m3-outline-subtle flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -103,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {hasUpdate && (
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-pulse" />
             )}
-            <span>v{__APP_VERSION__}</span>
+            <span>v{appVer}</span>
           </button>
         </div>
 
@@ -148,119 +211,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Tabs List (M3 Expressive Navigation Rail with Pill Items) */}
         <div className="px-3 pt-1">
-          {/* UTILITY divider — daily-drive tools live below */}
-          <div className="flex items-center gap-2 px-3 pt-1 pb-1.5" aria-hidden="true">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">
-              Utility
-            </span>
-            <div className="flex-1 h-px bg-m3-outline-subtle" />
-          </div>
-
-          <nav className="space-y-1">
-            {UTILITY_TABS.map((tab) => {
-              const Icon = tab.icon;
-              // Legacy compat: 'borderless' tab aliases to merged switcher grid
-              const isActive = currentTab === tab.id || (currentTab === 'borderless' && tab.id === 'switcher');
-
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => onSelectTab(tab.id)}
-                  className={`relative w-full group flex items-center justify-between px-3 py-1.5 rounded-full text-left transition-all duration-150 cursor-pointer ${
-                    isActive
-                      ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
-                      : 'text-m3-on-surface-variant hover:bg-m3-surface-container/60 hover:text-m3-on-surface'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    <Icon
-                      className={`w-4 h-4 shrink-0 transition-colors ${
-                        isActive
-                          ? 'text-m3-primary'
-                          : 'text-m3-outline group-hover:text-m3-on-surface'
-                      }`}
-                    />
-                    <div
-                      className={`text-xs font-semibold leading-tight truncate ${
-                        isActive ? 'text-m3-on-primary-container font-display' : 'text-m3-on-surface-variant'
-                      }`}
-                    >
-                      {tab.label}
-                    </div>
-                  </div>
-
-                  <span
-                    className={`w-5 h-5 rounded-full font-mono text-[10px] font-semibold flex items-center justify-center transition-colors shrink-0 ${
-                      isActive
-                        ? 'bg-m3-surface-container-highest text-m3-primary'
-                        : 'bg-m3-surface-container text-m3-outline group-hover:text-m3-on-surface'
-                    }`}
-                  >
-                    {tab.shortcut}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* SETTINGS divider — everything below reads as a settings tab */}
-          <div className="flex items-center gap-2 px-3 pt-3 pb-1.5" aria-hidden="true">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">
-              Settings
-            </span>
-            <div className="flex-1 h-px bg-m3-outline-subtle" />
-          </div>
-
-          <nav className="space-y-1">
-            {SETTINGS_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = currentTab === tab.id;
-
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => onSelectTab(tab.id)}
-                  className={`relative w-full group flex items-center justify-between px-3 py-1.5 rounded-full text-left transition-all duration-150 cursor-pointer ${
-                    isActive
-                      ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
-                      : 'text-m3-on-surface-variant hover:bg-m3-surface-container/60 hover:text-m3-on-surface'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    <Icon
-                      className={`w-4 h-4 shrink-0 transition-colors ${
-                        isActive
-                          ? 'text-m3-primary'
-                          : 'text-m3-outline group-hover:text-m3-on-surface'
-                      }`}
-                    />
-                    <div
-                      className={`text-xs font-semibold leading-tight truncate ${
-                        isActive ? 'text-m3-on-primary-container font-display' : 'text-m3-on-surface-variant'
-                      }`}
-                    >
-                      {tab.label}
-                    </div>
-                  </div>
-
-                  <span
-                    className={`w-5 h-5 rounded-full font-mono text-[10px] font-semibold flex items-center justify-center transition-colors shrink-0 ${
-                      isActive
-                        ? 'bg-m3-surface-container-highest text-m3-primary'
-                        : 'bg-m3-surface-container text-m3-outline group-hover:text-m3-on-surface'
-                    }`}
-                  >
-                    {tab.shortcut}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
+          {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, true)}
+          {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, false)}
+          {renderGroup({ title: 'Settings', tabs: SETTINGS_TABS }, false)}
         </div>
       </div>
 
-      {/* Sidebar Footer & Keyboard Navigation Hint */}
-      <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
+      {/* Sidebar Footer: player chip, updates & keyboard hint */}
+      <div className="flex flex-col shrink-0">
+        <TrackerMini />
+        <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
         {onOpenUpdates && (
           <button
             type="button"
@@ -287,8 +247,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Switch Tabs</span>
           </span>
           <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-            Keys 1 - 5
+            Keys 1 - 3
           </span>
+        </div>
         </div>
       </div>
     </aside>

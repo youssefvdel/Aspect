@@ -28,9 +28,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const nativeH = displayInfo?.native_height || 1440;
 
   // Stretched resolution target state
-  const [stretchedW, setStretchedW] = useState<number>(2090);
+  const [stretchedW, setStretchedW] = useState<number>(2088);
   const [stretchedH, setStretchedH] = useState<number>(nativeH);
-  const [customInputW, setCustomInputW] = useState<string>('2090');
+  const [customInputW, setCustomInputW] = useState<string>('2088');
   const [customInputH, setCustomInputH] = useState<string>(nativeH.toString());
 
   // Available display modes on PC
@@ -103,8 +103,8 @@ export const Settings: React.FC<SettingsProps> = ({
   // Helper for aspect ratio badges
   const getAspectBadge = (w: number, h: number) => {
     const r = w / h;
-    if (Math.abs(r - 1.451) < 0.025 || (w === 2090 && h === 1440) || (w === 1568 && h === 1080)) {
-      return { tag: '1.45:1', sub: 'Optimal', color: 'border-m3-tertiary/40 bg-m3-tertiary/15 text-m3-tertiary' };
+    if (Math.abs(r - 1.45) < 0.025 || (w === 2088 && h === 1440) || (w === 2090 && h === 1440) || (w === 1568 && h === 1080)) {
+      return { tag: '1.45:1', sub: 'Optimal (Gold)', color: 'border-m3-gold/40 bg-m3-gold/15 text-m3-gold' };
     }
     if (Math.abs(r - 4 / 3) < 0.02) {
       return { tag: '4:3', sub: 'Classic', color: 'border-m3-primary/30 bg-m3-primary/10 text-m3-primary' };

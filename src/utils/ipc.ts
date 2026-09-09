@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, GpuSettingsReport, WindowInfo, ConfigFileInfo, QuickShortcut, MonitorDevice, UpdateInfo } from '../types';
+import { APP_VERSION } from './version';
 
 export const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -93,7 +94,7 @@ const mockConfigs: ConfigFileInfo[] = [
     is_read_only: false,
     fullscreen_mode: 2,
     should_letterbox: false,
-    res_x: 2090,
+    res_x: 2088,
     res_y: 1440,
   },
 ];
@@ -138,7 +139,7 @@ export async function applyResolution(width: number, height: number, hz: number)
 export async function toggleProfile(): Promise<DisplayInfo> {
   if (!isTauri()) {
     if (mockDisplayInfo.active_profile === 'native') {
-      mockDisplayInfo.current_width = 2090;
+      mockDisplayInfo.current_width = 2088;
       mockDisplayInfo.current_height = 1440;
       mockDisplayInfo.active_profile = 'stretched';
     } else {
@@ -207,6 +208,16 @@ export async function autoConfigureGpuScaling(): Promise<string> {
 export async function fetchWindows(): Promise<WindowInfo[]> {
   if (!isTauri()) return mockWindows;
   return await invoke<WindowInfo[]>('get_windows');
+}
+
+export async function setAutoBorderless(enabled: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('set_auto_borderless', { enabled });
+}
+
+export async function getAutoBorderless(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return await invoke<boolean>('get_auto_borderless');
 }
 
 export async function makeWindowBorderless(hwnd: number): Promise<string> {
@@ -344,7 +355,7 @@ export async function applyCustomResVerbose(
 }
 
 export async function getValorantConfigRaw(path: string): Promise<string> {
-  if (!isTauri()) return '[ShooterGameUserSettings]\nFullscreenMode=2\nbShouldLetterbox=False\nResolutionSizeX=2090\nResolutionSizeY=1440\n';
+  if (!isTauri()) return '[ShooterGameUserSettings]\nFullscreenMode=2\nbShouldLetterbox=False\nResolutionSizeX=2088\nResolutionSizeY=1440\n';
   return await invoke<string>('get_valorant_config_raw', { path });
 }
 
@@ -358,7 +369,7 @@ export async function getValorantConfigSections(
         rows: [
           { key: 'FullscreenMode', value: '2' },
           { key: 'bShouldLetterbox', value: 'False' },
-          { key: 'ResolutionSizeX', value: '2090' },
+          { key: 'ResolutionSizeX', value: '2088' },
           { key: 'ResolutionSizeY', value: '1440' },
           { key: 'FrameRateLimit', value: '0.000000' },
           { key: 'bUseVSync', value: 'False' },
@@ -392,7 +403,7 @@ export async function fetchQuickShortcuts(): Promise<QuickShortcut[]> {
   return await invoke<QuickShortcut[]>('get_quick_shortcuts');
 }
 
-let mockPreferredStretched: [number, number] = [2090, 1440];
+let mockPreferredStretched: [number, number] = [2088, 1440];
 
 export async function fetchPreferredStretchedRes(): Promise<[number, number]> {
   if (!isTauri()) return mockPreferredStretched;
@@ -454,6 +465,17 @@ export function vkToName(vk: number): string {
     case 0x14: return 'Caps';
     case 0x2C: return 'PrintScreen';
     case 0x90: return 'NumLock';
+    case 0xC0: return '`';
+    case 0xBA: return ';';
+    case 0xBB: return '=';
+    case 0xBC: return ',';
+    case 0xBD: return '-';
+    case 0xBE: return '.';
+    case 0xBF: return '/';
+    case 0xDB: return '[';
+    case 0xDC: return '\\';
+    case 0xDD: return ']';
+    case 0xDE: return "'";
     case 0x04: return 'Mouse 3';
     case 0x05: return 'Mouse 4';
     case 0x06: return 'Mouse 5';
@@ -743,9 +765,9 @@ export async function checkAppUpdates(): Promise<UpdateInfo> {
     // time, never hardcoded (bump script keeps it = Cargo.toml).
     return {
       has_update: false,
-      current_version: __APP_VERSION__,
-      latest_version: __APP_VERSION__,
-      release_title: `Aspect v${__APP_VERSION__}`,
+      current_version: APP_VERSION,
+      latest_version: APP_VERSION,
+      release_title: `Aspect v${APP_VERSION}`,
       release_notes: 'Running latest dev build.',
       published_at: new Date().toISOString(),
       html_url: 'https://github.com/youssefvdel/Aspect',

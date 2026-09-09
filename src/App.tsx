@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { UnifiedStretch } from './components/UnifiedStretch';
-import { ResolutionVisualizer } from './components/ResolutionVisualizer';
-import { Settings } from './components/Settings';
-import { ValorantConfig } from './components/ValorantConfig';
-import { HardwareScaling } from './components/HardwareScaling';
+import { UtilityView } from './components/UtilityView';
+import { SettingsView } from './components/SettingsView';
+import { TrackerView } from './components/TrackerView';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
 import {
@@ -27,12 +25,12 @@ import {
 import { listen } from '@tauri-apps/api/event';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<TabType>('switcher');
+  const [currentTab, setCurrentTab] = useState<TabType>('overview');
   const [displayInfo, setDisplayInfo] = useState<DisplayInfo | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutBinding | null>(null);
   const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const [preferredStretched, setPreferredStretched] = useState<[number, number]>([2090, 1440]);
+  const [preferredStretched, setPreferredStretched] = useState<[number, number]>([2088, 1440]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -102,19 +100,22 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadAllTelemetry();
 
-    // Keyboard shortcut navigation (1-5)
+    // Keyboard shortcut navigation (1: Tracker, 2: Utility, 3: Settings)
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === '1') setCurrentTab('switcher');
-      if (e.key === '2') setCurrentTab('visualizer');
+      if (e.key === '1') setCurrentTab('overview');
+      if (e.key === '2') setCurrentTab('switcher');
       if (e.key === '3') setCurrentTab('settings');
       if (e.key === '4') setCurrentTab('gpu');
       if (e.key === '5') setCurrentTab('valorant');
+      if (e.key === '6') setCurrentTab('overview');
+      if (e.key === '7') setCurrentTab('matches');
     };
     window.addEventListener('keydown', handleKeyDown);
 
     // Listen for background global hotkey toggle events from Rust backend
     let unlistenFn: (() => void) | undefined;
+    let unlistenBlFn: (() => void) | undefined;
     if (isTauri()) {
       listen<DisplayInfo>('display-mode-changed', (event) => {
         setDisplayInfo(event.payload);
@@ -124,6 +125,12 @@ export const App: React.FC = () => {
         );
       }).then((unlisten) => {
         unlistenFn = unlisten;
+      });
+
+      listen<{ hwnd: number; title: string; message: string }>('auto-borderless-applied', (event) => {
+        showToast(`Auto-borderless: ${event.payload.title || 'VALORANT'} fullscreened`, 'success');
+      }).then((unlisten) => {
+        unlistenBlFn = unlisten;
       });
     }
 
@@ -140,7 +147,7 @@ export const App: React.FC = () => {
       try {
         const req = await checkRequestedTab();
         if (req) {
-          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant'].includes(req)) {
+          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant', 'overview', 'matches'].includes(req)) {
             setCurrentTab(req as TabType);
           } else if (req === 'borderless' || req === 'display' || req === 'monitors') {
             // Legacy alias: Window Stretcher merged into switcher grid
@@ -161,6 +168,7 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('blur', handleBlur);
       if (unlistenFn) unlistenFn();
+      if (unlistenBlFn) unlistenBlFn();
     };
   }, []);
 
@@ -170,11 +178,7 @@ export const App: React.FC = () => {
     }
   }, [currentTab]);
 
-  const isFitViewportTab =
-    currentTab === 'switcher' ||
-    currentTab === 'borderless' ||
-    currentTab === 'visualizer' ||
-    currentTab === 'settings';
+  const isFitViewportTab = true;
   const effectiveTab: TabType = currentTab === 'borderless' ? 'switcher' : currentTab;
 
   const handleToggle = async () => {
@@ -260,11 +264,11 @@ export const App: React.FC = () => {
           ref={mainRef}
           className={
             isFitViewportTab
-              ? 'flex-1 min-h-0 overflow-hidden p-3'
+              ? 'flex-1 min-h-0 overflow-hidden p-0'
               : 'flex-1 overflow-y-auto p-3.5 sm:p-4'
           }
         >
-          <div className={isFitViewportTab ? 'h-full min-h-0 w-full' : 'max-w-6xl mx-auto h-full w-full'}>
+          <div className="h-full min-h-0 w-full">
             <AnimatePresence mode="wait">
               <motion.div
                 key={effectiveTab}
@@ -272,10 +276,15 @@ export const App: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                className={isFitViewportTab ? 'h-full min-h-0' : 'h-full'}
+                className="h-full min-h-0"
               >
-                {(currentTab === 'switcher' || currentTab === 'borderless') && (
-                  <UnifiedStretch
+                {(currentTab === 'overview' || currentTab === 'matches') && (
+                  <TrackerView initialSubTab={currentTab === 'matches' ? 'matches' : 'overview'} />
+                )}
+
+                {(currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless') && (
+                  <UtilityView
+                    initialSubTab={currentTab === 'visualizer' ? 'visualizer' : 'switcher'}
                     displayInfo={displayInfo}
                     shortcut={shortcut}
                     preferredStretched={preferredStretched}
@@ -286,26 +295,13 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {currentTab === 'visualizer' && (
-                  <ResolutionVisualizer
+                {(currentTab === 'settings' || currentTab === 'valorant' || currentTab === 'gpu') && (
+                  <SettingsView
+                    initialSubTab={currentTab === 'valorant' ? 'valorant' : currentTab === 'gpu' ? 'gpu' : 'setup'}
                     displayInfo={displayInfo}
-                    onApplyResolution={handleApplyResolution}
-                  />
-                )}
-
-                {currentTab === 'settings' && (
-                  <Settings
-                    displayInfo={displayInfo}
+                    gpuInfo={gpuInfo}
                     onStretchResChanged={(w, h) => setPreferredStretched([w, h])}
                     onRefreshDisplayInfo={loadAllTelemetry}
-                  />
-                )}
-
-                {currentTab === 'valorant' && <ValorantConfig />}
-
-                {currentTab === 'gpu' && (
-                  <HardwareScaling
-                    gpuInfo={gpuInfo}
                     onOpenControlPanel={handleOpenControlPanel}
                   />
                 )}

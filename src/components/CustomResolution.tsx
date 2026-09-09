@@ -404,7 +404,7 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
               max="7680"
               value={width}
               onChange={(e) => setWidth(Number(e.target.value))}
-              placeholder="e.g. 2090"
+              placeholder="e.g. 2088"
               className="w-full h-10 px-3 pr-10 bg-transparent text-m3-on-surface font-mono font-bold text-sm focus:outline-none tabular-nums placeholder:text-m3-outline/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="absolute right-3 text-xs font-mono font-semibold text-m3-outline pointer-events-none">

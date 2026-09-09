@@ -486,60 +486,66 @@ pub fn apply_single_gpu_setting(id: &str, value: bool) -> Result<GpuSettingsRepo
     Ok(get_gpu_settings_report())
 }
 
-/// Enforces Full-Screen Stretched scaling across Win32 CCD, WDDM, NVIDIA driver database, and AMD/Intel keys.
-pub fn enforce_all_gpu_scaling() {
-    // 1. Win32 CCD SetDisplayConfig (forces active display paths to DISPLAYCONFIG_SCALING_STRETCHED)
-    let _ = crate::display::set_display_scaling_mode(true);
+/// Applies vendor-tailored GPU scaling ONLY for the active GPU vendor:
+/// - NVIDIA: nvlddmkm DisplayDatabase ScalingConfig (Full-screen + GPU scaling)
+/// - AMD: DalKeepAspectRatio=0 (Full Panel), DalGpuScaling=1, DalScaleRule=0, DalIntegerScaling=0
+/// - Intel: ScaleOption=3 (Scale Full Screen), MaintainAspectRatio=0
+/// - Win32: SetDisplayConfig CCD stretched mode
+pub fn apply_gpu_scaling_for_active_vendor(stretched: bool) {
+    let gpu_info = detect_gpu();
 
-    // 2. Pure native winreg update for WDDM GraphicsDrivers\Configuration
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(config_root) = hklm.open_subkey_with_flags(
-        r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration",
-        KEY_READ | KEY_SET_VALUE,
-    ) {
-        apply_scaling_recursive(&config_root, 4); // 4 = Stretched Full-Screen
-    }
+    // 1. Win32 CCD (Universal OS display scaling)
+    let _ = crate::display::set_display_scaling_mode(stretched);
 
-    // 3. Update NVIDIA nvlddmkm DisplayDatabase ScalingConfig
-    // byte 8: 0x02 = Full-screen
-    // byte 9: 0x01 = GPU scaling
-    // byte 10: 0x01 = Override scaling mode set by games
-    // byte 12: 0xf1 = Checksum flag
-    let nv_base = r"SYSTEM\CurrentControlSet\Services\nvlddmkm\State\DisplayDatabase";
-    if let Ok(nv_key) = hklm.open_subkey_with_flags(nv_base, KEY_READ | KEY_SET_VALUE) {
-        for sub in nv_key.enum_keys().filter_map(|k| k.ok()) {
-            if let Ok(sub_key) = nv_key.open_subkey_with_flags(&sub, KEY_READ | KEY_SET_VALUE) {
-                if let Ok(mut val) = sub_key.get_raw_value("ScalingConfig") {
-                    if val.bytes.len() >= 16 {
-                        val.bytes[8] = 0x02;
-                        val.bytes[9] = 0x01;
-                        val.bytes[10] = 0x01;
-                        val.bytes[12] = 0xf1;
-                        let _ = sub_key.set_raw_value("ScalingConfig", &val);
+    // 2. Vendor-specific driver adjustment ONLY for the detected active vendor
+    match gpu_info.vendor {
+        GpuVendor::Nvidia => {
+            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+            let nv_base = r"SYSTEM\CurrentControlSet\Services\nvlddmkm\State\DisplayDatabase";
+            if let Ok(nv_key) = hklm.open_subkey_with_flags(nv_base, KEY_READ | KEY_SET_VALUE) {
+                for sub in nv_key.enum_keys().filter_map(|k| k.ok()) {
+                    if let Ok(sub_key) = nv_key.open_subkey_with_flags(&sub, KEY_READ | KEY_SET_VALUE) {
+                        if let Ok(mut val) = sub_key.get_raw_value("ScalingConfig") {
+                            if val.bytes.len() >= 16 {
+                                val.bytes[8] = if stretched { 0x02 } else { 0x01 };
+                                val.bytes[9] = 0x01;
+                                val.bytes[10] = 0x01;
+                                val.bytes[12] = 0xf1;
+                                let _ = sub_key.set_raw_value("ScalingConfig", &val);
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-
-    // 4. Update GPU adapter registry keys (AMD, Intel, etc.)
-    apply_to_all_gpu_adapters(|desc, prov, sub_key| {
-        let lower = format!("{} {}", prov, desc).to_lowercase();
-        if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
-            let _ = sub_key.set_value("DalKeepAspectRatio", &0u32);
-            let _ = sub_key.set_value("DalGpuScaling", &1u32);
-            let _ = sub_key.set_value("DalEnableModeBypass", &1u32);
-            let _ = sub_key.set_value("DalScaleRule", &0u32);
-            let _ = sub_key.set_value("DalIntegerScaling", &0u32);
-        } else if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
-            let _ = sub_key.set_value("ScaleOption", &3u32);
-            let _ = sub_key.set_value("ReadEDIDFromRegistry", &1u32);
-            let _ = sub_key.set_value("CustomModeAllowed", &1u32);
-            let _ = sub_key.set_value("EnableCustomResolutions", &1u32);
-            let _ = sub_key.set_value("MaintainAspectRatio", &0u32);
-            let _ = sub_key.set_value("DisableLetterboxing", &1u32);
+        GpuVendor::Amd => {
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("amd") || lower.contains("radeon") || lower.contains("advanced micro devices") || lower.contains("ati") {
+                    let _ = sub_key.set_value("DalKeepAspectRatio", &if stretched { 0u32 } else { 1u32 });
+                    let _ = sub_key.set_value("DalGpuScaling", &1u32);
+                    let _ = sub_key.set_value("DalScaleRule", &0u32);
+                    let _ = sub_key.set_value("DalIntegerScaling", &0u32);
+                    let _ = sub_key.set_value("DalEnableModeBypass", &1u32);
+                }
+            });
         }
-    });
+        GpuVendor::Intel => {
+            apply_to_all_gpu_adapters(|desc, prov, sub_key| {
+                let lower = format!("{} {}", prov, desc).to_lowercase();
+                if lower.contains("intel") || lower.contains("arc") || lower.contains("iris") || lower.contains("uhd") {
+                    let _ = sub_key.set_value("ScaleOption", &if stretched { 3u32 } else { 2u32 });
+                    let _ = sub_key.set_value("MaintainAspectRatio", &if stretched { 0u32 } else { 1u32 });
+                }
+            });
+        }
+        GpuVendor::Unknown => {}
+    }
+}
+
+/// Enforces Full-Screen Stretched scaling across Win32 CCD, WDDM, NVIDIA driver database, and AMD/Intel keys.
+pub fn enforce_all_gpu_scaling() {
+    apply_gpu_scaling_for_active_vendor(true);
 }
 
 pub fn auto_configure_all_gpu_settings() -> Result<(String, GpuSettingsReport), String> {

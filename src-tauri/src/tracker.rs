@@ -1,0 +1,304 @@
+use serde::{Deserialize, Serialize};
+use std::process::Command;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalRiotAccount {
+    pub game_name: String,
+    pub tagline: String,
+    pub puuid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalEntitlements {
+    pub access_token: String,
+    pub entitlements: String,
+    pub puuid: String,
+}
+
+/// name:pid:port:password:protocol. Stale lockfile (dead client) surfaces
+/// as a connect failure downstream with a clear message.
+fn lockfile_auth() -> Result<(String, String), String> {
+    let lockfile = std::env::var("LOCALAPPDATA")
+        .map(|la| {
+            std::path::PathBuf::from(la)
+                .join("Riot Games")
+                .join("Riot Client")
+                .join("Config")
+                .join("lockfile")
+        })
+        .map_err(|_| "Riot Client not found on this PC.".to_string())?;
+    let content = std::fs::read_to_string(&lockfile)
+        .map_err(|_| "Riot Client lockfile missing — launch Riot Client or Valorant first.".to_string())?;
+    let parts: Vec<&str> = content.trim().split(':').collect();
+    if parts.len() < 5 {
+        return Err("Unreadable lockfile — relaunch the Riot Client and retry.".to_string());
+    }
+    Ok((parts[2].to_string(), parts[3].to_string()))
+}
+
+fn curl_args() -> Command {
+    let mut cmd = Command::new("curl");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+/// GET against the local client (self-signed cert). Password lives only in
+/// the curl argument for one local call — never logged or stored.
+fn local_get(port: &str, password: &str, path: &str) -> Result<serde_json::Value, String> {
+    let url = format!("https://127.0.0.1:{}{}", port, path);
+    let output = curl_args()
+        .args([
+            "-s",
+            "-k",
+            "--max-time",
+            "5",
+            "-u",
+            &format!("riot:{}", password),
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Local query failed: {}", e))?;
+    if !output.status.success() {
+        return Err("Riot Client not responding — launch it and retry.".to_string());
+    }
+    serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+        .map_err(|_| "Unexpected local response.".to_string())
+}
+
+/// Reads the logged-in Riot account from the local Riot Client lockfile —
+/// the same technique desktop trackers use.
+#[tauri::command]
+pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
+    let (port, password) = lockfile_auth()?;
+    let v = local_get(&port, &password, "/player-account/aliases/v1/active")?;
+    let game_name = v
+        .get("game_name")
+        .and_then(|s| s.as_str())
+        .ok_or("No active session — log into the Riot Client first.".to_string())?;
+    Ok(LocalRiotAccount {
+        game_name: game_name.to_string(),
+        tagline: v
+            .get("tag_line")
+            .or_else(|| v.get("tagline"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        puuid: v
+            .get("puuid")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+/// Entitlements triple for direct Riot calls (refetch when Riot 401s).
+#[tauri::command]
+pub fn local_entitlements() -> Result<LocalEntitlements, String> {
+    let (port, password) = lockfile_auth()?;
+    let v = local_get(&port, &password, "/entitlements/v1/token")?;
+    Ok(LocalEntitlements {
+        access_token: v
+            .get("accessToken")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        entitlements: v
+            .get("token")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+        puuid: v
+            .get("subject")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+/// Client version for the X-Riot-ClientVersion header, read from the
+/// latest game log (e.g. "CI server version: release-13.05-shipping-11-…").
+#[tauri::command]
+pub fn local_client_version() -> Result<String, String> {
+    let log_path = std::env::var("LOCALAPPDATA")
+        .map(|la| {
+            std::path::PathBuf::from(la)
+                .join("VALORANT")
+                .join("Saved")
+                .join("Logs")
+                .join("ShooterGame.log")
+        })
+        .map_err(|_| "VALORANT logs not found.".to_string())?;
+    let content = std::fs::read_to_string(&log_path).map_err(|_| "Game log missing.".to_string())?;
+    // Scan the tail: newest version line wins.
+    let tail: String = content.chars().rev().take(200_000).collect::<String>().chars().rev().collect();
+    for line in tail.lines().rev() {
+        if let Some(i) = line.find("CI server version:") {
+            let v = line[i + "CI server version:".len()..].trim().to_string();
+            if !v.is_empty() {
+                return Ok(v);
+            }
+        }
+    }
+    Err("Client version not found in logs.".to_string())
+}
+
+/// Chrome-impersonated GET for tracker.gg's Cloudflare wall, via the bundled
+/// trnfetch sidecar (Go + uTLS Chrome fingerprint — pure-Rust TLS spoofing has
+/// no Windows-ready crate; BoringSSL won't compile under MSVC toolchains).
+/// Read-only profile/segment calls, no key, no browser session. If TRN ever
+/// gates them, callers fall back to Riot-direct data.
+#[tauri::command]
+pub fn trn_get(path: String) -> Result<String, String> {
+    if path.contains([' ', '\n', '\r']) || !path.starts_with("/api/") {
+        return Err("Invalid path.".to_string());
+    }
+    if path.len() > 300 {
+        return Err("Path too long.".to_string());
+    }
+    let url = format!("https://api.tracker.gg{}", path);
+    // Prod: sidecar sits beside the app binary (either trnfetch.exe or trnfetch-x86_64-pc-windows-msvc.exe).
+    // Dev: src-tauri/binaries/.
+    let bin_triple = "trnfetch-x86_64-pc-windows-msvc.exe";
+    let bin_short = "trnfetch.exe";
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    let bin = exe_dir
+        .as_ref()
+        .map(|d| d.join(bin_short))
+        .filter(|p| p.exists())
+        .or_else(|| {
+            exe_dir
+                .as_ref()
+                .map(|d| d.join(bin_triple))
+                .filter(|p| p.exists())
+        })
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(bin_triple)
+        });
+    let mut cmd = Command::new(bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let output = cmd
+        .arg(&url)
+        .arg("--max-time")
+        .arg("20")
+        .output()
+        .map_err(|e| format!("sidecar failed: {}", e))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "TRN_{}",
+            err.trim().chars().take(140).collect::<String>()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Generic authed GET against Riot's servers. Tokens stay in arguments;
+/// the raw body returns so the frontend parses defensively.
+#[tauri::command]
+pub fn riot_direct_get(
+    host: String,
+    path: String,
+    access_token: String,
+    entitlements: String,
+    client_platform: String,
+    client_version: String,
+) -> Result<String, String> {
+    if host.contains(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
+        return Err("Invalid host.".to_string());
+    }
+    if path.contains([' ', '\n', '\r']) {
+        return Err("Invalid path.".to_string());
+    }
+    let url = format!("https://{}{}", host, path);
+    let output = curl_args()
+        .args([
+            "-s",
+            "--max-time",
+            "10",
+            "-H",
+            &format!("Authorization: Bearer {}", access_token),
+            "-H",
+            &format!("X-Riot-Entitlements-JWT: {}", entitlements),
+            "-H",
+            &format!("X-Riot-ClientPlatform: {}", client_platform),
+            "-H",
+            &format!("X-Riot-ClientVersion: {}", client_version),
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Riot query failed: {}", e))?;
+    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        if body.contains("\"statusCode\":401") || body.contains("FORBIDDEN") {
+            return Err("RIOT_EXPIRED".to_string());
+        }
+        return Err(format!("Riot error: {}", body.chars().take(160).collect::<String>()));
+    }
+    Ok(body)
+}
+
+/// Resolve PUUIDs to real GameNames and TagLines via Riot's name-service endpoint.
+#[tauri::command]
+pub fn riot_resolve_names(
+    shard: String,
+    puuids: Vec<String>,
+) -> Result<String, String> {
+    if puuids.is_empty() {
+        return Ok("[]".to_string());
+    }
+    let (port, password) = lockfile_auth()?;
+    let ent = local_get(&port, &password, "/entitlements/v1/token")?;
+    let access_token = ent
+        .get("accessToken")
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| "No access token".to_string())?;
+    let token = ent
+        .get("token")
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| "No entitlement token".to_string())?;
+
+    let client_version = local_client_version().unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
+    let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", shard);
+    let body = serde_json::to_string(&puuids).map_err(|e| e.to_string())?;
+
+    let output = curl_args()
+        .args([
+            "-s",
+            "-X",
+            "PUT",
+            "--max-time",
+            "10",
+            "-H",
+            &format!("Authorization: Bearer {}", access_token),
+            "-H",
+            &format!("X-Riot-Entitlements-JWT: {}", token),
+            "-H",
+            "X-Riot-ClientPlatform: ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
+            "-H",
+            &format!("X-Riot-ClientVersion: {}", client_version),
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &body,
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Name service failed: {}", e))?;
+
+    let res = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        return Err(format!("Name service error: {}", res));
+    }
+    Ok(res)
+}

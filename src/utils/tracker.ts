@@ -1,0 +1,783 @@
+import { invoke } from '@tauri-apps/api/core';
+import type { LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
+import { isTauri } from './ipc';
+
+/* Keyless tracker: everything comes straight from Riot using the local
+   client's own session. No API keys, no third party. Needs Riot Client open.
+   Proven live shapes (2026-09-08/09), same endpoints TRN/Blitz call locally:
+   - mmr: { LatestCompetitiveUpdate: {...}, QueueSkills: { competitive: { SeasonalInfoBySeasonID } } }
+   - competitiveupdates: { Matches: [{ MatchID, MapID, MatchStartTime, TierAfterUpdate, RankedRatingAfterUpdate, RankedRatingEarned }] }
+   - history: { Total, History: [{ MatchID, GameStartTime, QueueID }] }
+   - match-details/v1/matches/{id}: { matchInfo, players[] (subject/teamId/characterId/stats/roundDamage), teams[], roundResults[] } */
+
+/** Logged-in Riot account from the local client. Throws when the client is closed. */
+export async function detectLocalAccount(): Promise<LocalRiotAccount> {
+  if (!isTauri()) throw new Error('Auto-detect needs the desktop app.');
+  try {
+    const acc = await invoke<LocalRiotAccount>('detect_local_account');
+    let name = acc.game_name ?? '';
+    let tag = acc.tagline ?? '';
+    if (!tag && name.includes('#')) {
+      const i = name.lastIndexOf('#');
+      tag = name.slice(i + 1);
+      name = name.slice(0, i);
+    }
+    return { ...acc, game_name: name, tagline: tag };
+  } catch (e) {
+    throw new Error(typeof e === 'string' ? e : 'Auto-detect failed — is the Riot Client open?');
+  }
+}
+
+/** Tier id → name fallback when only the number arrives. */
+export const tierName = (id: number): string => {
+  if (!Number.isFinite(id)) return '—';
+  if (id >= 27) return 'Radiant';
+  if (id < 3) return 'Unrated';
+  const tiers = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Ascendant', 'Immortal'];
+  return `${tiers[Math.floor((id - 3) / 3)]} ${((id - 3) % 3) + 1}`;
+};
+
+const platformBlob = (): string => {
+  try {
+    return btoa(
+      JSON.stringify({
+        platformType: 'PC',
+        platformOS: 'Windows',
+        platformOSVersion: '10.0.19042.1.256.64bit',
+        platformChipset: 'Unknown',
+      })
+    );
+  } catch {
+    return '';
+  }
+};
+
+const shardFor = (region: string): string =>
+  (
+    {
+      eu: 'pd.eu.a.pvp.net',
+      na: 'pd.na.a.pvp.net',
+      ap: 'pd.ap.a.pvp.net',
+      br: 'pd.br.a.pvp.net',
+      latam: 'pd.latam.a.pvp.net',
+      kr: 'pd.kr.a.pvp.net',
+    } as Record<string, string>
+  )[region] ?? 'pd.eu.a.pvp.net';
+
+interface DirectEnt {
+  access_token: string;
+  entitlements: string;
+  puuid: string;
+}
+
+let entCache: { at: number; ent: DirectEnt } | null = null;
+
+export async function getEntitlements(): Promise<DirectEnt> {
+  if (entCache && Date.now() - entCache.at < 45 * 60 * 1000) return entCache.ent;
+  if (!isTauri()) throw new Error('Tracker needs the desktop app.');
+  const ent = await invoke<DirectEnt>('local_entitlements');
+  if (!ent.access_token) throw new Error('No active session — log into the Riot Client first.');
+  entCache = { at: Date.now(), ent };
+  return ent;
+}
+
+export const clearEntitlements = (): void => {
+  entCache = null;
+};
+
+let cachedVersion: string | null = null;
+
+/** Client version Riot demands in headers. Log scrape first, public API fallback
+    (log only exists after the game itself has launched once). */
+async function resolveVersion(): Promise<string> {
+  if (cachedVersion) return cachedVersion;
+  try {
+    const v = await invoke<string>('local_client_version');
+    if (v && v.includes('shipping')) {
+      cachedVersion = v;
+      return v;
+    }
+  } catch {}
+  try {
+    const j = await fetch('https://valorant-api.com/v1/version').then((r) => r.json());
+    const v = String(j?.data?.riotClientVersion ?? '');
+    if (v) {
+      cachedVersion = v;
+      return v;
+    }
+  } catch {}
+  return '';
+}
+
+/** Authed Riot GET from Rust (browser origins are blocked). Refetches entitlements once on expiry. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function riotGet(host: string, path: string): Promise<any> {
+  const call = async (e: DirectEnt): Promise<string> => {
+    const version = await resolveVersion();
+    return invoke<string>('riot_direct_get', {
+      host,
+      path,
+      accessToken: e.access_token,
+      entitlements: e.entitlements,
+      clientPlatform: platformBlob(),
+      clientVersion: version,
+    });
+  };
+  try {
+    return JSON.parse(await call(await getEntitlements()));
+  } catch (e) {
+    if (String(e).includes('RIOT_EXPIRED')) {
+      clearEntitlements();
+      return JSON.parse(await call(await getEntitlements()));
+    }
+    throw e;
+  }
+}
+
+let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string>; agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }>; weapons: Record<string, string> } | null = null;
+
+const GAME_DATA_KEY = 'aspect_game_data_v3';
+
+/** Static Riot metadata via public valorant-api.com, cached 30 days. */
+export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string>; agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }>; weapons: Record<string, string> }> {
+  if (gameDataMem) return gameDataMem;
+  try {
+    const raw = localStorage.getItem(GAME_DATA_KEY);
+    if (raw) {
+      const { savedAt, data } = JSON.parse(raw);
+      if (Date.now() - savedAt < 30 * 24 * 3600 * 1000 && data?.agents && data?.tierIcons && data?.agentInfo) {
+        gameDataMem = { agents: data.agents, maps: data.maps ?? {}, seasons: data.seasons ?? {}, seasonOrder: data.seasonOrder ?? [], tierIcons: data.tierIcons, agentInfo: data.agentInfo ?? {}, weapons: data.weapons ?? {} };
+        return gameDataMem;
+      }
+    }
+  } catch {}
+  const agents: Record<string, string> = {};
+  const maps: Record<string, string> = {};
+  const seasons: Record<string, string> = {};
+  let seasonOrder: string[] = [];
+  const tierIcons: Record<number, string> = {};
+  const agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }> = {};
+  const weapons: Record<string, string> = {};
+  try {
+    const [aj, mj, cs, sn, ct, wj] = await Promise.all([
+      fetch('https://valorant-api.com/v1/agents?isPlayableCharacter=true').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/maps').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/seasons/competitive').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/seasons').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/competitivetiers').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/weapons').then((r) => r.json()),
+    ]);
+    for (const a of aj?.data ?? []) {
+      if (a?.uuid && a?.displayName) {
+        const id = String(a.uuid).toLowerCase();
+        agents[id] = a.displayName;
+        agentInfo[id] = {
+          name: a.displayName,
+          icon: String(a.displayIcon ?? ''),
+          role: String(a.role?.displayName ?? ''),
+          roleIcon: String(a.role?.displayIcon ?? ''),
+        };
+      }
+    }
+    for (const m of mj?.data ?? []) {
+      if (m?.mapUrl && m?.displayName) {
+        maps[String(m.mapUrl).toLowerCase()] = m.displayName;
+        if (m?.uuid) maps[String(m.uuid).toLowerCase()] = m.displayName;
+      }
+    }
+    // competitive uuid → "V26 · ACT V": episode from asset path, act from season name.
+    const names: Record<string, string> = {};
+    for (const s of sn?.data ?? []) {
+      if (s?.uuid && s?.displayName) names[String(s.uuid).toLowerCase()] = s.displayName;
+    }
+    const compList = Array.isArray(cs?.data) ? cs.data : [];
+    for (const c of compList) {
+      const cuuid = String(c?.uuid ?? '').toLowerCase();
+      const suuid = String(c?.seasonUuid ?? '').toLowerCase();
+      if (!cuuid && !suuid) continue;
+      const act = names[suuid] ?? '';
+      const ep = /Episode(V\d+)/i.exec(String(c?.assetPath ?? ''))?.[1] ?? '';
+      const label = [ep, act].filter(Boolean).join(' · ') || 'Season';
+      // Riot keys player seasons by the SEASON uuid (SeasonID), not the
+      // competitive uuid — index both so lookups always hit.
+      if (cuuid) seasons[cuuid] = label;
+      if (suuid) seasons[suuid] = label;
+    }
+    seasonOrder = compList
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .slice().sort((a: any, b: any) => String(b?.endTime ?? '').localeCompare(String(a?.endTime ?? '')))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => String(c?.seasonUuid ?? c?.uuid ?? '').toLowerCase()).filter(Boolean);
+    // newest tier set wins; tier id matches Riot's numbering 0–27.
+    const sets = Array.isArray(ct?.data) ? ct.data : [];
+    const tiers = sets.length > 0 ? sets[sets.length - 1]?.tiers ?? [] : [];
+    for (const t of tiers) {
+      const id = Number(t?.tier);
+      if (Number.isInteger(id) && t?.largeIcon) tierIcons[id] = String(t.largeIcon);
+    }
+    for (const w of wj?.data ?? []) {
+      if (w?.uuid && w?.displayName) weapons[String(w.uuid).toLowerCase()] = w.displayName;
+    }
+    localStorage.setItem(GAME_DATA_KEY, JSON.stringify({ savedAt: Date.now(), data: { agents, maps, seasons, seasonOrder, tierIcons, agentInfo, weapons } }));
+  } catch {}
+  gameDataMem = { agents, maps, seasons, seasonOrder, tierIcons, agentInfo, weapons };
+  return gameDataMem;
+}
+
+/** Last path segment of a /Game/Maps/X/X id, for maps valorant-api.com doesn't know yet. */
+export const shortMapName = (mapId: string, maps: Record<string, string>): string =>
+  maps[mapId.toLowerCase()] ?? (mapId.split('/').pop() || '?');
+
+/** Rank + RR + peak + per-season peaks straight from Riot. */
+export async function fetchMmrDirect(region: string, name: string, tag: string): Promise<TrackerProfile> {
+  const ent = await getEntitlements();
+  const j = await riotGet(shardFor(region), `/mmr/v1/players/${ent.puuid}`);
+  const latest = j?.LatestCompetitiveUpdate ?? {};
+  const currentSeasonId = String(latest?.SeasonID ?? '').toLowerCase();
+  const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+  let wins = 0;
+  let games = 0;
+  let peakTier = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const per: { id: string; games: number; wins: number; tier: number }[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const [id, s] of Object.entries(seasons) as [string, any][]) {
+    const g = Number(s?.NumberOfGames ?? 0);
+    const t = Number(s?.CompetitiveTier ?? 0);
+    per.push({ id, games: g, wins: Number(s?.NumberOfWins ?? 0), tier: t });
+    if (g >= games) {
+      games = g;
+      wins = Number(s?.NumberOfWins ?? 0);
+    }
+    peakTier = Math.max(peakTier, t);
+  }
+  const tierId = Number(latest?.TierAfterUpdate ?? 0);
+  // Wins/games belong to the CURRENT act (Riot tells us which). Fall back to busiest.
+  if (currentSeasonId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cur = (Object.entries(seasons) as [string, any][]).find(([id]) => String(id).toLowerCase() === currentSeasonId)?.[1];
+    if (cur && Number(cur?.NumberOfGames ?? 0) > 0) {
+      games = Number(cur.NumberOfGames);
+      wins = Number(cur?.NumberOfWins ?? 0);
+    }
+  }
+  return {
+    name,
+    tag,
+    region,
+    puuid: ent.puuid,
+    rank: tierName(tierId),
+    tier: tierId,
+    rr: Number(latest?.RankedRatingAfterUpdate ?? 0),
+    peak: peakTier > 0 ? tierName(peakTier) : '—',
+    wins,
+    games,
+    currentSeasonId,
+    seasons: per.filter((s) => s.games > 0).sort((a, b) => b.games - a.games),
+  };
+}
+
+export interface PlayerIdentity {
+  cardId: string;
+  titleId: string;
+  level: number;
+}
+
+let identityCache: { at: number; id: PlayerIdentity } | null = null;
+
+/** Equipped player card / title / account level, straight from Riot via the
+    local client's own session (same creds as MMR — no key, no TRN).
+    Cached 30 min. Throws when unusable; callers MUST fall back. */
+export async function fetchIdentityDirect(region: string): Promise<PlayerIdentity> {
+  if (identityCache && Date.now() - identityCache.at < 30 * 60 * 1000) return identityCache.id;
+  const ent = await getEntitlements();
+  const j = await riotGet(shardFor(region), `/personalization/v2/players/${ent.puuid}/playerloadout`);
+  const ident = j?.Identity ?? {};
+  const id: PlayerIdentity = {
+    cardId: String(ident?.PlayerCardID ?? ''),
+    titleId: String(ident?.PlayerTitleID ?? ''),
+    level: Number(ident?.AccountLevel ?? 0),
+  };
+  if (!id.cardId) throw new Error('No player card equipped.');
+  identityCache = { at: Date.now(), id };
+  return id;
+}
+
+/** Player card art (banner + avatar) from the public data API. Cached forever per card. */
+export async function fetchCardArt(cardId: string): Promise<{ wide: string; small: string }> {
+  const fallback = { wide: '', small: '' };
+  if (!cardId) return fallback;
+  const cacheKey = `aspect_cardart_v1_${cardId}`;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) return JSON.parse(raw) as { wide: string; small: string };
+  } catch {}
+  try {
+    const j = await fetch(`https://valorant-api.com/v1/playercards/${cardId}`).then((r) => r.json());
+    const out = {
+      wide: String(j?.data?.wideArt ?? ''),
+      small: String(j?.data?.smallArt ?? j?.data?.displayIcon ?? ''),
+    };
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(out));
+    } catch {}
+    return out;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Last N competitive games with map, time, and RR earned — feeds rows AND trend. */
+export async function fetchCompetitiveUpdates(region: string, count = 20): Promise<TrackerMmrPoint[]> {
+  const ent = await getEntitlements();
+  const j = await riotGet(
+    shardFor(region),
+    `/mmr/v1/players/${ent.puuid}/competitiveupdates?startIndex=0&endIndex=${count}`
+  );
+  const list = Array.isArray(j?.Matches) ? j.Matches : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return list.map((g: any) => ({
+    tier: tierName(Number(g?.TierAfterUpdate ?? 0)),
+    rr: Number(g?.RankedRatingAfterUpdate ?? 0),
+    change: Number(g?.RankedRatingEarned ?? 0),
+    matchId: String(g?.MatchID ?? ''),
+    mapId: String(g?.MapID ?? ''),
+    when: Number(g?.MatchStartTime ?? 0),
+  }));
+}
+
+/** Find the account's shard: cached 7 days, else first shard that answers. */
+export async function detectRegion(): Promise<string> {
+  try {
+    const raw = localStorage.getItem('aspect_tracker_shard');
+    if (raw) {
+      const { savedAt, region } = JSON.parse(raw);
+      if (Date.now() - savedAt < 7 * 24 * 3600 * 1000 && region) return region;
+    }
+  } catch {}
+  const ent = await getEntitlements();
+  for (const r of ['eu', 'na', 'ap', 'br', 'latam', 'kr']) {
+    try {
+      const j = await riotGet(shardFor(r), `/mmr/v1/players/${ent.puuid}`);
+      if (j?.LatestCompetitiveUpdate) {
+        try {
+          localStorage.setItem('aspect_tracker_shard', JSON.stringify({ savedAt: Date.now(), region: r }));
+        } catch {}
+        return r;
+      }
+    } catch {}
+  }
+  return 'eu';
+}
+
+export async function fetchHistoryMeta(
+  region: string,
+  start: number,
+  count: number
+): Promise<{ total: number; queueById: Record<string, string> }> {
+  const ent = await getEntitlements();
+  const j = await riotGet(
+    shardFor(region),
+    `/match-history/v1/history/${ent.puuid}?startIndex=${start}&endIndex=${start + count}`
+  );
+  const queueById: Record<string, string> = {};
+  const h = Array.isArray(j?.History) ? j.History : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const x of h as any[]) {
+    const id = String(x?.MatchID ?? '');
+    if (id) queueById[id] = String(x?.QueueID ?? '');
+  }
+  return { total: Number(j?.Total ?? 0), queueById };
+}
+
+export const queueLabel = (q: string): string => {
+  const s = q.trim().toLowerCase();
+  if (s === 'competitive') return 'Competitive';
+  if (s === 'unrated') return 'Unrated';
+  if (s === 'deathmatch') return 'Deathmatch';
+  if (s === 'spikerush') return 'Spike Rush';
+  if (s === 'swiftplay') return 'Swiftplay';
+  if (s === 'custom') return 'Custom';
+  return s ? s[0].toUpperCase() + s.slice(1) : '—';
+};
+
+const normTeam = (t: unknown): string => {
+  const s = String(t ?? '').toLowerCase();
+  if (s === 'blue') return 'Blue';
+  if (s === 'red') return 'Red';
+  return String(t ?? '');
+};
+
+/**
+ * Resolve a list of PUUIDs into real GameName and TagLine via Riot Name-Service.
+ * Results are cached in localStorage to prevent repeated network calls.
+ */
+export async function resolvePlayerNames(
+  puuids: string[],
+  shard = 'eu'
+): Promise<Record<string, { name: string; tag: string }>> {
+  if (puuids.length === 0) return {};
+  const cacheKey = 'aspect_names_cache_v1';
+  let cache: Record<string, { name: string; tag: string }> = {};
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) cache = JSON.parse(raw);
+  } catch {}
+
+  const missing = puuids.filter((p) => !cache[p] || !cache[p].name);
+  if (missing.length === 0) return cache;
+
+  try {
+    const res = await invoke<string>('riot_resolve_names', {
+      shard,
+      puuids: missing,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = JSON.parse(res) as any[];
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        const sub = String(item?.Subject ?? item?.subject ?? '');
+        const gn = String(item?.GameName ?? item?.gameName ?? '');
+        const tl = String(item?.TagLine ?? item?.tagLine ?? '');
+        if (sub && gn) {
+          cache[sub] = { name: gn, tag: tl };
+        }
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(cache));
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('Failed to resolve player names:', e);
+  }
+
+  return cache;
+}
+
+/**
+ * Full match straight from Riot via the SAME endpoint TRN/Blitz call locally
+ * (match-details/v1 — the singular /match/v1 path 503s for client creds).
+ * Immutable → cached forever. Throws when unusable.
+ */
+export async function fetchMatchDetailDirect(region: string, matchId: string): Promise<TrackerMatchDetail> {
+  const cacheKey = `aspect_match_v5_${matchId}`;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) return JSON.parse(raw) as TrackerMatchDetail;
+  } catch {}
+  const shard = shardFor(region);
+  const j = await riotGet(shard, `/match-details/v1/matches/${matchId}`);
+  const { agents: amap } = await gameData();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const players: TrackerPlayer[] = ((Array.isArray(j?.players) ? j.players : []) as any[]).map((p) => {
+    const st = p?.stats ?? {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dmg = (Array.isArray(p?.roundDamage) ? p.roundDamage : []).reduce((n: number, r: any) => n + Number(r?.damage ?? 0), 0);
+    return {
+      puuid: String(p?.subject ?? ''),
+      name: String(p?.gameName ?? ''),
+      tag: String(p?.tagLine ?? ''),
+      team: normTeam(p?.teamId),
+      agent: amap[String(p?.characterId ?? '').toLowerCase()] ?? 'Agent',
+      kills: Number(st.kills ?? 0),
+      deaths: Number(st.deaths ?? 0),
+      assists: Number(st.assists ?? 0),
+      damage: dmg,
+      damageTaken: 0,
+      score: Number(st.score ?? 0),
+      rounds: Number(st.roundsPlayed ?? 0),
+      playtimeMs: Number(st.playtimeMillis ?? 0),
+      headshots: 0,
+      bodyshots: 0,
+      legshots: 0,
+      accountLevel: Number(p?.accountLevel ?? 0),
+      tier: Number(p?.competitiveTier ?? 0),
+    };
+  });
+  if (players.length === 0) throw new Error('Empty scoreboard.');
+
+  // Resolve real player names from PUUIDs using Riot name-service
+  try {
+    const puuids = players.map((p) => p.puuid).filter(Boolean);
+    const nameMap = await resolvePlayerNames(puuids, shard);
+    for (const p of players) {
+      if (nameMap[p.puuid]?.name) {
+        p.name = nameMap[p.puuid].name;
+        p.tag = nameMap[p.puuid].tag;
+      }
+    }
+  } catch {}
+  const teamOf = (puuid: string): string => players.find((p) => p.puuid === puuid)?.team ?? '';
+  // Damage taken: every player's roundDamage lists who they hit — invert it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawPlayers: any[] = Array.isArray(j?.players) ? j.players : [];
+  const taken = new Map<string, number>();
+  for (const rp of rawPlayers) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of (Array.isArray(rp?.roundDamage) ? rp.roundDamage : []) as any[]) {
+      const recv = String(r?.receiver ?? '');
+      if (recv) taken.set(recv, (taken.get(recv) ?? 0) + Number(r?.damage ?? 0));
+    }
+  }
+  for (const p of players) p.damageTaken = taken.get(p.puuid) ?? 0;
+  // Team scores come straight from the payload — no round counting needed.
+  const teamScore: Record<string, number> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const t of (Array.isArray(j?.teams) ? j.teams : []) as any[]) {
+    teamScore[normTeam(t?.teamId)] = Number(t?.roundsWon ?? 0);
+  }
+  const roundsSrc: unknown[] = Array.isArray(j?.roundResults) ? j.roundResults : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rounds = (roundsSrc as any[]).map((r) => ({
+    winningTeam: normTeam(r?.winningTeam),
+    roundResult: String(r?.roundResult ?? 'Elimination'),
+    ceremony: String(r?.roundCeremony ?? ''),
+  }));
+  const kills: TrackerDuel[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (roundsSrc as any[]).forEach((r) => {
+    const num = Number(r?.roundNum ?? 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pstats: any[] = Array.isArray(r?.playerStats) ? r.playerStats : [];
+    for (const ps of pstats) {
+      const sub = String(ps?.subject ?? '');
+      const p = players.find((x) => x.puuid === sub);
+      if (p) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const d of (Array.isArray(ps?.damage) ? ps.damage : []) as any[]) {
+          p.headshots += Number(d?.headshots ?? 0);
+          p.bodyshots += Number(d?.bodyshots ?? 0);
+          p.legshots += Number(d?.legshots ?? 0);
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const kl: any[] = Array.isArray(ps?.kills) ? ps.kills : [];
+      for (const k of kl) {
+        const kp = String(k?.killer ?? ps?.subject ?? '');
+        const vp = String(k?.victim ?? '');
+        kills.push({
+          round: num,
+          killerPuuid: kp,
+          victimPuuid: vp,
+          killerTeam: teamOf(kp),
+          victimTeam: teamOf(vp),
+          timeInRound: Number(k?.roundTime ?? 0),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          weapon: String((k as any)?.finishingDamage?.damageItem ?? ''),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          assists: Array.isArray((k as any)?.assistants) ? (k as any).assistants.map((a: unknown) => String(a)) : [],
+        });
+      }
+    }
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mi: any = (j as any)?.matchInfo ?? {};
+  const out: TrackerMatchDetail = {
+    rounds,
+    players,
+    kills,
+    mapId: String(mi.mapId ?? ''),
+    teamScore,
+    queue: String(mi.queueID ?? ''),
+    when: Number(mi.gameStartMillis ?? 0),
+    durationMs: Number(mi.gameLengthMillis ?? 0),
+  };
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(out));
+  } catch {}
+  return out;
+}
+
+export interface AggStats {
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  rounds: number;
+  matches: number;
+  kd: number;
+  adr: number;
+  flawless: number;
+  clutches: number;
+  aces: number;
+  firstKills: number;
+  firstDeaths: number;
+  topAgent: { name: string; matches: number; hours: number };
+}
+
+/** Round-level heroics + identity, derived purely from a cached scoreboard. */
+export function deriveHeroics(
+  detail: TrackerMatchDetail,
+  puuid: string
+): { flawless: number; clutch: boolean; ace: boolean; firstKill: boolean; firstDeath: boolean; agent: string; playtimeMs: number } {
+  const me = detail.players.find((p) => p.puuid === puuid);
+  const myTeam = me?.team ?? '';
+  const byRound = new Map<number, TrackerDuel[]>();
+  for (const k of detail.kills) {
+    const l = byRound.get(k.round) ?? [];
+    l.push(k);
+    byRound.set(k.round, l);
+  }
+  let flawless = 0;
+  let clutch = false;
+  let ace = false;
+  for (const [num, kl] of byRound) {
+    const round = detail.rounds[num];
+    const won = round?.winningTeam === myTeam;
+    const myDeaths = kl.filter((k) => k.victimTeam === myTeam).length;
+    const mateDeaths = kl.filter((k) => k.victimTeam === myTeam && k.victimPuuid !== puuid).length;
+    const iDied = kl.some((k) => k.victimPuuid === puuid);
+    const myKills = kl.filter((k) => k.killerPuuid === puuid).length;
+    if (won && myTeam && myDeaths === 0) flawless++;
+    // Real clutch: I survived with a kill while 2+ mates were already dead (>=3 = 3vX or worse).
+    if (won && !iDied && myKills > 0 && mateDeaths >= 3) clutch = true;
+    if (myKills >= 5) ace = true;
+  }
+  const flat = [...detail.kills].sort((a, b) => a.round - b.round || a.timeInRound - b.timeInRound);
+  return {
+    flawless,
+    clutch,
+    ace,
+    firstKill: flat.length > 0 && flat[0].killerPuuid === puuid,
+    firstDeath: flat.length > 0 && flat[0].victimPuuid === puuid,
+    agent: me?.agent ?? 'Agent',
+    playtimeMs: Number((me as TrackerPlayer & { playtimeMs?: number })?.playtimeMs ?? 0),
+  };
+}
+
+export interface MatchCard {
+  kills3: number;
+  kills4: number;
+  aces: number;
+  kastPct: number;
+  dmgTaken: number;
+  ddDelta: number;
+  clutchWon: boolean;
+  clutchLost: boolean;
+  weaponKills: Record<string, number>;
+}
+
+/** Per-match Blitz-style card: multikills, KAST, damage delta, clutch flags, weapons. */
+export function matchCard(detail: TrackerMatchDetail, puuid: string): MatchCard {
+  const byRound = new Map<number, TrackerDuel[]>();
+  for (const k of detail.kills) {
+    const l = byRound.get(k.round) ?? [];
+    l.push(k);
+    byRound.set(k.round, l);
+  }
+  let kills3 = 0;
+  let kills4 = 0;
+  let aces = 0;
+  let kastRounds = 0;
+  let clutchWon = false;
+  let clutchLost = false;
+  const weaponKills: Record<string, number> = {};
+  const me = detail.players.find((p) => p.puuid === puuid);
+  const myTeam = me?.team ?? '';
+  const rounds = byRound.size || detail.rounds.length || 1;
+  for (const [num, kl] of byRound) {
+    const won = detail.rounds[num]?.winningTeam === myTeam;
+    const myK = kl.filter((k) => k.killerPuuid === puuid);
+    const iDied = kl.some((k) => k.victimPuuid === puuid);
+    const iAssisted = kl.some((k) => k.assists?.includes(puuid));
+    if (myK.length === 3) kills3++;
+    if (myK.length === 4) kills4++;
+    if (myK.length >= 5) aces++;
+    if (myK.length > 0 || iAssisted || !iDied) kastRounds++;
+    const mateDeaths = kl.filter((k) => k.victimTeam === myTeam && k.victimPuuid !== puuid).length;
+    // Won clutch: alive at the end with 2+ mates down. Lost clutch: fought
+    // alone to the end (last alive) but the round slipped away.
+    if (myK.length > 0 && mateDeaths >= 3) {
+      if (won && !iDied) clutchWon = true;
+      if (!won && mateDeaths >= 4) clutchLost = true;
+    }
+    for (const k of myK) {
+      const w = (k.weapon || '').toLowerCase();
+      if (w) weaponKills[w] = (weaponKills[w] ?? 0) + 1;
+    }
+  }
+  let dmgTaken = 0;
+  let ddDelta = 0;
+  {
+    const d = detail.players.find((p) => p.puuid === puuid);
+    if (d) {
+      dmgTaken = d.damageTaken;
+      ddDelta = d.damage - d.damageTaken;
+    }
+  }
+  return { kills3, kills4, aces, kastPct: Math.round((kastRounds / rounds) * 100), dmgTaken, ddDelta, clutchWon, clutchLost, weaponKills };
+}
+
+/** Aggregate K/D/ADR over a set of matches (details cached forever, repeats are free). */
+export async function aggregateDetails(
+  region: string,
+  matchIds: string[],
+  puuid: string
+): Promise<{ agg: AggStats; byId: Record<string, TrackerMatchDetail> }> {
+  const byId: Record<string, TrackerMatchDetail> = {};
+  await Promise.all(
+    matchIds.map(async (id) => {
+      try {
+        byId[id] = await fetchMatchDetailDirect(region, id);
+      } catch {}
+    })
+  );
+  let kills = 0;
+  let deaths = 0;
+  let assists = 0;
+  let damage = 0;
+  let rounds = 0;
+  let matches = 0;
+  let flawless = 0;
+  let clutches = 0;
+  let aces = 0;
+  let firstKills = 0;
+  let firstDeaths = 0;
+  const agentUse = new Map<string, { matches: number; ms: number }>();
+  for (const id of matchIds) {
+    const d = byId[id];
+    const me = d?.players.find((p) => p.puuid === puuid);
+    if (!me) continue;
+    matches++;
+    kills += me.kills;
+    deaths += me.deaths;
+    assists += me.assists;
+    damage += me.damage;
+    rounds += me.rounds;
+    const h = deriveHeroics(d, puuid);
+    flawless += h.flawless;
+    if (h.clutch) clutches++;
+    if (h.ace) aces++;
+    if (h.firstKill) firstKills++;
+    if (h.firstDeath) firstDeaths++;
+    const a = agentUse.get(h.agent) ?? { matches: 0, ms: 0 };
+    a.matches++;
+    a.ms += h.playtimeMs;
+    agentUse.set(h.agent, a);
+  }
+  let topAgent = { name: '—', matches: 0, hours: 0 };
+  for (const [name, a] of agentUse) {
+    if (a.matches > topAgent.matches) {
+      topAgent = { name, matches: a.matches, hours: Math.round((a.ms / 3600000) * 10) / 10 };
+    }
+  }
+  return {
+    agg: {
+      kills,
+      deaths,
+      assists,
+      damage,
+      rounds,
+      matches,
+      kd: deaths > 0 ? kills / deaths : kills,
+      adr: rounds > 0 ? damage / rounds : 0,
+      flawless,
+      clutches,
+      aces,
+      firstKills,
+      firstDeaths,
+      topAgent,
+    },
+    byId,
+  };
+}

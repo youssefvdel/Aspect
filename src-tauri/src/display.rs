@@ -674,7 +674,7 @@ pub fn apply_display_mode(width: u32, height: u32, refresh_rate: u32) -> Result<
     let dev_name_u16: Vec<u16> = format!("{}\0", dev_name).encode_utf16().collect();
 
     // Preflight with CDS_TEST so a computed True Stretch mode that was never
-    // Added (e.g. 2090x1440@260) fails fast with an actionable message
+    // Added (e.g. 2088x1440@260) fails fast with an actionable message
     // instead of a cryptic "code: -2" after mutating registry state.
     // (Same semantics as custom_res::test_display_mode, done inline to avoid
     // a display<->custom_res module cycle.)
@@ -739,7 +739,6 @@ pub fn apply_display_mode(width: u32, height: u32, refresh_rate: u32) -> Result<
         let res_commit = ChangeDisplaySettingsExW(None, None, None, CDS_TYPE(0), None);
 
         if res_sub.0 == 0 && res_commit.0 == 0 {
-            crate::gpu::enforce_all_gpu_scaling();
             return Ok(());
         }
 
@@ -752,14 +751,12 @@ pub fn apply_display_mode(width: u32, height: u32, refresh_rate: u32) -> Result<
             None,
         );
         if res_direct.0 == 0 {
-            crate::gpu::enforce_all_gpu_scaling();
             return Ok(());
         }
 
         // Method 3: Global ChangeDisplaySettingsW
         let res_global = ChangeDisplaySettingsW(Some(&dm), CDS_UPDATEREGISTRY);
         if res_global.0 == 0 {
-            crate::gpu::enforce_all_gpu_scaling();
             return Ok(());
         }
 
