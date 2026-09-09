@@ -86,14 +86,35 @@ export const clearEntitlements = (): void => {
   entCache = null;
 };
 
+let cachedVersion: string | null = null;
+
+/** Client version Riot demands in headers. Log scrape first, public API fallback
+    (log only exists after the game itself has launched once). */
+async function resolveVersion(): Promise<string> {
+  if (cachedVersion) return cachedVersion;
+  try {
+    const v = await invoke<string>('local_client_version');
+    if (v && v.includes('shipping')) {
+      cachedVersion = v;
+      return v;
+    }
+  } catch {}
+  try {
+    const j = await fetch('https://valorant-api.com/v1/version').then((r) => r.json());
+    const v = String(j?.data?.riotClientVersion ?? '');
+    if (v) {
+      cachedVersion = v;
+      return v;
+    }
+  } catch {}
+  return '';
+}
+
 /** Authed Riot GET from Rust (browser origins are blocked). Refetches entitlements once on expiry. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function riotGet(host: string, path: string): Promise<any> {
   const call = async (e: DirectEnt): Promise<string> => {
-    let version = '';
-    try {
-      version = await invoke<string>('local_client_version');
-    } catch {}
+    const version = await resolveVersion();
     return invoke<string>('riot_direct_get', {
       host,
       path,
