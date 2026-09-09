@@ -170,7 +170,7 @@ export const Overview: React.FC = () => {
 
           {/* Headline tiles */}
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-            <BigTile index={2} label="Win %" numeric={winPct} decimals={1} suffix="%" />
+            <BigTile index={2} label="Win %" numeric={winPct} decimals={2} suffix="%" />
             <BigTile index={3} label="K/D" numeric={kd} decimals={3} />
             {trn ? (
               <BigTile index={4} label="Headshot %" numeric={trn.hsPct} decimals={2} suffix="%" />

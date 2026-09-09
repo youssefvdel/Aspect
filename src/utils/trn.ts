@@ -72,11 +72,17 @@ export interface TrnActStats {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function pickSeasonSegment(j: any, seasonId: string): any | null {
   const segs = Array.isArray(j?.data?.segments) ? j.data.segments : [];
+  if (seasonId) {
+    // Strict: a wrong act's numbers are worse than none (caller falls back).
+    return (
+      segs.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (s: any) => s?.type === 'season' && s?.attributes?.seasonId === seasonId
+      ) ?? null
+    );
+  }
   return (
     segs.find(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (s: any) => s?.type === 'season' && (!seasonId || s?.attributes?.seasonId === seasonId)
-    ) ?? segs.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (s: any) => s?.type === 'season'
     ) ?? null
