@@ -94,15 +94,52 @@ function stat(seg: any, key: string): number {
   return num(seg?.stats?.[key]?.value);
 }
 
-/** Act stats for a Riot ID. seasonId optional (defaults to TRN's default season). */
+/** Raw season segment for any playlist/season (drives stats + agents parsing). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchSeasonSeg(name: string, tag: string, playlist: string, seasonId: string): Promise<any> {
+  if (playlist === 'competitive' && !seasonId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j: any = await trnGet(riotId(name, tag));
+    return pickSeasonSegment(j, '');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const j: any = await trnGet(
+    `${riotId(name, tag)}/segments/season?playlist=${encodeURIComponent(playlist)}${seasonId ? `&seasonId=${encodeURIComponent(seasonId)}` : ''}&source=web`
+  );
+  const segs = Array.isArray(j?.data) ? j.data : [];
+  const hit = seasonId
+    ? segs.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (s: any) => s?.type === 'season' && s?.attributes?.seasonId === seasonId
+      )
+    : segs.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (s: any) => s?.type === 'season'
+      );
+  if (!hit) throw new Error('TRN no season segment.');
+  return { seg: hit, data: j?.data };
+}
+
+/** Act stats for a Riot ID. seasonId/playlist optional (defaults = current competitive). */
 export async function fetchTrnActStats(
   name: string,
   tag: string,
-  seasonId = ''
+  seasonId = '',
+  playlist = 'competitive'
 ): Promise<{ stats: TrnActStats; defaultSeason: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const j: any = await trnGet(riotId(name, tag));
-  const seg = pickSeasonSegment(j, seasonId);
+  let seg: unknown = null;
+  let avatarUrl = '';
+  let defaultSeason = '';
+  if (playlist === 'competitive' && !seasonId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j: any = await trnGet(riotId(name, tag));
+    seg = pickSeasonSegment(j, '');
+    avatarUrl = String(j?.data?.platformInfo?.avatarUrl ?? '');
+    defaultSeason = String(j?.data?.metadata?.defaultSeason ?? '');
+  } else {
+    const r = await fetchSeasonSeg(name, tag, playlist, seasonId);
+    seg = r.seg;
+  }
   if (!seg) throw new Error('TRN no season segment.');
   const kills = stat(seg, 'kills');
   const deaths = stat(seg, 'deaths');
@@ -149,14 +186,13 @@ export async function fetchTrnActStats(
       bodyHits: stat(seg, 'dealtBodyshots'),
       legHits: stat(seg, 'dealtLegshots'),
       bestKills: stat(seg, 'mostKillsInMatch'),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      avatarUrl: String((j as any)?.data?.platformInfo?.avatarUrl ?? ''),
+      avatarUrl,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       kdPercentile: num((seg?.stats?.kills as any)?.percentile),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       hsPercentile: num((seg?.stats?.headshotsPercentage as any)?.percentile),
     },
-    defaultSeason: String(j?.data?.metadata?.defaultSeason ?? ''),
+    defaultSeason,
   };
 }
 
@@ -174,9 +210,9 @@ export interface TrnAgentStat {
 
 /** Per-agent season segments (top agents with real HS%). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchTrnAgents(name: string, tag: string, seasonId: string): Promise<TrnAgentStat[]> {
+export async function fetchTrnAgents(name: string, tag: string, seasonId: string, playlist = 'competitive'): Promise<TrnAgentStat[]> {
   const j = (await trnGet(
-    `${riotId(name, tag)}/segments/season?playlist=competitive&seasonId=${encodeURIComponent(seasonId)}&source=web`
+    `${riotId(name, tag)}/segments/season?playlist=${encodeURIComponent(playlist)}&seasonId=${encodeURIComponent(seasonId)}&source=web`
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   )) as any;
   const segs = Array.isArray(j?.data) ? j.data : [];
