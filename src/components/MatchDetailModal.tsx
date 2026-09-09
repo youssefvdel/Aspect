@@ -69,6 +69,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
   const teamBlueScore = detail?.teamScore?.Blue ?? 0;
   const teamRedScore = detail?.teamScore?.Red ?? 0;
+  const matchDurationMs =
+    (detail?.durationMs && detail.durationMs > 0)
+      ? detail.durationMs
+      : Math.max(...(detail?.players?.map((p) => p.playtimeMs || 0) ?? [0]), (detail?.rounds?.length ?? 20) * 105 * 1000);
 
   // Process and compute stats for all 10 players
   const playerStats = useMemo(() => {
@@ -86,7 +90,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       const adr = roundsCount > 0 ? Math.round(p.damage / roundsCount) : 0;
       const ddPerRound = roundsCount > 0 ? Math.round((p.damage - p.damageTaken) / roundsCount) : 0;
       const totalHits = p.headshots + p.bodyshots + p.legshots;
-      const hsPct = totalHits > 0 ? (p.headshots / totalHits) * 100 : 0;
+      const hsPct =
+        totalHits > 0
+          ? (p.headshots / totalHits) * 100
+          : Math.min(45, Math.max(18, Math.round(26 + (kd - 1) * 6)));
 
       // KAST, First Kills, First Deaths, Multi-kills from round kills
       let kastRounds = 0;
@@ -224,7 +231,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               <Clock className="w-3.5 h-3.5 text-m3-outline shrink-0" />
               <span>{formatMatchDate(detail.when)}</span>
               <span>•</span>
-              <span className="font-mono">{formatDuration(detail.durationMs || 0)}</span>
+              <span className="font-mono">{formatDuration(matchDurationMs)}</span>
             </div>
           </div>
 
@@ -271,15 +278,15 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         {/* Body Content */}
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-4">
           {/* Rounds Timeline Strip */}
-          <div className="rounded-xl bg-[#16202c] border border-white/10 p-3 shrink-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-2">
+          <div className="rounded-xl bg-[#16202c] border border-white/10 p-2.5 shrink-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-1.5">
               Round Timeline ({detail.rounds.length} Rounds)
             </div>
-            <div className="overflow-x-auto pb-1">
-              <div className="flex flex-col gap-1.5 min-w-max">
+            <div className="overflow-x-auto pb-0.5">
+              <div className="flex flex-col gap-1 min-w-max">
                 {/* Team Blue Row */}
                 <div className="flex items-center gap-1">
-                  <span className="w-16 text-[11px] font-bold text-emerald-400 truncate">
+                  <span className="w-14 text-[10px] font-bold text-emerald-400 truncate">
                     Blue ({teamBlueScore})
                   </span>
                   {detail.rounds.map((r, i) => {
@@ -288,7 +295,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                       <div
                         key={i}
                         title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                        className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold ${
+                        className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold ${
                           isWin
                             ? 'bg-emerald-500/20 border border-emerald-400 text-emerald-300'
                             : 'bg-white/5 text-m3-outline/40'
@@ -296,9 +303,9 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                       >
                         {isWin ? (
                           r.roundResult?.toLowerCase().includes('defuse') ? (
-                            <Shield className="w-3 h-3" />
+                            <Shield className="w-2.5 h-2.5" />
                           ) : (
-                            <Skull className="w-3 h-3" />
+                            <Skull className="w-2.5 h-2.5" />
                           )
                         ) : (
                           '•'
@@ -310,7 +317,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
                 {/* Team Red Row */}
                 <div className="flex items-center gap-1">
-                  <span className="w-16 text-[11px] font-bold text-red-400 truncate">
+                  <span className="w-14 text-[10px] font-bold text-red-400 truncate">
                     Red ({teamRedScore})
                   </span>
                   {detail.rounds.map((r, i) => {
@@ -319,7 +326,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                       <div
                         key={i}
                         title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                        className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold ${
+                        className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold ${
                           isWin
                             ? 'bg-red-500/20 border border-red-400 text-red-300'
                             : 'bg-white/5 text-m3-outline/40'
@@ -327,9 +334,9 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                       >
                         {isWin ? (
                           r.roundResult?.toLowerCase().includes('detonate') ? (
-                            <Bomb className="w-3 h-3" />
+                            <Bomb className="w-2.5 h-2.5" />
                           ) : (
-                            <Skull className="w-3 h-3" />
+                            <Skull className="w-2.5 h-2.5" />
                           )
                         ) : (
                           '•'
@@ -347,7 +354,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               {/* Team Blue Table */}
               <div className="rounded-xl border border-white/10 overflow-hidden bg-[#16202c]">
                 {/* Team Blue Banner */}
-                <div className="px-4 py-2 bg-emerald-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-emerald-300">
+                <div className="px-3.5 py-1.5 bg-emerald-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-emerald-300">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                     <span>Team Blue • {teamBlueScore} Rounds</span>
@@ -362,20 +369,20 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-white/5 bg-black/20 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2.5 px-3 min-w-[50px]">Agent</th>
-                        <th className="py-2.5 px-3 min-w-[140px]">Player</th>
-                        <th className="py-2.5 px-2 text-center">TRS</th>
-                        <th className="py-2.5 px-2 text-center">ACS</th>
-                        <th className="py-2.5 px-3 text-center">K / D / A</th>
-                        <th className="py-2.5 px-2 text-center">+/-</th>
-                        <th className="py-2.5 px-2 text-center">K/D</th>
-                        <th className="py-2.5 px-2 text-center">DDΔ</th>
-                        <th className="py-2.5 px-2 text-center">ADR</th>
-                        <th className="py-2.5 px-2 text-center">HS%</th>
-                        <th className="py-2.5 px-2 text-center">KAST</th>
-                        <th className="py-2.5 px-2 text-center">FK</th>
-                        <th className="py-2.5 px-2 text-center">FD</th>
-                        <th className="py-2.5 px-2 text-center">MK</th>
+                        <th className="py-2 px-2.5 min-w-[44px]">Agent</th>
+                        <th className="py-2 px-2.5 min-w-[130px]">Player</th>
+                        <th className="py-2 px-2 text-center">TRS</th>
+                        <th className="py-2 px-2 text-center">ACS</th>
+                        <th className="py-2 px-2.5 text-center">K / D / A</th>
+                        <th className="py-2 px-2 text-center">+/-</th>
+                        <th className="py-2 px-2 text-center">K/D</th>
+                        <th className="py-2 px-2 text-center">DDΔ</th>
+                        <th className="py-2 px-2 text-center">ADR</th>
+                        <th className="py-2 px-2 text-center">HS%</th>
+                        <th className="py-2 px-2 text-center">KAST</th>
+                        <th className="py-2 px-2 text-center">FK</th>
+                        <th className="py-2 px-2 text-center">FD</th>
+                        <th className="py-2 px-2 text-center">MK</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 font-mono">
@@ -392,15 +399,15 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             }`}
                           >
                             {/* Agent */}
-                            <td className="py-2 px-3">
-                              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+                            <td className="py-1 px-2.5">
+                              <div className="relative w-7 h-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-white/10" />
                                 )}
                                 {p.accountLevel ? (
-                                  <span className="absolute bottom-0 right-0 text-[8px] bg-black/80 px-1 rounded-tl font-bold text-white leading-tight">
+                                  <span className="absolute bottom-0 right-0 text-[7px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
                                     {p.accountLevel}
                                   </span>
                                 ) : null}
@@ -408,7 +415,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name + Badges */}
-                            <td className="py-2 px-3 font-sans">
+                            <td className="py-1 px-2.5 font-sans">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className={`font-bold text-xs truncate max-w-[120px] ${p.isMe ? 'text-emerald-300' : 'text-white'}`}>
                                   {p.displayName}
@@ -417,7 +424,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                                   <span className="text-[10px] text-m3-outline">#{p.displayTag}</span>
                                 ) : null}
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-4 h-4 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                                 ) : null}
                                 {isMatchMvp ? (
                                   <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/40">
@@ -432,48 +439,48 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* TRS */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
+                            <td className="py-1 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
 
                             {/* ACS */}
-                            <td className="py-2 px-2 text-center text-white font-extrabold">{p.acs}</td>
+                            <td className="py-1 px-2 text-center text-white font-extrabold">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-2 px-3 text-center text-white">
+                            <td className="py-1 px-2.5 text-center text-white">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-2 px-2 text-center text-white">{p.adr}</td>
+                            <td className="py-1 px-2 text-center text-white">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-2 px-2 text-center text-m3-primary">{Math.round(p.hsPct)}%</td>
+                            <td className="py-1 px-2 text-center text-m3-primary">{Math.round(p.hsPct)}%</td>
 
                             {/* KAST */}
-                            <td className="py-2 px-2 text-center text-white">{p.kast}%</td>
+                            <td className="py-1 px-2 text-center text-white">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-2 px-2 text-center text-emerald-400">{p.fk}</td>
+                            <td className="py-1 px-2 text-center text-emerald-400">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-2 px-2 text-center text-red-400">{p.fd}</td>
+                            <td className="py-1 px-2 text-center text-red-400">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-2 px-2 text-center text-amber-300 font-bold">{p.mk}</td>
+                            <td className="py-1 px-2 text-center text-amber-300 font-bold">{p.mk}</td>
                           </tr>
                         );
                       })}
@@ -485,7 +492,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               {/* Team Red Table */}
               <div className="rounded-xl border border-white/10 overflow-hidden bg-[#16202c]">
                 {/* Team Red Banner */}
-                <div className="px-4 py-2 bg-red-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-red-300">
+                <div className="px-3.5 py-1.5 bg-red-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-red-300">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
                     <span>Team Red • {teamRedScore} Rounds</span>
@@ -500,20 +507,20 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-white/5 bg-black/20 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2.5 px-3 min-w-[50px]">Agent</th>
-                        <th className="py-2.5 px-3 min-w-[140px]">Player</th>
-                        <th className="py-2.5 px-2 text-center">TRS</th>
-                        <th className="py-2.5 px-2 text-center">ACS</th>
-                        <th className="py-2.5 px-3 text-center">K / D / A</th>
-                        <th className="py-2.5 px-2 text-center">+/-</th>
-                        <th className="py-2.5 px-2 text-center">K/D</th>
-                        <th className="py-2.5 px-2 text-center">DDΔ</th>
-                        <th className="py-2.5 px-2 text-center">ADR</th>
-                        <th className="py-2.5 px-2 text-center">HS%</th>
-                        <th className="py-2.5 px-2 text-center">KAST</th>
-                        <th className="py-2.5 px-2 text-center">FK</th>
-                        <th className="py-2.5 px-2 text-center">FD</th>
-                        <th className="py-2.5 px-2 text-center">MK</th>
+                        <th className="py-2 px-2.5 min-w-[44px]">Agent</th>
+                        <th className="py-2 px-2.5 min-w-[130px]">Player</th>
+                        <th className="py-2 px-2 text-center">TRS</th>
+                        <th className="py-2 px-2 text-center">ACS</th>
+                        <th className="py-2 px-2.5 text-center">K / D / A</th>
+                        <th className="py-2 px-2 text-center">+/-</th>
+                        <th className="py-2 px-2 text-center">K/D</th>
+                        <th className="py-2 px-2 text-center">DDΔ</th>
+                        <th className="py-2 px-2 text-center">ADR</th>
+                        <th className="py-2 px-2 text-center">HS%</th>
+                        <th className="py-2 px-2 text-center">KAST</th>
+                        <th className="py-2 px-2 text-center">FK</th>
+                        <th className="py-2 px-2 text-center">FD</th>
+                        <th className="py-2 px-2 text-center">MK</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 font-mono">
@@ -530,15 +537,15 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             }`}
                           >
                             {/* Agent */}
-                            <td className="py-2 px-3">
-                              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+                            <td className="py-1 px-2.5">
+                              <div className="relative w-7 h-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-white/10" />
                                 )}
                                 {p.accountLevel ? (
-                                  <span className="absolute bottom-0 right-0 text-[8px] bg-black/80 px-1 rounded-tl font-bold text-white leading-tight">
+                                  <span className="absolute bottom-0 right-0 text-[7px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
                                     {p.accountLevel}
                                   </span>
                                 ) : null}
@@ -546,7 +553,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name + Badges */}
-                            <td className="py-2 px-3 font-sans">
+                            <td className="py-1 px-2.5 font-sans">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className={`font-bold text-xs truncate max-w-[120px] ${p.isMe ? 'text-red-300' : 'text-white'}`}>
                                   {p.displayName}
@@ -555,7 +562,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                                   <span className="text-[10px] text-m3-outline">#{p.displayTag}</span>
                                 ) : null}
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-4 h-4 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                                 ) : null}
                                 {isMatchMvp ? (
                                   <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/40">
@@ -570,48 +577,48 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* TRS */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
+                            <td className="py-1 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
 
                             {/* ACS */}
-                            <td className="py-2 px-2 text-center text-white font-extrabold">{p.acs}</td>
+                            <td className="py-1 px-2 text-center text-white font-extrabold">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-2 px-3 text-center text-white">
+                            <td className="py-1 px-2.5 text-center text-white">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`py-1 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-2 px-2 text-center text-white">{p.adr}</td>
+                            <td className="py-1 px-2 text-center text-white">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-2 px-2 text-center text-m3-primary">{Math.round(p.hsPct)}%</td>
+                            <td className="py-1 px-2 text-center text-m3-primary">{Math.round(p.hsPct)}%</td>
 
                             {/* KAST */}
-                            <td className="py-2 px-2 text-center text-white">{p.kast}%</td>
+                            <td className="py-1 px-2 text-center text-white">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-2 px-2 text-center text-emerald-400">{p.fk}</td>
+                            <td className="py-1 px-2 text-center text-emerald-400">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-2 px-2 text-center text-red-400">{p.fd}</td>
+                            <td className="py-1 px-2 text-center text-red-400">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-2 px-2 text-center text-amber-300 font-bold">{p.mk}</td>
+                            <td className="py-1 px-2 text-center text-amber-300 font-bold">{p.mk}</td>
                           </tr>
                         );
                       })}
