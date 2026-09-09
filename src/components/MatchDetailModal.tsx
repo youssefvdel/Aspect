@@ -86,19 +86,17 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     resolvePlayerNames(puuids).then(setResolvedNames);
   }, [detail]);
 
-  // If no detail, return early
-  if (!isOpen || !detail) return null;
-
-  const teamBlueScore = detail.teamScore['Blue'] ?? 0;
-  const teamRedScore = detail.teamScore['Red'] ?? 0;
+  const teamBlueScore = detail?.teamScore['Blue'] ?? 0;
+  const teamRedScore = detail?.teamScore['Red'] ?? 0;
   const roundsCount = Math.max(1, teamBlueScore + teamRedScore);
   const matchDurationMs =
-    detail.durationMs && detail.durationMs > 0
+    detail?.durationMs && detail.durationMs > 0
       ? detail.durationMs
       : roundsCount * 105 * 1000;
 
   // Process and enrich all players
   const playerStats = useMemo(() => {
+    if (!detail) return [];
     return detail.players.map((p) => {
       const isMe = p.puuid === puuid;
       const acs = Math.round(p.score / roundsCount);
@@ -234,6 +232,8 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       trs: p.trs,
     });
   };
+
+  if (!isOpen || !detail) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
