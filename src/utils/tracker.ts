@@ -359,22 +359,64 @@ const normTeam = (t: unknown): string => {
 };
 
 /**
+ * Resolve a list of PUUIDs into real GameName and TagLine via Riot Name-Service.
+ * Results are cached in localStorage to prevent repeated network calls.
+ */
+export async function resolvePlayerNames(
+  puuids: string[],
+  shard = 'eu'
+): Promise<Record<string, { name: string; tag: string }>> {
+  if (puuids.length === 0) return {};
+  const cacheKey = 'aspect_names_cache_v1';
+  let cache: Record<string, { name: string; tag: string }> = {};
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) cache = JSON.parse(raw);
+  } catch {}
+
+  const missing = puuids.filter((p) => !cache[p] || !cache[p].name);
+  if (missing.length === 0) return cache;
+
+  try {
+    const res = await invoke<string>('riot_resolve_names', {
+      shard,
+      puuids: missing,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = JSON.parse(res) as any[];
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        const sub = String(item?.Subject ?? item?.subject ?? '');
+        const gn = String(item?.GameName ?? item?.gameName ?? '');
+        const tl = String(item?.TagLine ?? item?.tagLine ?? '');
+        if (sub && gn) {
+          cache[sub] = { name: gn, tag: tl };
+        }
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(cache));
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('Failed to resolve player names:', e);
+  }
+
+  return cache;
+}
+
+/**
  * Full match straight from Riot via the SAME endpoint TRN/Blitz call locally
  * (match-details/v1 — the singular /match/v1 path 503s for client creds).
  * Immutable → cached forever. Throws when unusable.
- * Proven shape: { matchInfo{mapId,queueID,gameStartMillis}, players[{subject,teamId,
- * characterId,stats{kills,deaths,assists,score,roundsPlayed},roundDamage[{damage}]}],
- * teams[{teamId,roundsWon}], roundResults[{roundNum,winningTeam,playerStats[{subject,kills[{killer,victim,roundTime}]}]}] }
- * NOTE: gameName/tagLine are empty (privacy) and kills carry no headshot flag —
- * names show as agent, HS% stays live-only.
  */
 export async function fetchMatchDetailDirect(region: string, matchId: string): Promise<TrackerMatchDetail> {
-  const cacheKey = `aspect_match_v4_${matchId}`;
+  const cacheKey = `aspect_match_v5_${matchId}`;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (raw) return JSON.parse(raw) as TrackerMatchDetail;
   } catch {}
-  const j = await riotGet(shardFor(region), `/match-details/v1/matches/${matchId}`);
+  const shard = shardFor(region);
+  const j = await riotGet(shard, `/match-details/v1/matches/${matchId}`);
   const { agents: amap } = await gameData();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const players: TrackerPlayer[] = ((Array.isArray(j?.players) ? j.players : []) as any[]).map((p) => {
@@ -403,6 +445,18 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
     };
   });
   if (players.length === 0) throw new Error('Empty scoreboard.');
+
+  // Resolve real player names from PUUIDs using Riot name-service
+  try {
+    const puuids = players.map((p) => p.puuid).filter(Boolean);
+    const nameMap = await resolvePlayerNames(puuids, shard);
+    for (const p of players) {
+      if (nameMap[p.puuid]?.name) {
+        p.name = nameMap[p.puuid].name;
+        p.tag = nameMap[p.puuid].tag;
+      }
+    }
+  } catch {}
   const teamOf = (puuid: string): string => players.find((p) => p.puuid === puuid)?.team ?? '';
   // Damage taken: every player's roundDamage lists who they hit — invert it.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

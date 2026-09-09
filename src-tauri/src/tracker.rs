@@ -237,3 +237,58 @@ pub fn riot_direct_get(
     }
     Ok(body)
 }
+
+/// Resolve PUUIDs to real GameNames and TagLines via Riot's name-service endpoint.
+#[tauri::command]
+pub fn riot_resolve_names(
+    shard: String,
+    puuids: Vec<String>,
+) -> Result<String, String> {
+    if puuids.is_empty() {
+        return Ok("[]".to_string());
+    }
+    let (port, password) = lockfile_auth()?;
+    let ent = local_get(&port, &password, "/entitlements/v1/token")?;
+    let access_token = ent
+        .get("accessToken")
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| "No access token".to_string())?;
+    let token = ent
+        .get("token")
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| "No entitlement token".to_string())?;
+
+    let client_version = local_client_version().unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
+    let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", shard);
+    let body = serde_json::to_string(&puuids).map_err(|e| e.to_string())?;
+
+    let output = curl_args()
+        .args([
+            "-s",
+            "-X",
+            "PUT",
+            "--max-time",
+            "10",
+            "-H",
+            &format!("Authorization: Bearer {}", access_token),
+            "-H",
+            &format!("X-Riot-Entitlements-JWT: {}", token),
+            "-H",
+            "X-Riot-ClientPlatform: ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
+            "-H",
+            &format!("X-Riot-ClientVersion: {}", client_version),
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &body,
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Name service failed: {}", e))?;
+
+    let res = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        return Err(format!("Name service error: {}", res));
+    }
+    Ok(res)
+}

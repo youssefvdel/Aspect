@@ -704,6 +704,7 @@ export const MatchHistory: React.FC = () => {
         onClose={() => setSelectedMatch(null)}
         detail={selectedMatch?.detail ?? null}
         game={selectedMatch?.game ?? null}
+        seasonId={profile?.currentSeasonId}
         mapName={selectedMatch?.mapName ?? ''}
         queue={selectedMatch?.queue ?? ''}
         puuid={puuid}
