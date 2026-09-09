@@ -413,7 +413,8 @@ export const Overview: React.FC = () => {
                       { S: '#40c4ff', A: '#3ddc84', B: '#e8b73a', C: '#9fb2c8', D: '#c98a94' } as Record<string, string>
                     )[g];
                     return (
-                      <div key={s.label} className={`text-center px-1 ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}>
+                      <div key={s.label} className={`text-center px-1 py-1.5 rounded-lg ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}
+                      style={{ background: `linear-gradient(180deg, ${gc}2e 0%, transparent 100%)` }}>
                         <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline truncate">{s.label}</div>
                         <div className="text-[15px] font-mono font-bold text-m3-on-surface">{s.v}</div>
                         <div className="text-[9px] font-mono font-bold truncate" style={{ color: gc }}>
