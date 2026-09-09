@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, Shield, Swords } from 'lucide-react';
 import { useTrackerData } from '../hooks/useTrackerData';
 import type { TrnAgentStat } from '../utils/trn';
+import killsIcon from '../assets/icons/kills.png';
+import firstbloodsIcon from '../assets/icons/firstbloods.png';
+import acesIcon from '../assets/icons/aces.png';
 
 type SortKey = 'hours' | 'matches' | 'winPct' | 'kd' | 'adr' | 'acs' | 'damageDeltaPerRound' | 'hsPct' | 'kast' | 'agent';
 
@@ -469,144 +472,169 @@ export const TrackerAgents: React.FC = () => {
                       </td>
                     </tr>
 
-                    {/* Expanded Status Card (Matches clip_20260909_142751_4.png) */}
+                    {/* Expanded Status Card (Matches clip_20260909_142751_4.png exactly) */}
                     {isExpanded && (
-                      <tr className="bg-[#0f1722] border-b border-m3-outline-subtle/60">
+                      <tr className="bg-[#0b161e] border-b border-m3-outline-subtle/60">
                         <td colSpan={11} className="p-4 sm:p-5">
                           <AnimatePresence>
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.22, ease: 'easeOut' }}
-                              className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch"
+                              transition={{ duration: 0.2, ease: 'easeOut' }}
+                              className="flex flex-col lg:flex-row items-stretch gap-6 overflow-hidden"
                             >
-                              {/* Left Section: Key Milestones */}
-                              <div className="flex flex-col justify-between py-1 border-r border-white/10 pr-4">
-                                <div className="flex flex-col gap-3.5">
-                                  {/* Match Kills (Best) */}
-                                  <div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">
+                              {/* Left Column: 3 Combat Milestones with Medallions */}
+                              <div className="flex flex-row lg:flex-col justify-between gap-3 shrink-0 lg:w-52 pr-0 lg:pr-5 border-b lg:border-b-0 lg:border-r border-white/10 pb-3 lg:pb-0">
+                                {/* Match Kills (Best) */}
+                                <div className="flex items-center gap-3">
+                                  <img src={killsIcon} alt="Best Kills" className="w-9 h-9 rounded-full shrink-0 shadow-sm" />
+                                  <div className="min-w-0">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] leading-tight truncate">
                                       Match Kills (Best)
                                     </div>
-                                    <div className="font-display font-black text-2xl text-white mt-0.5 tabular-nums">
+                                    <div className="font-display font-extrabold text-xl text-white tabular-nums leading-tight mt-0.5">
                                       {a.bestKills || 30}
                                     </div>
                                   </div>
+                                </div>
 
-                                  {/* First Bloods */}
-                                  <div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">
+                                {/* First Bloods */}
+                                <div className="flex items-center gap-3">
+                                  <img src={firstbloodsIcon} alt="First Bloods" className="w-9 h-9 rounded-full shrink-0 shadow-sm" />
+                                  <div className="min-w-0">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] leading-tight truncate">
                                       First Bloods
                                     </div>
-                                    <div className="font-display font-black text-2xl text-white mt-0.5 tabular-nums">
+                                    <div className="font-display font-extrabold text-xl text-white tabular-nums leading-tight mt-0.5">
                                       {a.firstBloods}
                                     </div>
                                   </div>
+                                </div>
 
-                                  {/* Aces */}
-                                  <div>
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">
+                                {/* Aces */}
+                                <div className="flex items-center gap-3">
+                                  <img src={acesIcon} alt="Aces" className="w-9 h-9 rounded-full shrink-0 shadow-sm" />
+                                  <div className="min-w-0">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] leading-tight truncate">
                                       Aces
                                     </div>
-                                    <div className="font-display font-black text-2xl text-white mt-0.5 tabular-nums">
+                                    <div className="font-display font-extrabold text-xl text-white tabular-nums leading-tight mt-0.5">
                                       {a.aces}
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Center Section: Defense Breakdown */}
-                              <div className="flex flex-col justify-between py-1 border-r border-white/10 pr-4">
-                                <div>
-                                  {/* Record header with win/loss bar */}
-                                  <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <Shield className="w-3.5 h-3.5 text-sky-400" />
-                                      <span>Defense</span>
-                                    </div>
-                                    <span className="font-mono text-m3-outline">
-                                      <strong className="text-emerald-400">{a.defenseRoundsWon || 0} Wins</strong> / {a.defenseRoundsLost || 0} Losses
-                                    </span>
+                              {/* Center Column: Defense Breakdown (5 columns under ratio bar) */}
+                              <div className="flex-1 min-w-0 pr-0 lg:pr-5 border-b lg:border-b-0 lg:border-r border-white/10 pb-3 lg:pb-0">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                                    <Shield className="w-4 h-4 text-[#7ce2fe]" />
+                                    <span className="font-display font-bold text-sm">Defense</span>
                                   </div>
-
-                                  {/* Progress bar */}
-                                  <div className="h-1.5 rounded-full bg-red-500/30 overflow-hidden flex mb-3">
-                                    <div
-                                      className="h-full bg-emerald-400 rounded-full"
-                                      style={{ width: `${Math.min(100, Math.max(5, defWinPct))}%` }}
-                                    />
+                                  <div className="flex items-center gap-2 text-xs font-mono font-bold">
+                                    <span className="text-[#00b171]">{a.defenseRoundsWon || 0} W</span>
+                                    <span className="text-[10px] uppercase font-semibold text-[#768894]">Rounds</span>
+                                    <span className="text-[#e84057]">{a.defenseRoundsLost || 0} L</span>
                                   </div>
+                                </div>
 
-                                  {/* Metric readouts */}
-                                  <div className="grid grid-cols-2 gap-y-2.5 text-xs font-mono">
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Round Win %</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.defenseRoundsWinPct || defWinPct).toFixed(1)}%</div>
+                                {/* Ratio Bar */}
+                                <div className="h-1.5 rounded-full bg-[#e84057]/30 overflow-hidden flex mb-3.5">
+                                  <div
+                                    className="h-full bg-[#00b171] rounded-l-full"
+                                    style={{ width: `${Math.min(100, Math.max(5, defWinPct))}%` }}
+                                  />
+                                </div>
+
+                                {/* 5 Metric Columns */}
+                                <div className="grid grid-cols-5 gap-1.5 text-center">
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Round Win %</div>
+                                    <div className="font-display font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {(a.defenseRoundsWinPct || defWinPct).toFixed(1)}%
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Def. K/D</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.defenseKd || a.kd).toFixed(2)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Def. K/D</div>
+                                    <div className={`font-mono font-extrabold text-sm sm:text-base mt-0.5 truncate ${((a.defenseKd || a.kd) >= 1) ? 'text-[#00b171]' : 'text-[#e84057]'}`}>
+                                      {(a.defenseKd || a.kd).toFixed(2)}
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Def. Kills</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{a.defenseKills}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Def. Kills</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {a.defenseKills}
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Def. Assists</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{a.defenseAssists}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Def. Assists</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {a.defenseAssists}
                                     </div>
-                                    <div className="col-span-2 pt-1 border-t border-white/5">
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Defuses/Match</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.defusesPerMatch || 0.58).toFixed(2)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Defuses/Match</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {(a.defusesPerMatch || 0.58).toFixed(2)}
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Right Section: Attack Breakdown */}
-                              <div className="flex flex-col justify-between py-1">
-                                <div>
-                                  {/* Record header with win/loss bar */}
-                                  <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <Swords className="w-3.5 h-3.5 text-[#ff4655]" />
-                                      <span>Attack</span>
-                                    </div>
-                                    <span className="font-mono text-m3-outline">
-                                      <strong className="text-emerald-400">{a.attackRoundsWon || 0} Wins</strong> / {a.attackRoundsLost || 0} Losses
-                                    </span>
+                              {/* Right Column: Attack Breakdown (5 columns under ratio bar) */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                                    <Swords className="w-4 h-4 text-[#ff4655]" />
+                                    <span className="font-display font-bold text-sm">Attack</span>
                                   </div>
-
-                                  {/* Progress bar */}
-                                  <div className="h-1.5 rounded-full bg-red-500/30 overflow-hidden flex mb-3">
-                                    <div
-                                      className="h-full bg-emerald-400 rounded-full"
-                                      style={{ width: `${Math.min(100, Math.max(5, atkWinPct))}%` }}
-                                    />
+                                  <div className="flex items-center gap-2 text-xs font-mono font-bold">
+                                    <span className="text-[#00b171]">{a.attackRoundsWon || 0} W</span>
+                                    <span className="text-[10px] uppercase font-semibold text-[#768894]">Rounds</span>
+                                    <span className="text-[#e84057]">{a.attackRoundsLost || 0} L</span>
                                   </div>
+                                </div>
 
-                                  {/* Metric readouts */}
-                                  <div className="grid grid-cols-2 gap-y-2.5 text-xs font-mono">
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Round Win %</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.attackRoundsWinPct || atkWinPct).toFixed(1)}%</div>
+                                {/* Ratio Bar */}
+                                <div className="h-1.5 rounded-full bg-[#e84057]/30 overflow-hidden flex mb-3.5">
+                                  <div
+                                    className="h-full bg-[#00b171] rounded-l-full"
+                                    style={{ width: `${Math.min(100, Math.max(5, atkWinPct))}%` }}
+                                  />
+                                </div>
+
+                                {/* 5 Metric Columns */}
+                                <div className="grid grid-cols-5 gap-1.5 text-center">
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Round Win %</div>
+                                    <div className="font-display font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {(a.attackRoundsWinPct || atkWinPct).toFixed(1)}%
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Atk. K/D</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.attackKd || a.kd).toFixed(2)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Atk. K/D</div>
+                                    <div className={`font-mono font-extrabold text-sm sm:text-base mt-0.5 truncate ${((a.attackKd || a.kd) >= 1) ? 'text-[#00b171]' : 'text-[#e84057]'}`}>
+                                      {(a.attackKd || a.kd).toFixed(2)}
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Atk. Kills</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{a.attackKills}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Atk. Kills</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {a.attackKills}
                                     </div>
-                                    <div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Atk. Assists</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{a.attackAssists}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Atk. Assists</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {a.attackAssists}
                                     </div>
-                                    <div className="col-span-2 pt-1 border-t border-white/5">
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">Plants/Match</div>
-                                      <div className="font-extrabold text-sm text-white mt-0.5">{(a.plantsPerMatch || 2.09).toFixed(2)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#768894] truncate">Plants/Match</div>
+                                    <div className="font-mono font-extrabold text-sm sm:text-base text-white mt-0.5 truncate">
+                                      {(a.plantsPerMatch || 2.09).toFixed(2)}
                                     </div>
                                   </div>
                                 </div>
