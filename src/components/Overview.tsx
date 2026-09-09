@@ -388,7 +388,11 @@ export const Overview: React.FC = () => {
             )}
             {trn && (
               <motion.section variants={rise} custom={11}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 overflow-hidden relative"
+                style={{
+                  borderColor: `${scoreTier(trn.trnScore).color}55`,
+                  background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}26 0%, transparent 55%)`,
+                }}>
                 <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2.5">Tracker score</h4>
                 <div className="flex items-center gap-2.5">
                   <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={56} />
