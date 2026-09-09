@@ -632,20 +632,44 @@ export const TrackerAgents: React.FC = () => {
                                     Map Records with {a.agent}
                                   </div>
                                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                                    {a.topMaps.map((tm) => (
-                                      <div key={tm.mapKey} className="p-2.5 rounded-xl bg-m3-surface-container-high/50 border border-m3-outline-subtle/50 flex flex-col justify-between">
-                                        <div className="flex items-center justify-between gap-1">
-                                          <span className="font-display font-bold text-xs text-white truncate">{tm.mapName}</span>
-                                          <span className={`font-mono font-bold text-xs shrink-0 ${tm.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {Math.round(tm.winPct)}%
-                                          </span>
+                                    {a.topMaps.map((tm) => {
+                                      const mapNameDict: Record<string, string> = {
+                                        abyss: 'Abyss',
+                                        sunset: 'Sunset',
+                                        haven: 'Haven',
+                                        ascent: 'Ascent',
+                                        lotus: 'Lotus',
+                                        summit: 'Summit',
+                                        split: 'Split',
+                                        bind: 'Bind',
+                                        breeze: 'Breeze',
+                                        fracture: 'Fracture',
+                                        pearl: 'Pearl',
+                                        icebox: 'Icebox',
+                                      };
+                                      const realMapName =
+                                        mapNameDict[tm.mapKey?.toLowerCase()] ||
+                                        (tm.mapName && tm.mapName !== a.agent
+                                          ? tm.mapName
+                                          : tm.mapKey
+                                          ? tm.mapKey.charAt(0).toUpperCase() + tm.mapKey.slice(1)
+                                          : 'Map');
+
+                                      return (
+                                        <div key={tm.mapKey} className="p-2.5 rounded-xl bg-m3-surface-container-high/50 border border-m3-outline-subtle/50 flex flex-col justify-between">
+                                          <div className="flex items-center justify-between gap-1">
+                                            <span className="font-display font-bold text-xs text-white truncate">{realMapName}</span>
+                                            <span className={`font-mono font-bold text-xs shrink-0 ${tm.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                              {Math.round(tm.winPct)}%
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center justify-between text-[10px] text-m3-outline font-mono mt-1">
+                                            <span>{tm.matches}m</span>
+                                            <span>{tm.kd.toFixed(2)} KD</span>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center justify-between text-[10px] text-m3-outline font-mono mt-1">
-                                          <span>{tm.matches}m</span>
-                                          <span>{tm.kd.toFixed(2)} KD</span>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
