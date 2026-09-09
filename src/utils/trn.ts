@@ -61,6 +61,7 @@ export interface TrnActStats {
   kastPctile: number;
   acsPctile: number;
   adrPctile: number;
+  ddPctile: number;
   headHits: number;
   bodyHits: number;
   legHits: number;
@@ -186,6 +187,8 @@ export async function fetchTrnActStats(
       acsPctile: num((seg?.stats?.scorePerRound as any)?.percentile),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       adrPctile: num((seg?.stats?.damagePerRound as any)?.percentile),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ddPctile: num((seg?.stats?.damageDeltaPerRound as any)?.percentile),
       headHits: stat(seg, 'dealtHeadshots'),
       bodyHits: stat(seg, 'dealtBodyshots'),
       legHits: stat(seg, 'dealtLegshots'),

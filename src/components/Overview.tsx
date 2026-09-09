@@ -373,7 +373,7 @@ export const Overview: React.FC = () => {
                     { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
                     { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
                     { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
-                    { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.adrPctile },
+                    { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.ddPctile },
                   ].map((s) => {
                     const g = gradeFor(s.p);
                     const gc = (
