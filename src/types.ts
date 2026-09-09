@@ -142,6 +142,7 @@ export interface TrackerPlayer {
   deaths: number;
   assists: number;
   damage: number;
+  damageTaken: number;
   score: number;
   rounds: number;
   playtimeMs: number;
@@ -167,6 +168,8 @@ export interface TrackerDuel {
   killerTeam: string;
   victimTeam: string;
   timeInRound: number;
+  weapon: string;
+  assists: string[];
 }
 
 export interface TrackerMmrPoint {

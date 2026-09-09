@@ -20,6 +20,8 @@ export interface TrackerData {
   seasonNames: Record<string, string>;
   seasonOrder: string[];
   tierIcons: Record<number, string>;
+  agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }>;
+  weapons: Record<string, string>;
   agg: AggStats | null;
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
@@ -39,6 +41,8 @@ export function useTrackerData(): TrackerData {
   const [seasonNames, setSeasonNames] = useState<Record<string, string>>({});
   const [seasonOrder, setSeasonOrder] = useState<string[]>([]);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
+  const [agentInfo, setAgentInfo] = useState<Record<string, { name: string; icon: string; role: string; roleIcon: string }>>({});
+  const [weapons, setWeapons] = useState<Record<string, string>>({});
   const [agg, setAgg] = useState<AggStats | null>(null);
   const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
   const [detailsReady, setDetailsReady] = useState(0);
@@ -76,6 +80,8 @@ export function useTrackerData(): TrackerData {
       setSeasonNames(gd.seasons);
       setSeasonOrder(gd.seasonOrder);
       setTierIcons(gd.tierIcons);
+      setAgentInfo(gd.agentInfo);
+      setWeapons(gd.weapons);
       // Scoreboards load in the background: details are immutable and cached
       // forever, so every visit gets faster.
       const puuid = prof.puuid;
@@ -104,5 +110,5 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agg, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
 }
