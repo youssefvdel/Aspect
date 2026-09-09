@@ -57,6 +57,15 @@ export interface TrnActStats {
   trnScore: number;
   kdPercentile: number;
   hsPercentile: number;
+  roundWinPctile: number;
+  kastPctile: number;
+  acsPctile: number;
+  adrPctile: number;
+  headHits: number;
+  bodyHits: number;
+  legHits: number;
+  bestKills: number;
+  avatarUrl: string;
 }
 
 /** Current-season overview segment straight from TRN (act-wide, ties included). */
@@ -123,6 +132,20 @@ export async function fetchTrnActStats(
       timePlayedH: Math.round((stat(seg, 'timePlayed') / 3600) * 10) / 10,
       trnScore: stat(seg, 'trnPerformanceScore'),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      roundWinPctile: num((seg?.stats?.roundsWinPct as any)?.percentile),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      kastPctile: num((seg?.stats?.kAST as any)?.percentile),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      acsPctile: num((seg?.stats?.scorePerRound as any)?.percentile),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      adrPctile: num((seg?.stats?.damagePerRound as any)?.percentile),
+      headHits: stat(seg, 'dealtHeadshots'),
+      bodyHits: stat(seg, 'dealtBodyshots'),
+      legHits: stat(seg, 'dealtLegshots'),
+      bestKills: stat(seg, 'mostKillsInMatch'),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      avatarUrl: String((j as any)?.data?.platformInfo?.avatarUrl ?? ''),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       kdPercentile: num((seg?.stats?.kills as any)?.percentile),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       hsPercentile: num((seg?.stats?.headshotsPercentage as any)?.percentile),
@@ -135,9 +158,12 @@ export interface TrnAgentStat {
   agent: string;
   matches: number;
   wins: number;
+  winPct: number;
   kd: number;
   adr: number;
+  acs: number;
   hsPct: number;
+  hours: number;
 }
 
 /** Per-agent season segments (top agents with real HS%). */
@@ -156,13 +182,18 @@ export async function fetchTrnAgents(name: string, tag: string, seasonId: string
       (s: any): TrnAgentStat => {
         const k = num(s?.stats?.kills?.value);
         const d = num(s?.stats?.deaths?.value);
+        const m = num(s?.stats?.matchesPlayed?.value);
+        const w = num(s?.stats?.matchesWon?.value);
         return {
           agent: String(s?.metadata?.name ?? s?.attributes?.agent ?? '?'),
-          matches: num(s?.stats?.matchesPlayed?.value),
-          wins: num(s?.stats?.matchesWon?.value),
+          matches: m,
+          wins: w,
+          winPct: m > 0 ? (w / m) * 100 : 0,
           kd: d > 0 ? k / d : k,
           adr: num(s?.stats?.damagePerRound?.value),
+          acs: num(s?.stats?.scorePerRound?.value),
           hsPct: num(s?.stats?.headshotsPercentage?.value),
+          hours: Math.round((num(s?.stats?.timePlayed?.value) / 3600) * 10) / 10,
         };
       }
     )

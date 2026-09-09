@@ -26,6 +26,7 @@ export interface TrackerData {
   agg: AggStats | null;
   trn: TrnActStats | null;
   trnAgents: TrnAgentStat[];
+  trnPrev: Record<string, { kd: number; matches: number }>;
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
   detailsTotal: number;
@@ -49,6 +50,7 @@ export function useTrackerData(): TrackerData {
   const [agg, setAgg] = useState<AggStats | null>(null);
   const [trn, setTrn] = useState<TrnActStats | null>(null);
   const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
+  const [trnPrev, setTrnPrev] = useState<Record<string, { kd: number; matches: number }>>({});
   const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
   const [detailsReady, setDetailsReady] = useState(0);
   const [detailsTotal, setDetailsTotal] = useState(0);
@@ -98,6 +100,25 @@ export function useTrackerData(): TrackerData {
             .then(setTrnAgents)
             .catch(() => setTrnAgents([]));
         }
+        // Previous-act K/D + match counts (max 3, best effort).
+        {
+          const played = new Set(prof.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+          const order = gd.seasonOrder.length > 0 ? gd.seasonOrder : [...played];
+          const prev = order
+            .filter((id) => id !== prof.currentSeasonId.toLowerCase() && played.has(id))
+            .slice(0, 3);
+          Promise.all(
+            prev.map((sid) =>
+              fetchTrnActStats(accName, accTag, sid)
+                .then(({ stats }) => ({ sid, kd: stats.kd, matches: stats.wins + stats.losses + stats.ties }))
+                .catch(() => null)
+            )
+          ).then((res) => {
+            const m: Record<string, { kd: number; matches: number }> = {};
+            for (const r of res) if (r) m[r.sid] = { kd: r.kd, matches: r.matches };
+            setTrnPrev(m);
+          });
+        }
       }
       const puuid = prof.puuid;
       const ids = comp.map((g) => g.matchId).filter(Boolean);
@@ -125,5 +146,5 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
 }
