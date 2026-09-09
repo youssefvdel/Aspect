@@ -127,7 +127,8 @@ export async function fetchTrnActStats(
   seasonId = '',
   playlist = 'competitive'
 ): Promise<{ stats: TrnActStats; defaultSeason: string }> {
-  let seg: unknown = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let seg: any = null;
   let avatarUrl = '';
   let defaultSeason = '';
   if (playlist === 'competitive' && !seasonId) {
