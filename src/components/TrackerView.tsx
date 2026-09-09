@@ -42,8 +42,8 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      {/* TRN-style Sub-Navigation Top Bar */}
-      <nav className="flex items-center gap-6 px-4 sm:px-6 bg-[#18222d] border-b border-m3-outline-subtle/40 text-[13px] sm:text-sm font-bold shrink-0 overflow-x-auto custom-scrollbar select-none z-10 shadow-sm">
+      {/* Material 3 Tab Row Navigation */}
+      <nav className="flex items-center gap-6 px-4 sm:px-6 bg-m3-surface-container-low border-b border-m3-outline-subtle text-xs sm:text-[13px] font-semibold shrink-0 overflow-x-auto custom-scrollbar select-none z-10 shadow-xs">
         {TABS.map((t) => {
           const active = subTab === t.id;
           return (
@@ -51,19 +51,19 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
               key={t.id}
               onClick={() => setSubTab(t.id)}
               className={`relative py-3 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                active ? 'text-white' : 'text-[#8c97a4] hover:text-[#d1d8e0]'
+                active ? 'text-m3-primary font-bold font-display' : 'text-m3-outline hover:text-m3-on-surface'
               }`}
             >
               <span>{t.label}</span>
               {t.badge && (
-                <span className="text-[9px] font-black text-[#ff4655] border border-[#ff4655] rounded px-1 py-px leading-tight">
+                <span className="text-[9px] font-bold text-m3-primary bg-m3-primary/15 border border-m3-primary/40 rounded-full px-1.5 py-0.5 leading-none">
                   {t.badge}
                 </span>
               )}
               {active && (
                 <motion.span
                   layoutId="tracker-active-subtab"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ff4655]"
+                  className="absolute bottom-0 left-0 right-0 h-[3px] bg-m3-primary rounded-t-full shadow-xs"
                 />
               )}
             </button>
@@ -249,10 +249,10 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface flex items-center gap-2">
-                    <Swords className="w-4 h-4 text-[#ff4655]" />
+                    <Swords className="w-4 h-4 text-m3-primary" />
                     <span>Player Encounters</span>
                   </h4>
-                  <span className="text-[9px] font-extrabold text-[#ff4655] border border-[#ff4655] rounded px-1.5 py-0.5 leading-none">
+                  <span className="text-[9px] font-bold text-m3-primary bg-m3-primary/15 border border-m3-primary/40 rounded-full px-2 py-0.5 leading-none">
                     NEW FEATURE
                   </span>
                 </div>

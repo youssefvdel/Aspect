@@ -1,11 +1,9 @@
 import {
   Cpu,
   Sliders,
-  Eye,
   Settings,
   Keyboard,
   Sparkles,
-  FileCode2,
   LayoutDashboard,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
@@ -32,50 +30,33 @@ interface SidebarProps {
   onOpenUpdates?: () => void;
 }
 
-const UTILITY_TABS: SidebarTab[] = [
-  {
-    id: 'switcher',
-    label: 'Resolution Switch',
-    shortcut: '1',
-    icon: Sliders,
-  },
-  {
-    id: 'visualizer',
-    label: 'Stretch Preview',
-    shortcut: '2',
-    icon: Eye,
-  },
-];
-
 /* Tracker group — keyless Riot data, zero signup. */
 const TRACKER_TABS: SidebarTab[] = [
   {
     id: 'overview',
     label: 'Tracker',
-    shortcut: '6',
+    shortcut: '1',
     icon: LayoutDashboard,
   },
 ];
 
-/* Settings group — setup + custom builder merged in one tab, GPU stands alone. */
+/* Utility group — resolution toggle and stretch simulator. */
+const UTILITY_TABS: SidebarTab[] = [
+  {
+    id: 'switcher',
+    label: 'Resolution Switch',
+    shortcut: '2',
+    icon: Sliders,
+  },
+];
+
+/* Settings group — stretch setup, config editor, and GPU scaling. */
 const SETTINGS_TABS: SidebarTab[] = [
   {
     id: 'settings',
-    label: 'Stretch Setup',
+    label: 'Settings',
     shortcut: '3',
     icon: Settings,
-  },
-  {
-    id: 'valorant',
-    label: 'Valorant Config',
-    shortcut: '5',
-    icon: FileCode2,
-  },
-  {
-    id: 'gpu',
-    label: 'GPU Scaling',
-    shortcut: '4',
-    icon: Cpu,
   },
 ];
 
@@ -101,8 +82,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <nav className="space-y-1">
         {group.tabs.map((tab) => {
           const Icon = tab.icon;
-          // Legacy compat: 'borderless' tab aliases to merged switcher grid
-          const isActive = currentTab === tab.id || (currentTab === 'borderless' && tab.id === 'switcher');
+          // Active highlighting considers sub-tabs
+          const isActive =
+            (tab.id === 'overview' && (currentTab === 'overview' || currentTab === 'matches')) ||
+            (tab.id === 'switcher' && (currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless')) ||
+            (tab.id === 'settings' && (currentTab === 'settings' || currentTab === 'valorant' || currentTab === 'gpu'));
           return (
             <button
               key={tab.id}
@@ -220,8 +204,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Tabs List (M3 Expressive Navigation Rail with Pill Items) */}
         <div className="px-3 pt-1">
-          {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, true)}
-          {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, false)}
+          {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, true)}
+          {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, false)}
           {renderGroup({ title: 'Settings', tabs: SETTINGS_TABS }, false)}
         </div>
       </div>
@@ -256,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Switch Tabs</span>
           </span>
           <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-            Keys 1 - 7
+            Keys 1 - 3
           </span>
         </div>
         </div>
