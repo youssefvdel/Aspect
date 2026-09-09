@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lock, RefreshCw, Skull, Award } from 'lucide-react';
+import { Check, Lock, RefreshCw } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
+import killsIcon from '../assets/icons/kills.png';
 import firstbloodsIcon from '../assets/icons/firstbloods.png';
+import acesIcon from '../assets/icons/aces.png';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { useCountUp } from '../hooks/useCountUp';
 import { OverviewSkeletons } from './TrackerSkeletons';
@@ -251,9 +253,7 @@ export const Overview: React.FC = () => {
               <h4 className="font-display font-bold text-sm text-m3-on-surface mb-2">Combat Highlights</h4>
               <div className="flex flex-col gap-3 flex-1 justify-around">
                 <div className="flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-full bg-[#c9a227] flex items-center justify-center shrink-0 shadow-sm">
-                    <Skull className="w-5 h-5 text-[#1a1405]" strokeWidth={2.2} />
-                  </span>
+                  <img src={killsIcon} alt="" className="w-10 h-10 rounded-full shrink-0 shadow-sm" />
                   <div>
                     <div className="text-[11px] font-medium text-m3-outline">Match Kills (Best)</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
@@ -271,9 +271,7 @@ export const Overview: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0 shadow-sm">
-                    <Award className="w-5 h-5 text-white" strokeWidth={2.2} />
-                  </span>
+                  <img src={acesIcon} alt="" className="w-10 h-10 rounded-full shrink-0 shadow-sm" />
                   <div>
                     <div className="text-[11px] font-medium text-m3-outline">Aces</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
