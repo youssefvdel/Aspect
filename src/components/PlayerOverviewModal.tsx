@@ -88,11 +88,11 @@ export const PlayerOverviewModal: React.FC<Props> = ({
 
   if (!player) return null;
 
+  const isMe =
+    player.isMe ||
+    (mmrProfile && mmrProfile.name.toLowerCase() === player.name.toLowerCase());
   const currentRank = player.rankName || mmrProfile?.rank || 'Unranked';
-  const currentRr =
-    mmrProfile && mmrProfile.name.toLowerCase() === player.name.toLowerCase()
-      ? mmrProfile.rr
-      : 0;
+  const currentRr = isMe ? mmrProfile?.rr ?? 0 : 0;
 
   return (
     <AnimatePresence>
