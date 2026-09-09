@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Overview } from './Overview';
 import { MatchHistory } from './MatchHistory';
 import { TrackerMaps } from './TrackerMaps';
+import { TrackerAgents } from './TrackerAgents';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Target } from 'lucide-react';
@@ -23,7 +24,7 @@ const TABS: SubTabItem[] = [
 
 export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initialSubTab = 'overview' }) => {
   const [subTab, setSubTab] = useState<TrackerSubTab>(initialSubTab);
-  const { trn, trnAgents, agentInfo, agg } = useTrackerData();
+  const { trn, agg } = useTrackerData();
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-m3-surface">
@@ -133,54 +134,8 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'agents' && (
-            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 pt-3.5 pb-8">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
-                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Agent Performance (Act-Wide)</h4>
-                {trnAgents.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-m3-outline-subtle/60 text-m3-outline font-semibold">
-                          <th className="py-2.5 px-2.5">Agent</th>
-                          <th className="py-2.5 px-2.5">Matches</th>
-                          <th className="py-2.5 px-2.5">Win %</th>
-                          <th className="py-2.5 px-2.5">K/D</th>
-                          <th className="py-2.5 px-2.5">ADR</th>
-                          <th className="py-2.5 px-2.5">ACS</th>
-                          <th className="py-2.5 px-2.5">HS %</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trnAgents.map((a) => {
-                          const icon = Object.values(agentInfo).find(
-                            (x) => x.name.toLowerCase() === a.agent.toLowerCase()
-                          )?.icon;
-                          return (
-                            <tr key={a.agent} className="border-b border-m3-outline-subtle/30 hover:bg-m3-surface-container-high/40 transition-colors">
-                              <td className="py-2.5 px-2.5 font-bold text-m3-on-surface flex items-center gap-2">
-                                {icon && <img src={icon} alt={a.agent} className="w-7 h-7 rounded-md object-cover bg-m3-surface-container-high" />}
-                                <span>{a.agent}</span>
-                              </td>
-                              <td className="py-2.5 px-2.5 font-mono">{a.matches}</td>
-                              <td className={`py-2.5 px-2.5 font-mono font-bold ${a.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {a.winPct.toFixed(1)}%
-                              </td>
-                              <td className={`py-2.5 px-2.5 font-mono font-bold ${a.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {a.kd.toFixed(2)}
-                              </td>
-                              <td className="py-2.5 px-2.5 font-mono">{Math.round(a.adr)}</td>
-                              <td className="py-2.5 px-2.5 font-mono">{Math.round(a.acs)}</td>
-                              <td className="py-2.5 px-2.5 font-mono text-m3-primary font-bold">{a.hsPct.toFixed(1)}%</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-xs text-m3-outline py-4 text-center">Loading agent breakdown…</div>
-                )}
-              </div>
+            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+              <TrackerAgents />
             </motion.div>
           )}
 

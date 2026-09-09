@@ -224,49 +224,134 @@ export async function fetchTrnActStats(
   };
 }
 
-export interface TrnAgentStat {
-  agent: string;
+export interface TrnAgentTopMap {
+  mapName: string;
+  mapKey: string;
   matches: number;
   wins: number;
   winPct: number;
   kd: number;
-  adr: number;
-  acs: number;
-  hsPct: number;
-  hours: number;
 }
 
-/** Per-agent season segments (top agents with real HS%). */
+export interface TrnAgentStat {
+  agent: string;
+  agentKey: string;
+  role?: string;
+  matches: number;
+  wins: number;
+  losses: number;
+  winPct: number;
+  kd: number;
+  kda: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  adr: number;
+  acs: number;
+  damageDeltaPerRound: number;
+  hsPct: number;
+  timePlayedSeconds: number;
+  hours: number;
+  kast: number;
+  aces: number;
+  clutches: number;
+  flawless: number;
+  firstBloods: number;
+  firstDeaths: number;
+  ability1Casts: number;
+  ability2Casts: number;
+  grenadeCasts: number;
+  ultimateCasts: number;
+  attackKills: number;
+  attackDeaths: number;
+  attackAssists: number;
+  attackRoundsWinPct: number;
+  defenseKills: number;
+  defenseDeaths: number;
+  defenseAssists: number;
+  defenseRoundsWinPct: number;
+  topMaps: TrnAgentTopMap[];
+}
+
+/** Per-agent season segments (full stats, abilities, attack/defense, maps breakdown). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchTrnAgents(name: string, tag: string, seasonId: string, playlist = 'competitive'): Promise<TrnAgentStat[]> {
-  const j = (await trnGet(
-    `${riotId(name, tag)}/segments/season?playlist=${encodeURIComponent(playlist)}&seasonId=${encodeURIComponent(seasonId)}&source=web`
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  )) as any;
-  const segs = Array.isArray(j?.data) ? j.data : [];
+  const r = await fetchSeasonSeg(name, tag, playlist, seasonId);
+  const segs = Array.isArray(r?.data) ? r.data : [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return segs
-    .filter((s: any) => s?.type === 'agent')
-    .map(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (s: any): TrnAgentStat => {
-        const k = num(s?.stats?.kills?.value);
-        const d = num(s?.stats?.deaths?.value);
-        const m = num(s?.stats?.matchesPlayed?.value);
-        const w = num(s?.stats?.matchesWon?.value);
-        return {
-          agent: String(s?.metadata?.name ?? s?.attributes?.agent ?? '?'),
-          matches: m,
-          wins: w,
-          winPct: m > 0 ? (w / m) * 100 : 0,
-          kd: d > 0 ? k / d : k,
-          adr: num(s?.stats?.damagePerRound?.value),
-          acs: num(s?.stats?.scorePerRound?.value),
-          hsPct: num(s?.stats?.headshotsPercentage?.value),
-          hours: Math.round((num(s?.stats?.timePlayed?.value) / 3600) * 10) / 10,
-        };
-      }
-    )
+  const agentSegs = segs.filter((s: any) => s?.type === 'agent');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agentTopMapSegs = segs.filter((s: any) => s?.type === 'agent-top-map');
+
+  return agentSegs
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((s: any): TrnAgentStat => {
+      const k = num(s?.stats?.kills?.value);
+      const d = num(s?.stats?.deaths?.value);
+      const a = num(s?.stats?.assists?.value);
+      const m = num(s?.stats?.matchesPlayed?.value);
+      const w = num(s?.stats?.matchesWon?.value);
+      const l = num(s?.stats?.matchesLost?.value);
+      const key = String(s?.attributes?.key ?? s?.metadata?.name ?? '').toLowerCase();
+
+      const topMaps: TrnAgentTopMap[] = agentTopMapSegs
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((tm: any) => {
+          const matchKey = String(tm?.attributes?.agentKey ?? '').toLowerCase();
+          const matchName = String(tm?.metadata?.name ?? '').toLowerCase();
+          return matchKey === key || matchName === String(s?.metadata?.name ?? '').toLowerCase();
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((tm: any) => ({
+          mapName: String(tm?.metadata?.name ?? tm?.attributes?.mapKey ?? 'Map'),
+          mapKey: String(tm?.attributes?.mapKey ?? ''),
+          matches: num(tm?.stats?.matchesPlayed?.value),
+          wins: num(tm?.stats?.matchesWon?.value),
+          winPct: num(tm?.stats?.matchesWinPct?.value),
+          kd: num(tm?.stats?.kDRatio?.value),
+        }))
+        .sort((x: TrnAgentTopMap, y: TrnAgentTopMap) => y.matches - x.matches);
+
+      return {
+        agent: String(s?.metadata?.name ?? s?.attributes?.agent ?? '?'),
+        agentKey: key,
+        role: s?.metadata?.role ? String(s.metadata.role) : undefined,
+        matches: m,
+        wins: w,
+        losses: l,
+        winPct: m > 0 ? (w / m) * 100 : 0,
+        kd: d > 0 ? k / d : k,
+        kda: d > 0 ? (k + a) / d : k + a,
+        kills: k,
+        deaths: d,
+        assists: a,
+        adr: num(s?.stats?.damagePerRound?.value),
+        acs: num(s?.stats?.scorePerRound?.value),
+        damageDeltaPerRound: Math.round(num(s?.stats?.damageDeltaPerRound?.value)),
+        hsPct: num(s?.stats?.headshotsPercentage?.value),
+        timePlayedSeconds: num(s?.stats?.timePlayed?.value),
+        hours: Math.round((num(s?.stats?.timePlayed?.value) / 3600) * 10) / 10,
+        kast: num(s?.stats?.kAST?.value),
+        aces: num(s?.stats?.aces?.value),
+        clutches: num(s?.stats?.clutches?.value),
+        flawless: num(s?.stats?.flawless?.value),
+        firstBloods: num(s?.stats?.firstBloods?.value),
+        firstDeaths: num(s?.stats?.firstDeaths?.value),
+        ability1Casts: num(s?.stats?.ability1Casts?.value),
+        ability2Casts: num(s?.stats?.ability2Casts?.value),
+        grenadeCasts: num(s?.stats?.grenadeCasts?.value),
+        ultimateCasts: num(s?.stats?.ultimateCasts?.value),
+        attackKills: num(s?.stats?.attackKills?.value),
+        attackDeaths: num(s?.stats?.attackDeaths?.value),
+        attackAssists: num(s?.stats?.attackAssists?.value),
+        attackRoundsWinPct: num(s?.stats?.attackRoundsWinPct?.value),
+        defenseKills: num(s?.stats?.defenseKills?.value),
+        defenseDeaths: num(s?.stats?.defenseDeaths?.value),
+        defenseAssists: num(s?.stats?.defenseAssists?.value),
+        defenseRoundsWinPct: num(s?.stats?.defenseRoundsWinPct?.value),
+        topMaps,
+      };
+    })
     .filter((a: TrnAgentStat) => a.matches > 0)
     .sort((a: TrnAgentStat, b: TrnAgentStat) => b.matches - a.matches);
 }
