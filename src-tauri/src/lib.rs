@@ -631,6 +631,7 @@ pub fn run() {
             tracker::local_entitlements,
             tracker::local_client_version,
             tracker::riot_direct_get,
+            tracker::trn_get,
             get_quick_shortcuts,
             check_requested_tab,
             trim_memory,

@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/trnfetch"],
     "icon": [
       "icons/icon.ico",
       "icons/icon.png",

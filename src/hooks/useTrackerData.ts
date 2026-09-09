@@ -11,6 +11,7 @@ import {
   shortMapName,
   type AggStats,
 } from '../utils/tracker';
+import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
 
 export interface TrackerData {
   profile: TrackerProfile | null;
@@ -23,6 +24,8 @@ export interface TrackerData {
   agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }>;
   weapons: Record<string, string>;
   agg: AggStats | null;
+  trn: TrnActStats | null;
+  trnAgents: TrnAgentStat[];
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
   detailsTotal: number;
@@ -44,6 +47,8 @@ export function useTrackerData(): TrackerData {
   const [agentInfo, setAgentInfo] = useState<Record<string, { name: string; icon: string; role: string; roleIcon: string }>>({});
   const [weapons, setWeapons] = useState<Record<string, string>>({});
   const [agg, setAgg] = useState<AggStats | null>(null);
+  const [trn, setTrn] = useState<TrnActStats | null>(null);
+  const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
   const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
   const [detailsReady, setDetailsReady] = useState(0);
   const [detailsTotal, setDetailsTotal] = useState(0);
@@ -82,8 +87,18 @@ export function useTrackerData(): TrackerData {
       setTierIcons(gd.tierIcons);
       setAgentInfo(gd.agentInfo);
       setWeapons(gd.weapons);
-      // Scoreboards load in the background: details are immutable and cached
-      // forever, so every visit gets faster.
+      // TRN enrichment (act-wide incl. ties + HS%): best effort, Riot-direct
+      // stays the fallback so the tab never depends on it.
+      if (accName) {
+        fetchTrnActStats(accName, accTag, prof.currentSeasonId)
+          .then(({ stats }) => setTrn(stats))
+          .catch(() => setTrn(null));
+        if (prof.currentSeasonId) {
+          fetchTrnAgents(accName, accTag, prof.currentSeasonId)
+            .then(setTrnAgents)
+            .catch(() => setTrnAgents([]));
+        }
+      }
       const puuid = prof.puuid;
       const ids = comp.map((g) => g.matchId).filter(Boolean);
       setDetailsTotal(ids.length);
@@ -110,5 +125,5 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
 }

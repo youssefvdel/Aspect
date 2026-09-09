@@ -58,11 +58,17 @@ const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone
 );
 
 export const Overview: React.FC = () => {
-  const { profile, games, seasonNames, seasonOrder, tierIcons, agg, isLoading, banner, setBanner, refresh } =
+  const { profile, games, seasonNames, seasonOrder, tierIcons, agg, trn, trnAgents, isLoading, banner, setBanner, refresh } =
     useTrackerData();
 
-  const losses = profile ? Math.max(0, profile.games - profile.wins) : 0;
-  const winPct = profile && profile.games > 0 ? (profile.wins / profile.games) * 100 : 0;
+  const losses = trn ? trn.losses : profile ? Math.max(0, profile.games - profile.wins) : 0;
+  const wins = trn ? trn.wins : profile?.wins ?? 0;
+  const winPct = trn ? trn.winPct : profile && profile.games > 0 ? (profile.wins / profile.games) * 100 : 0;
+  const kd = trn?.kd ?? agg?.kd ?? 0;
+  const adr = trn?.adr ?? agg?.adr ?? 0;
+  const kills = trn?.kills ?? agg?.kills ?? 0;
+  const deaths = trn?.deaths ?? agg?.deaths ?? 0;
+  const assists = trn?.assists ?? agg?.assists ?? 0;
   const form = games.slice(0, 10);
   const formW = form.filter((g) => g.change > 0).length;
   const maxAbs = Math.max(10, ...games.map((p) => Math.abs(p.change)));
@@ -152,61 +158,92 @@ export const Overview: React.FC = () => {
           {/* Headline tiles */}
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
             <BigTile index={2} label="Win %" numeric={winPct} decimals={1} suffix="%" />
-            {agg ? (
-              <BigTile index={3} label="K/D" numeric={agg.kd} decimals={2} />
+            <BigTile index={3} label="K/D" numeric={kd} decimals={2} />
+            {trn ? (
+              <BigTile index={4} label="Headshot %" numeric={trn.hsPct} decimals={1} suffix="%" />
             ) : (
-              <BigTile index={3} label="K/D" value="…" />
+              <BigTile index={4} label="Headshot %" value="—" locked />
             )}
-            <BigTile index={4} label="Headshot %" value="—" locked />
-            {agg ? (
-              <BigTile index={5} label="Damage/Round" numeric={agg.adr} decimals={1} />
-            ) : (
-              <BigTile index={5} label="Damage/Round" value="…" />
-            )}
+            <BigTile index={5} label="Damage/Round" numeric={adr} decimals={1} />
           </section>
 
           {/* Sub stats */}
           <motion.section variants={rise} custom={6}
             className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-              <SmallStat label="Wins" value={String(profile.wins)} tone="win" />
-              <SmallStat label="Losses" value={String(losses)} tone="loss" />
-              <SmallStat label="Kills" value={agg ? String(agg.kills) : '…'} />
-              <SmallStat label="Deaths" value={agg ? String(agg.deaths) : '…'} />
-              <SmallStat label="Assists" value={agg ? String(agg.assists) : '…'} />
-              <SmallStat label="Headshots" value="—" locked />
-              <SmallStat label="Flawless" value={agg ? String(agg.flawless) : '…'} />
-              <SmallStat label="Clutches" value={agg ? String(agg.clutches) : '…'} />
+              <SmallStat label="Wins" value={String(wins)} tone="win" />
+              <SmallStat label="Losses" value={trn && trn.ties > 0 ? `${losses}+${trn.ties}T` : String(losses)} tone="loss" />
+              <SmallStat label="Kills" value={kills ? String(kills) : '…'} />
+              <SmallStat label="Deaths" value={deaths ? String(deaths) : '…'} />
+              <SmallStat label="Assists" value={assists ? String(assists) : '…'} />
+              <SmallStat label="Headshots" value={trn ? String(trn.headshots) : '—'} locked={!trn} />
+              <SmallStat label="Flawless" value={String(trn?.flawless ?? agg?.flawless ?? '…')} />
+              <SmallStat label="Clutches" value={String(trn?.clutches ?? agg?.clutches ?? '…')} />
             </div>
             <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
               <Lock className="w-3 h-3 shrink-0" />
-              <span>K/D stats cover your last {agg ? agg.matches : '…'} games{agg ? '' : ' (scoreboards loading…)'} — only headshots stay locked, Riot strips them from past matches.</span>
+              <span>
+                {trn
+                  ? `Act-wide numbers via TRN (${wins}W–${losses}L${trn.ties > 0 ? `–${trn.ties}T` : ''}) • rank live from Riot`
+                  : 'Act-wide stats loading — rank and trend are live from Riot.'}
+              </span>
             </div>
           </motion.section>
 
           {/* Heroics + top agent */}
-          {agg && (
+          {(agg || trn) && (
             <motion.section variants={rise} custom={7}
               className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Top agent</span>
-                <span className="font-display font-extrabold text-xl text-m3-on-surface truncate">{agg.topAgent.name}</span>
-                <span className="text-[10px] text-m3-outline">{agg.topAgent.matches} games • {agg.topAgent.hours}h</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface truncate">
+                  {trnAgents[0]?.agent ?? agg?.topAgent.name ?? '—'}
+                </span>
+                <span className="text-[10px] text-m3-outline">
+                  {trnAgents[0]
+                    ? `${trnAgents[0].matches} games • K/D ${trnAgents[0].kd.toFixed(2)} • HS ${trnAgents[0].hsPct.toFixed(0)}%`
+                    : agg ? `${agg.topAgent.matches} games • ${agg.topAgent.hours}h` : ''}
+                </span>
               </div>
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Aces</span>
-                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{agg.aces}</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{trn?.aces ?? agg?.aces ?? '…'}</span>
                 <span className="text-[10px] text-m3-outline">5K rounds</span>
               </div>
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">First kills</span>
-                <span className="font-display font-extrabold text-xl text-m3-tertiary tabular-nums">{agg.firstKills}</span>
+                <span className="font-display font-extrabold text-xl text-m3-tertiary tabular-nums">{trn?.firstKills ?? agg?.firstKills ?? '…'}</span>
                 <span className="text-[10px] text-m3-outline">opening duels won</span>
               </div>
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">First deaths</span>
-                <span className="font-display font-extrabold text-xl text-red-400 tabular-nums">{agg.firstDeaths}</span>
+                <span className="font-display font-extrabold text-xl text-red-400 tabular-nums">{trn?.firstDeaths ?? agg?.firstDeaths ?? '…'}</span>
                 <span className="text-[10px] text-m3-outline">opening duels lost</span>
+              </div>
+            </motion.section>
+          )}
+          {trn && (
+            <motion.section variants={rise} custom={8}
+              className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+              <div className="rounded-2xl bg-m3-tertiary-container/40 border border-m3-tertiary/30 p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Tracker score</span>
+                <span className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</span>
+                <span className="text-[10px] text-m3-outline">performance rating</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">KAST</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{trn.kast.toFixed(1)}%</span>
+                <span className="text-[10px] text-m3-outline">rounds impacted</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Round win %</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{trn.roundWinPct.toFixed(1)}%</span>
+                <span className="text-[10px] text-m3-outline">{trn.rounds} rounds</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">MVPs</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{trn.mvps}</span>
+                <span className="text-[10px] text-m3-outline">match bests</span>
               </div>
             </motion.section>
           )}
