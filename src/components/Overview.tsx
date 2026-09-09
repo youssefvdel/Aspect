@@ -1,8 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Check, Lock, RefreshCw } from 'lucide-react';
-import type { TrackerMmrPoint } from '../types';
-import { queueLabel, shortMapName, tierName } from '../utils/tracker';
+import { tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { useCountUp } from '../hooks/useCountUp';
 import { TrackerSkeletons } from './TrackerSkeletons';
@@ -14,15 +13,6 @@ const rise = {
     y: 0,
     transition: { delay: i * 0.05, duration: 0.35, ease: 'easeOut' as const },
   }),
-};
-
-const fmtDate = (ms: number): string => {
-  if (!ms) return '';
-  const d = new Date(ms);
-  const now = new Date();
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (d.toDateString() === now.toDateString()) return `Today ${time}`;
-  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 };
 
 const shortAct = (label: string): string =>
@@ -57,18 +47,18 @@ const BigTile: React.FC<{ label: string; value?: string; numeric?: number; decim
   );
 };
 
-const SmallStat: React.FC<{ label: string; value: string; locked?: boolean }> = ({ label, value, locked = false }) => (
+const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone?: 'win' | 'loss' }> = ({ label, value, locked = false, tone }) => (
   <div className={`flex flex-col gap-0.5 min-w-0 ${locked ? 'opacity-60' : ''}`}>
     <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline flex items-center gap-1">
       {label}
       {locked && <Lock className="w-2.5 h-2.5" />}
     </span>
-    <span className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums truncate">{value}</span>
+    <span className={`font-display font-extrabold text-lg tabular-nums truncate ${tone === 'win' ? 'text-m3-tertiary' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
   </div>
 );
 
 export const Overview: React.FC = () => {
-  const { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, isLoading, banner, setBanner, refresh } =
+  const { profile, games, seasonNames, seasonOrder, tierIcons, isLoading, banner, setBanner, refresh } =
     useTrackerData();
 
   const losses = profile ? Math.max(0, profile.games - profile.wins) : 0;
@@ -171,8 +161,8 @@ export const Overview: React.FC = () => {
           <motion.section variants={rise} custom={6}
             className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-              <SmallStat label="Wins" value={String(profile.wins)} />
-              <SmallStat label="Losses" value={String(losses)} />
+              <SmallStat label="Wins" value={String(profile.wins)} tone="win" />
+              <SmallStat label="Losses" value={String(losses)} tone="loss" />
               <SmallStat label="Kills" value="—" locked />
               <SmallStat label="Deaths" value="—" locked />
               <SmallStat label="Assists" value="—" locked />
@@ -236,32 +226,6 @@ export const Overview: React.FC = () => {
               </div>
             )}
           </motion.section>
-
-          {/* Recent games */}
-          {games.length > 0 && (
-            <section className="flex flex-col gap-1.5 shrink-0">
-              {games.slice(0, 5).map((g: TrackerMmrPoint, i: number) => (
-                <motion.div key={g.matchId || g.when} variants={rise} custom={9 + i}
-                  className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2.5 py-2 flex items-center gap-2.5">
-                  <span className={`w-1 self-stretch rounded-full shrink-0 ${g.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[11px] font-bold text-m3-on-surface">
-                        {mapById[g.matchId] ?? shortMapName(g.mapId, {})}
-                      </span>
-                      <span className="text-[10px] text-m3-outline">{queueLabel(queueById[g.matchId] ?? '')}</span>
-                      <span className={`text-[11px] font-mono font-bold ${g.change >= 0 ? 'text-m3-tertiary' : 'text-red-400'}`}>
-                        {g.change > 0 ? `+${g.change}` : g.change} RR
-                      </span>
-                    </div>
-                    <div className="text-[10px] font-mono text-m3-outline mt-0.5">
-                      {g.tier} • {fmtDate(g.when)}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </section>
-          )}
         </>
       ) : (
         !isLoading && (
