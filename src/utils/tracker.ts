@@ -1,16 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { LocalRiotAccount, TrackerMmrPoint, TrackerProfile } from '../types';
+import type { LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
 
 /* Keyless tracker: everything comes straight from Riot using the local
    client's own session. No API keys, no third party. Needs Riot Client open.
-   Proven live shapes (2026-09-08):
-   - mmr: { LatestCompetitiveUpdate: {TierAfterUpdate, RankedRatingAfterUpdate, ...},
-             QueueSkills: { competitive: { SeasonalInfoBySeasonID: { id: {NumberOfWins, NumberOfGames, CompetitiveTier} } } } }
-   - competitiveupdates: { Matches: [{ MatchID, MapID, QueueID?, MatchStartTime, TierAfterUpdate, RankedRatingAfterUpdate, RankedRatingEarned }] }
+   Proven live shapes (2026-09-08/09), same endpoints TRN/Blitz call locally:
+   - mmr: { LatestCompetitiveUpdate: {...}, QueueSkills: { competitive: { SeasonalInfoBySeasonID } } }
+   - competitiveupdates: { Matches: [{ MatchID, MapID, MatchStartTime, TierAfterUpdate, RankedRatingAfterUpdate, RankedRatingEarned }] }
    - history: { Total, History: [{ MatchID, GameStartTime, QueueID }] }
-   NOTE: /match/v1/matches/{id} 503s for client creds on every host —
-   past-match scoreboards are unreachable without a server key. */
+   - match-details/v1/matches/{id}: { matchInfo, players[] (subject/teamId/characterId/stats/roundDamage), teams[], roundResults[] } */
 
 /** Logged-in Riot account from the local client. Throws when the client is closed. */
 export async function detectLocalAccount(): Promise<LocalRiotAccount> {
@@ -336,3 +334,157 @@ export const queueLabel = (q: string): string => {
   if (s === 'swiftplay') return 'Swiftplay';
   return s ? s[0].toUpperCase() + s.slice(1) : 'Custom';
 };
+
+const normTeam = (t: unknown): string => {
+  const s = String(t ?? '').toLowerCase();
+  if (s === 'blue') return 'Blue';
+  if (s === 'red') return 'Red';
+  return String(t ?? '');
+};
+
+/**
+ * Full match straight from Riot via the SAME endpoint TRN/Blitz call locally
+ * (match-details/v1 — the singular /match/v1 path 503s for client creds).
+ * Immutable → cached forever. Throws when unusable.
+ * Proven shape: { matchInfo{mapId,queueID,gameStartMillis}, players[{subject,teamId,
+ * characterId,stats{kills,deaths,assists,score,roundsPlayed},roundDamage[{damage}]}],
+ * teams[{teamId,roundsWon}], roundResults[{roundNum,winningTeam,playerStats[{subject,kills[{killer,victim,roundTime}]}]}] }
+ * NOTE: gameName/tagLine are empty (privacy) and kills carry no headshot flag —
+ * names show as agent, HS% stays live-only.
+ */
+export async function fetchMatchDetailDirect(region: string, matchId: string): Promise<TrackerMatchDetail> {
+  const cacheKey = `aspect_match_v1_${matchId}`;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) return JSON.parse(raw) as TrackerMatchDetail;
+  } catch {}
+  const j = await riotGet(shardFor(region), `/match-details/v1/matches/${matchId}`);
+  const { agents: amap } = await gameData();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const players: TrackerPlayer[] = ((Array.isArray(j?.players) ? j.players : []) as any[]).map((p) => {
+    const st = p?.stats ?? {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dmg = (Array.isArray(p?.roundDamage) ? p.roundDamage : []).reduce((n: number, r: any) => n + Number(r?.damage ?? 0), 0);
+    return {
+      puuid: String(p?.subject ?? ''),
+      name: '',
+      tag: '',
+      team: normTeam(p?.teamId),
+      agent: amap[String(p?.characterId ?? '').toLowerCase()] ?? 'Agent',
+      kills: Number(st.kills ?? 0),
+      deaths: Number(st.deaths ?? 0),
+      assists: Number(st.assists ?? 0),
+      damage: dmg,
+      score: Number(st.score ?? 0),
+      rounds: Number(st.roundsPlayed ?? 0),
+      headshots: 0,
+      bodyshots: 0,
+      legshots: 0,
+    };
+  });
+  if (players.length === 0) throw new Error('Empty scoreboard.');
+  const teamOf = (puuid: string): string => players.find((p) => p.puuid === puuid)?.team ?? '';
+  // Team scores come straight from the payload — no round counting needed.
+  const teamScore: Record<string, number> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const t of (Array.isArray(j?.teams) ? j.teams : []) as any[]) {
+    teamScore[normTeam(t?.teamId)] = Number(t?.roundsWon ?? 0);
+  }
+  const roundsSrc: unknown[] = Array.isArray(j?.roundResults) ? j.roundResults : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rounds = (roundsSrc as any[]).map((r) => ({ winningTeam: normTeam(r?.winningTeam) }));
+  const kills: TrackerDuel[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (roundsSrc as any[]).forEach((r) => {
+    const num = Number(r?.roundNum ?? 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pstats: any[] = Array.isArray(r?.playerStats) ? r.playerStats : [];
+    for (const ps of pstats) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const kl: any[] = Array.isArray(ps?.kills) ? ps.kills : [];
+      for (const k of kl) {
+        const kp = String(k?.killer ?? ps?.subject ?? '');
+        const vp = String(k?.victim ?? '');
+        kills.push({
+          round: num,
+          killerPuuid: kp,
+          victimPuuid: vp,
+          killerTeam: teamOf(kp),
+          victimTeam: teamOf(vp),
+          timeInRound: Number(k?.roundTime ?? 0),
+        });
+      }
+    }
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mi: any = (j as any)?.matchInfo ?? {};
+  const out: TrackerMatchDetail = {
+    rounds,
+    players,
+    kills,
+    mapId: String(mi.mapId ?? ''),
+    teamScore,
+    queue: String(mi.queueID ?? ''),
+    when: Number(mi.gameStartMillis ?? 0),
+  };
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(out));
+  } catch {}
+  return out;
+}
+
+export interface AggStats {
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  rounds: number;
+  matches: number;
+  kd: number;
+  adr: number;
+}
+
+/** Aggregate K/D/ADR over a set of matches (details cached forever, repeats are free). */
+export async function aggregateDetails(
+  region: string,
+  matchIds: string[],
+  puuid: string
+): Promise<{ agg: AggStats; byId: Record<string, TrackerMatchDetail> }> {
+  const byId: Record<string, TrackerMatchDetail> = {};
+  await Promise.all(
+    matchIds.map(async (id) => {
+      try {
+        byId[id] = await fetchMatchDetailDirect(region, id);
+      } catch {}
+    })
+  );
+  let kills = 0;
+  let deaths = 0;
+  let assists = 0;
+  let damage = 0;
+  let rounds = 0;
+  let matches = 0;
+  for (const id of matchIds) {
+    const me = byId[id]?.players.find((p) => p.puuid === puuid);
+    if (!me) continue;
+    matches++;
+    kills += me.kills;
+    deaths += me.deaths;
+    assists += me.assists;
+    damage += me.damage;
+    rounds += me.rounds;
+  }
+  return {
+    agg: {
+      kills,
+      deaths,
+      assists,
+      damage,
+      rounds,
+      matches,
+      kd: deaths > 0 ? kills / deaths : kills,
+      adr: rounds > 0 ? damage / rounds : 0,
+    },
+    byId,
+  };
+}

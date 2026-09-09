@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TrackerMmrPoint, TrackerProfile } from '../types';
+import type { TrackerMatchDetail, TrackerMmrPoint, TrackerProfile } from '../types';
 import {
+  aggregateDetails,
   detectLocalAccount,
   detectRegion,
   fetchCompetitiveUpdates,
@@ -8,6 +9,7 @@ import {
   fetchMmrDirect,
   gameData,
   shortMapName,
+  type AggStats,
 } from '../utils/tracker';
 
 export interface TrackerData {
@@ -18,6 +20,10 @@ export interface TrackerData {
   seasonNames: Record<string, string>;
   seasonOrder: string[];
   tierIcons: Record<number, string>;
+  agg: AggStats | null;
+  detailsById: Record<string, TrackerMatchDetail>;
+  detailsReady: number;
+  detailsTotal: number;
   isLoading: boolean;
   banner: string | null;
   setBanner: (m: string | null) => void;
@@ -33,6 +39,10 @@ export function useTrackerData(): TrackerData {
   const [seasonNames, setSeasonNames] = useState<Record<string, string>>({});
   const [seasonOrder, setSeasonOrder] = useState<string[]>([]);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
+  const [agg, setAgg] = useState<AggStats | null>(null);
+  const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
+  const [detailsReady, setDetailsReady] = useState(0);
+  const [detailsTotal, setDetailsTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const autoTried = useRef(false);
@@ -66,6 +76,21 @@ export function useTrackerData(): TrackerData {
       setSeasonNames(gd.seasons);
       setSeasonOrder(gd.seasonOrder);
       setTierIcons(gd.tierIcons);
+      // Scoreboards load in the background: details are immutable and cached
+      // forever, so every visit gets faster.
+      const puuid = prof.puuid;
+      const ids = comp.map((g) => g.matchId).filter(Boolean);
+      setDetailsTotal(ids.length);
+      setDetailsReady(0);
+      if (puuid && ids.length > 0) {
+        aggregateDetails(region, ids, puuid)
+          .then(({ agg: a, byId }) => {
+            setAgg(a);
+            setDetailsById(byId);
+            setDetailsReady(Object.keys(byId).length);
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       setBanner(String(e instanceof Error ? e.message : e));
     } finally {
@@ -79,5 +104,5 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, isLoading, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agg, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
 }

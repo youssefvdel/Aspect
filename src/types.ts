@@ -143,6 +143,7 @@ export interface TrackerPlayer {
   assists: number;
   damage: number;
   score: number;
+  rounds: number;
   headshots: number;
   bodyshots: number;
   legshots: number;
@@ -153,6 +154,9 @@ export interface TrackerMatchDetail {
   players: TrackerPlayer[];
   kills: TrackerDuel[];
   mapId: string;
+  teamScore: Record<string, number>;
+  queue: string;
+  when: number;
 }
 
 export interface TrackerDuel {

@@ -58,7 +58,7 @@ const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone
 );
 
 export const Overview: React.FC = () => {
-  const { profile, games, seasonNames, seasonOrder, tierIcons, isLoading, banner, setBanner, refresh } =
+  const { profile, games, seasonNames, seasonOrder, tierIcons, agg, isLoading, banner, setBanner, refresh } =
     useTrackerData();
 
   const losses = profile ? Math.max(0, profile.games - profile.wins) : 0;
@@ -152,9 +152,17 @@ export const Overview: React.FC = () => {
           {/* Headline tiles */}
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
             <BigTile index={2} label="Win %" numeric={winPct} decimals={1} suffix="%" />
-            <BigTile index={3} label="K/D" value="—" locked />
+            {agg ? (
+              <BigTile index={3} label="K/D" numeric={agg.kd} decimals={2} />
+            ) : (
+              <BigTile index={3} label="K/D" value="…" />
+            )}
             <BigTile index={4} label="Headshot %" value="—" locked />
-            <BigTile index={5} label="Damage/Round" value="—" locked />
+            {agg ? (
+              <BigTile index={5} label="Damage/Round" numeric={agg.adr} decimals={1} />
+            ) : (
+              <BigTile index={5} label="Damage/Round" value="…" />
+            )}
           </section>
 
           {/* Sub stats */}
@@ -163,16 +171,16 @@ export const Overview: React.FC = () => {
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
               <SmallStat label="Wins" value={String(profile.wins)} tone="win" />
               <SmallStat label="Losses" value={String(losses)} tone="loss" />
-              <SmallStat label="Kills" value="—" locked />
-              <SmallStat label="Deaths" value="—" locked />
-              <SmallStat label="Assists" value="—" locked />
+              <SmallStat label="Kills" value={agg ? String(agg.kills) : '…'} />
+              <SmallStat label="Deaths" value={agg ? String(agg.deaths) : '…'} />
+              <SmallStat label="Assists" value={agg ? String(agg.assists) : '…'} />
               <SmallStat label="Headshots" value="—" locked />
               <SmallStat label="Flawless" value="—" locked />
               <SmallStat label="Clutches" value="—" locked />
             </div>
             <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
               <Lock className="w-3 h-3 shrink-0" />
-              <span>Locked tiles unlock while you play — Riot only gives round stats to live observers, so Aspect reads your match as it happens and keeps everything on your PC.</span>
+              <span>K/D stats cover your last {agg ? agg.matches : '…'} games{agg ? '' : ' (scoreboards loading…)'} — headshots stay locked until live tracking lands, Riot hides them from past matches.</span>
             </div>
           </motion.section>
 
