@@ -629,9 +629,9 @@ export const TrackerAgents: React.FC = () => {
                               {a.topMaps.length > 0 && (
                                 <div className="pt-2 border-t border-m3-outline-subtle/40">
                                   <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-2">
-                                    Map Records with {a.agent}
+                                    Top Maps with {a.agent}
                                   </div>
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                                  <div className="flex flex-wrap gap-2.5">
                                     {a.topMaps.map((tm) => {
                                       const mapNameDict: Record<string, string> = {
                                         abyss: 'Abyss',
@@ -656,16 +656,16 @@ export const TrackerAgents: React.FC = () => {
                                           : 'Map');
 
                                       return (
-                                        <div key={tm.mapKey} className="p-2.5 rounded-xl bg-m3-surface-container-high/50 border border-m3-outline-subtle/50 flex flex-col justify-between">
+                                        <div key={tm.mapKey} className="flex-1 min-w-[160px] p-3 rounded-xl bg-m3-surface-container-high/50 border border-m3-outline-subtle/50 flex flex-col justify-between shadow-xs">
                                           <div className="flex items-center justify-between gap-1">
-                                            <span className="font-display font-bold text-xs text-white truncate">{realMapName}</span>
+                                            <span className="font-display font-extrabold text-sm text-white truncate">{realMapName}</span>
                                             <span className={`font-mono font-bold text-xs shrink-0 ${tm.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                              {Math.round(tm.winPct)}%
+                                              {Math.round(tm.winPct)}% Win
                                             </span>
                                           </div>
-                                          <div className="flex items-center justify-between text-[10px] text-m3-outline font-mono mt-1">
-                                            <span>{tm.matches}m</span>
-                                            <span>{tm.kd.toFixed(2)} KD</span>
+                                          <div className="flex items-center justify-between text-[11px] text-m3-outline font-mono mt-2 pt-1.5 border-t border-white/5">
+                                            <span>{tm.matches} matches</span>
+                                            <span className="font-semibold text-m3-on-surface">{tm.kd.toFixed(2)} K/D</span>
                                           </div>
                                         </div>
                                       );
