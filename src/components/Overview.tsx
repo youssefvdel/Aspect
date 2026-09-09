@@ -42,7 +42,7 @@ const BodyFigure: React.FC<{ head: number; body: number; legs: number }> = ({ he
   );
 };
 
-const shortAct = (label: string): string => {
+export const shortAct = (label: string): string => {
   const m = label.match(/(?:V|Season\s*)(\d+)[\s:·]*ACT\s*([IVXLCDM]+|\d+)/i);
   if (m) {
     const ep = m[1];
@@ -90,7 +90,7 @@ const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone
       {label}
       {locked && <Lock className="w-2.5 h-2.5" />}
     </span>
-    <span className={`font-display font-extrabold text-base sm:text-lg tabular-nums truncate ${tone === 'win' ? 'text-emerald-400' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
+    <span className={`font-display font-extrabold text-base sm:text-lg tabular-nums truncate ${tone === 'win' ? 'text-m3-mint' : tone === 'loss' ? 'text-m3-coral' : 'text-m3-on-surface'}`}>{value}</span>
   </div>
 );
 
@@ -307,7 +307,7 @@ export const Overview: React.FC = () => {
                       <img
                         src={topAgentMeta.icon}
                         alt={topAgent.agent}
-                        className="w-12 h-12 rounded-lg object-cover bg-emerald-500/10 border border-m3-outline-subtle shrink-0"
+                        className="w-12 h-12 rounded-lg object-cover bg-m3-mint/10 border border-m3-outline-subtle shrink-0"
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-lg bg-m3-surface-container-high shrink-0" />

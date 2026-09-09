@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, Shield, Swords } from 'lucide-react';
 import { useTrackerData } from '../hooks/useTrackerData';
-import type { TrnAgentStat } from '../utils/trn';
+import { fetchTrnAgents, mergeAgentStats, type TrnAgentStat } from '../utils/trn';
+import { CustomDropdown } from './ValorantConfig';
+import { shortAct } from './Overview';
+import { AgentsSkeletons } from './TrackerSkeletons';
 import killsIcon from '../assets/icons/kills.png';
 import firstbloodsIcon from '../assets/icons/firstbloods.png';
 import acesIcon from '../assets/icons/aces.png';
@@ -13,13 +16,13 @@ type SortKey = 'hours' | 'matches' | 'winPct' | 'kd' | 'adr' | 'acs' | 'damageDe
 const ROLE_COLORS: Record<string, string> = {
   sentinel: '#a8f5cc', // M3 Mint
   duelist: '#ff8a7a',  // M3 Coral
-  initiator: '#fde047', // M3 Warm Amber
+  initiator: '#ffb4a9', // M3 Tertiary
   controller: '#d0bcff', // M3 Primary
 };
 
 export const TrackerAgents: React.FC = () => {
-  const { trnAgents, games, detailsById, agentInfo, profile, isLoading } = useTrackerData();
-  const [expandedAgent, setExpandedAgent] = useState<string | null>('Sage');
+  const { trnAgents, games, detailsById, agentInfo, profile, seasonNames, seasonOrder, isLoading } = useTrackerData();
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('hours');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
 
@@ -143,7 +146,53 @@ export const TrackerAgents: React.FC = () => {
     });
   }, [profile, games, detailsById]);
 
-  const agentsData = trnAgents.length > 0 ? trnAgents : fallbackAgents;
+  const [actId, setActId] = useState('current');
+  const [actAgents, setActAgents] = useState<TrnAgentStat[] | null>(null);
+  const [actLoading, setActLoading] = useState(false);
+
+  const actOptions = useMemo(() => {
+    const base = [
+      { value: 'current', label: 'Current Act' },
+      { value: 'all', label: 'All Acts' },
+    ];
+    if (!profile) return base;
+    const played = new Set(profile.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+    const order = seasonOrder.length > 0 ? seasonOrder : [...played];
+    const ids = order.filter((id) => played.has(id) && id !== profile.currentSeasonId.toLowerCase());
+    return [...base, ...ids.map((id) => ({ value: id, label: seasonNames[id] ?? shortAct(id) }))];
+  }, [profile, seasonOrder, seasonNames]);
+
+  useEffect(() => {
+    if (actId === 'current' || !profile) {
+      setActAgents(null);
+      setActLoading(false);
+      return;
+    }
+    let live = true;
+    setActLoading(true);
+    const { name, tag } = profile;
+    const job =
+      actId === 'all'
+        ? (async (): Promise<TrnAgentStat[]> => {
+            const played = new Set(profile.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+            const order = seasonOrder.length > 0 ? seasonOrder : [...played];
+            const ids = [profile.currentSeasonId.toLowerCase(), ...order.filter((id) => id !== profile.currentSeasonId.toLowerCase() && played.has(id))].slice(0, 8);
+            const lists = await Promise.all(ids.map((sid) => fetchTrnAgents(name, tag, sid).catch(() => [] as TrnAgentStat[])));
+            return mergeAgentStats(lists);
+          })()
+        : fetchTrnAgents(name, tag, actId).catch(() => [] as TrnAgentStat[]);
+    job.then((res) => {
+      if (live) {
+        setActAgents(res);
+        setActLoading(false);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [actId, profile, seasonOrder]);
+
+  const agentsData = actId === 'current' ? (trnAgents.length > 0 ? trnAgents : fallbackAgents) : (actAgents ?? []);
 
   // Maximum values for highlighting
   const maxVals = useMemo(() => {
@@ -198,6 +247,14 @@ export const TrackerAgents: React.FC = () => {
     setExpandedAgent((prev) => (prev === name ? null : name));
   };
 
+  if (isLoading && sortedAgents.length === 0) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 py-3.5 pb-10">
+        <AgentsSkeletons />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full min-h-0 overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 py-3.5 pb-10">
       {/* Page Header (Material 3 Typography) */}
@@ -210,10 +267,22 @@ export const TrackerAgents: React.FC = () => {
             Competitive act statistics across all played agents
           </p>
         </div>
-        <div className="px-3 py-1 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-xs font-mono font-bold text-m3-primary">
-          {sortedAgents.length} Agents
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-40">
+            <CustomDropdown value={actId} options={actOptions} onChange={setActId} />
+          </div>
+          <div className="px-3 py-1 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-xs font-mono font-bold text-m3-primary">
+            {sortedAgents.length} Agents
+          </div>
         </div>
       </div>
+
+      {actLoading && (
+        <div className="mb-3 px-4 py-2 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-xs text-m3-outline flex items-center gap-2">
+          <span className="w-3.5 h-3.5 border-2 border-m3-primary border-t-transparent rounded-full animate-spin shrink-0" />
+          <span>Loading act data…</span>
+        </div>
+      )}
 
       {/* Main Table Container (Google Material 3 Surface & Shape) */}
       <div className="rounded-3xl bg-m3-surface-container-low border border-m3-outline-subtle shadow-m3-1 overflow-hidden">
@@ -398,63 +467,63 @@ export const TrackerAgents: React.FC = () => {
 
                       {/* Time Played */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'hours' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopHours ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopHours ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.hours > 0 ? `${a.hours} hrs` : `${Math.round(a.timePlayedSeconds / 60)} mins`}
                         </span>
                       </td>
 
                       {/* Matches */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'matches' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopMatches ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopMatches ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.matches}
                         </span>
                       </td>
 
                       {/* Win % */}
                       <td className={`py-2.5 px-3 text-center font-mono font-bold ${sortKey === 'winPct' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] ${isTopWinPct ? 'text-amber-300 font-extrabold' : a.winPct >= 50 ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                        <span className={`text-[13px] ${isTopWinPct ? 'text-m3-gold font-extrabold' : a.winPct >= 50 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                           {a.winPct.toFixed(1)}%
                         </span>
                       </td>
 
                       {/* K/D */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'kd' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopKd ? 'text-amber-300 font-extrabold' : a.kd >= 1 ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                        <span className={`text-[13px] font-bold ${isTopKd ? 'text-m3-gold font-extrabold' : a.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                           {a.kd.toFixed(2)}
                         </span>
                       </td>
 
                       {/* ADR */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'adr' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopAdr ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopAdr ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.adr.toFixed(1)}
                         </span>
                       </td>
 
                       {/* ACS */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'acs' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopAcs ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopAcs ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.acs.toFixed(1)}
                         </span>
                       </td>
 
                       {/* DDΔ */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'damageDeltaPerRound' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopDd ? 'text-amber-300 font-extrabold' : a.damageDeltaPerRound >= 0 ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                        <span className={`text-[13px] font-bold ${isTopDd ? 'text-m3-gold font-extrabold' : a.damageDeltaPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                           {a.damageDeltaPerRound > 0 ? `+${a.damageDeltaPerRound}` : a.damageDeltaPerRound}
                         </span>
                       </td>
 
                       {/* HS% */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'hsPct' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopHs ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopHs ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.hsPct.toFixed(1)}%
                         </span>
                       </td>
 
                       {/* KAST */}
                       <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'kast' ? 'bg-m3-primary/5' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopKast ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                        <span className={`text-[13px] font-bold ${isTopKast ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {a.kast > 0 ? `${a.kast.toFixed(1)}%` : '—'}
                         </span>
                       </td>
@@ -546,7 +615,7 @@ export const TrackerAgents: React.FC = () => {
                                       <span className="font-display font-bold text-sm">Defense</span>
                                     </div>
                                     <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
-                                      <span className="text-emerald-400">{a.defenseRoundsWon || 0} W</span>
+                                      <span className="text-m3-mint">{a.defenseRoundsWon || 0} W</span>
                                       <span className="text-[10px] uppercase font-semibold text-m3-outline">Rounds</span>
                                       <span className="text-m3-coral">{a.defenseRoundsLost || 0} L</span>
                                     </div>
@@ -555,7 +624,7 @@ export const TrackerAgents: React.FC = () => {
                                   {/* M3 Ratio Bar */}
                                   <div className="h-1.5 rounded-full bg-m3-coral/20 overflow-hidden flex mb-3.5">
                                     <div
-                                      className="h-full bg-emerald-400 rounded-l-full"
+                                      className="h-full bg-m3-mint rounded-l-full"
                                       style={{ width: `${Math.min(100, Math.max(5, defWinPct))}%` }}
                                     />
                                   </div>
@@ -570,7 +639,7 @@ export const TrackerAgents: React.FC = () => {
                                     </div>
                                     <div>
                                       <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline truncate">Def. K/D</div>
-                                      <div className={`font-mono font-extrabold text-sm mt-0.5 truncate ${((a.defenseKd || a.kd) >= 1) ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                                      <div className={`font-mono font-extrabold text-sm mt-0.5 truncate ${((a.defenseKd || a.kd) >= 1) ? 'text-m3-mint' : 'text-m3-coral'}`}>
                                         {(a.defenseKd || a.kd).toFixed(2)}
                                       </div>
                                     </div>
@@ -605,7 +674,7 @@ export const TrackerAgents: React.FC = () => {
                                       <span className="font-display font-bold text-sm">Attack</span>
                                     </div>
                                     <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
-                                      <span className="text-emerald-400">{a.attackRoundsWon || 0} W</span>
+                                      <span className="text-m3-mint">{a.attackRoundsWon || 0} W</span>
                                       <span className="text-[10px] uppercase font-semibold text-m3-outline">Rounds</span>
                                       <span className="text-m3-coral">{a.attackRoundsLost || 0} L</span>
                                     </div>
@@ -614,7 +683,7 @@ export const TrackerAgents: React.FC = () => {
                                   {/* M3 Ratio Bar */}
                                   <div className="h-1.5 rounded-full bg-m3-coral/20 overflow-hidden flex mb-3.5">
                                     <div
-                                      className="h-full bg-emerald-400 rounded-l-full"
+                                      className="h-full bg-m3-mint rounded-l-full"
                                       style={{ width: `${Math.min(100, Math.max(5, atkWinPct))}%` }}
                                     />
                                   </div>
@@ -629,7 +698,7 @@ export const TrackerAgents: React.FC = () => {
                                     </div>
                                     <div>
                                       <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline truncate">Atk. K/D</div>
-                                      <div className={`font-mono font-extrabold text-sm mt-0.5 truncate ${((a.attackKd || a.kd) >= 1) ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                                      <div className={`font-mono font-extrabold text-sm mt-0.5 truncate ${((a.attackKd || a.kd) >= 1) ? 'text-m3-mint' : 'text-m3-coral'}`}>
                                         {(a.attackKd || a.kd).toFixed(2)}
                                       </div>
                                     </div>

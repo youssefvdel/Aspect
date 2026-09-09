@@ -160,16 +160,26 @@ pub fn trn_get(path: String) -> Result<String, String> {
         return Err("Path too long.".to_string());
     }
     let url = format!("https://api.tracker.gg{}", path);
-    // Prod: sidecar sits beside the app binary. Dev: src-tauri/binaries/.
-    let bin_name = "trnfetch-x86_64-pc-windows-msvc.exe";
-    let bin = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(bin_name)))
+    // Prod: sidecar sits beside the app binary (either trnfetch.exe or trnfetch-x86_64-pc-windows-msvc.exe).
+    // Dev: src-tauri/binaries/.
+    let bin_triple = "trnfetch-x86_64-pc-windows-msvc.exe";
+    let bin_short = "trnfetch.exe";
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    let bin = exe_dir
+        .as_ref()
+        .map(|d| d.join(bin_short))
         .filter(|p| p.exists())
+        .or_else(|| {
+            exe_dir
+                .as_ref()
+                .map(|d| d.join(bin_triple))
+                .filter(|p| p.exists())
+        })
         .unwrap_or_else(|| {
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("binaries")
-                .join(bin_name)
+                .join(bin_triple)
         });
     let mut cmd = Command::new(bin);
     #[cfg(windows)]

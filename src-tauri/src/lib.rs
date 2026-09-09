@@ -8,7 +8,10 @@ mod tracker;
 mod window_manager;
 mod updater;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+
+static AUTO_BORDERLESS_ENABLED: AtomicBool = AtomicBool::new(false);
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -197,6 +200,22 @@ fn auto_configure_gpu_scaling(state: State<'_, AppState>) -> Result<String, Stri
 #[tauri::command]
 fn get_windows() -> Result<Vec<window_manager::WindowInfo>, String> {
     Ok(window_manager::list_visible_windows())
+}
+
+#[tauri::command]
+fn set_auto_borderless(enabled: bool) -> Result<(), String> {
+    AUTO_BORDERLESS_ENABLED.store(enabled, Ordering::Relaxed);
+    if let Ok(app_data) = std::env::var("LOCALAPPDATA") {
+        let dir = std::path::PathBuf::from(app_data).join("TrueStretchStudio");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("auto_borderless.txt"), if enabled { "1" } else { "0" });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_auto_borderless() -> Result<bool, String> {
+    Ok(AUTO_BORDERLESS_ENABLED.load(Ordering::Relaxed))
 }
 
 #[tauri::command]
@@ -479,17 +498,23 @@ pub fn run() {
 
     let (_native_w, native_h) = display::get_native_resolution();
     let default_stretched_w = {
-        let calc = ((native_h as f64) * 1.45).round() as u32 + 2;
-        if calc % 2 != 0 {
-            calc + 1
-        } else {
-            calc
-        }
+        let raw = ((native_h as f64) * 1.45).round() as u32;
+        // 8-pixel horizontal alignment for native AMD/NVIDIA/Intel hardware timing compatibility
+        // (e.g. 2088 for 1440p panel, 1568 for 1080p panel)
+        ((raw + 4) / 8) * 8
     };
 
     let (saved_w, saved_h) = display::load_saved_stretched_res(default_stretched_w, native_h);
     let preferred_stretched = std::sync::Arc::new(Mutex::new((saved_w, saved_h)));
     let pref_clone = std::sync::Arc::clone(&preferred_stretched);
+
+    let initial_auto_bl = if let Ok(app_data) = std::env::var("LOCALAPPDATA") {
+        let path = std::path::PathBuf::from(app_data).join("TrueStretchStudio").join("auto_borderless.txt");
+        std::fs::read_to_string(path).map(|s| s.trim() == "1").unwrap_or(false)
+    } else {
+        false
+    };
+    AUTO_BORDERLESS_ENABLED.store(initial_auto_bl, Ordering::Relaxed);
 
     let app_state = AppState {
         hotkey_controller,
@@ -502,12 +527,6 @@ pub fn run() {
     builder
         .manage(app_state)
         .setup(move |app| {
-            // Pre-register Golden Ratio stretched modes into the GPU driver scaling table
-            let _ = custom_res::inject_gpu_custom_mode(2090, 1440);
-            let _ = custom_res::inject_gpu_custom_mode(2078, 1440);
-            let _ = custom_res::inject_gpu_custom_mode(1568, 1080);
-            gpu::enforce_all_gpu_scaling();
-
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 while let Ok(()) = rx.recv() {
@@ -523,6 +542,71 @@ pub fn run() {
                         let _ = display::apply_display_mode(target_w, target_h, cur.refresh_rate);
                         let info = build_display_info();
                         let _ = handle.emit("display-mode-changed", &info);
+
+                        // If switching to stretched and auto-borderless is enabled, make Valorant borderless fullscreen
+                        if (target_w != nw || target_h != nh) && AUTO_BORDERLESS_ENABLED.load(Ordering::Relaxed) {
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(300));
+                                if let Some(target) = window_manager::find_valorant_game_window() {
+                                    let _ = window_manager::make_borderless(target.hwnd);
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+            // Background Auto-Borderless Daemon for Valorant:
+            // Runs continuously in the background only when explicitly enabled by the user.
+            let auto_bl_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut last_handled_hwnd: Option<isize> = None;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+                    if !AUTO_BORDERLESS_ENABLED.load(Ordering::Relaxed) {
+                        continue;
+                    }
+
+                    let is_stretched = if let Some(cur) = display::get_current_display_mode() {
+                        let (nw, nh) = display::get_native_resolution();
+                        cur.width != nw || cur.height != nh
+                    } else {
+                        false
+                    };
+
+                    if is_stretched {
+                        if let Some(target) = window_manager::find_valorant_game_window() {
+                            let hwnd_val = target.hwnd;
+                            let hwnd = windows::Win32::Foundation::HWND(hwnd_val as *mut std::ffi::c_void);
+
+                            let needs_borderless = if last_handled_hwnd != Some(hwnd_val) {
+                                true
+                            } else {
+                                !window_manager::is_window_borderless_fullscreen(hwnd)
+                            };
+
+                            if needs_borderless {
+                                match window_manager::make_borderless(hwnd_val) {
+                                    Ok(msg) => {
+                                        last_handled_hwnd = Some(hwnd_val);
+                                        let _ = auto_bl_handle.emit(
+                                            "auto-borderless-applied",
+                                            serde_json::json!({
+                                                "hwnd": hwnd_val,
+                                                "title": target.title,
+                                                "message": msg,
+                                            }),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Auto-borderless failed on hwnd {}: {}", hwnd_val, e);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        last_handled_hwnd = None;
                     }
                 }
             });
@@ -617,6 +701,8 @@ pub fn run() {
             open_gpu_panel,
             auto_configure_gpu_scaling,
             get_windows,
+            set_auto_borderless,
+            get_auto_borderless,
             make_window_borderless,
             restore_window_framed,
             get_valorant_configs,

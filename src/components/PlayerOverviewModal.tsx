@@ -63,9 +63,14 @@ export const PlayerOverviewModal: React.FC<Props> = ({
     const name = player.name;
     const tag = player.tag || '';
 
+    // MMR (rank + RR) comes from the LOCAL client's session, so it is only
+    // valid for the logged-in player — never fetch it for lobby opponents.
+    const mmrJob = player.isMe
+      ? fetchMmrDirect('eu', name, tag)
+      : Promise.resolve(null);
     Promise.allSettled([
       fetchTrnActStats(name, tag, seasonId),
-      fetchMmrDirect('eu', name, tag),
+      mmrJob,
     ]).then(([trnRes, mmrRes]) => {
       if (!active) return;
       if (trnRes.status === 'fulfilled') {
@@ -88,10 +93,10 @@ export const PlayerOverviewModal: React.FC<Props> = ({
 
   if (!player) return null;
 
-  const isMe =
-    player.isMe ||
-    (mmrProfile && mmrProfile.name.toLowerCase() === player.name.toLowerCase());
-  const currentRank = player.rankName || mmrProfile?.rank || 'Unranked';
+  // Strict: RR + local rank belong to the logged-in player only (player.isMe
+  // is set from puuid match at open time — never by name comparison).
+  const isMe = player.isMe === true;
+  const currentRank = player.rankName || (isMe ? mmrProfile?.rank : undefined) || 'Unranked';
   const currentRr = isMe ? mmrProfile?.rr ?? 0 : 0;
 
   return (
@@ -128,7 +133,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                 )}
                 <span
                   className={`absolute bottom-0 inset-x-0 h-1 ${
-                    player.team === 'Blue' ? 'bg-emerald-400' : 'bg-m3-coral'
+                    player.team === 'Blue' ? 'bg-m3-mint' : 'bg-m3-coral'
                   }`}
                 />
               </div>
@@ -208,7 +213,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                 </div>
                 <div className="p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline">K/D Ratio</div>
-                  <div className={`font-display font-extrabold text-base mt-0.5 ${player.kd >= 1 ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                  <div className={`font-display font-extrabold text-base mt-0.5 ${player.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                     {player.kd.toFixed(2)}
                   </div>
                 </div>
@@ -265,7 +270,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                   </div>
                   <div className="p-2 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/40">
                     <div className="text-[10px] text-m3-outline uppercase font-semibold">K/D Ratio</div>
-                    <div className={`font-bold text-sm mt-0.5 ${trnStats.kd >= 1 ? 'text-emerald-400' : 'text-m3-coral'}`}>
+                    <div className={`font-bold text-sm mt-0.5 ${trnStats.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                       {trnStats.kd.toFixed(2)}
                     </div>
                   </div>

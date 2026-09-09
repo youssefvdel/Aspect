@@ -277,6 +277,56 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
   };
 }
 
+export interface PlayerIdentity {
+  cardId: string;
+  titleId: string;
+  level: number;
+}
+
+let identityCache: { at: number; id: PlayerIdentity } | null = null;
+
+/** Equipped player card / title / account level, straight from Riot via the
+    local client's own session (same creds as MMR — no key, no TRN).
+    Cached 30 min. Throws when unusable; callers MUST fall back. */
+export async function fetchIdentityDirect(region: string): Promise<PlayerIdentity> {
+  if (identityCache && Date.now() - identityCache.at < 30 * 60 * 1000) return identityCache.id;
+  const ent = await getEntitlements();
+  const j = await riotGet(shardFor(region), `/personalization/v2/players/${ent.puuid}/playerloadout`);
+  const ident = j?.Identity ?? {};
+  const id: PlayerIdentity = {
+    cardId: String(ident?.PlayerCardID ?? ''),
+    titleId: String(ident?.PlayerTitleID ?? ''),
+    level: Number(ident?.AccountLevel ?? 0),
+  };
+  if (!id.cardId) throw new Error('No player card equipped.');
+  identityCache = { at: Date.now(), id };
+  return id;
+}
+
+/** Player card art (banner + avatar) from the public data API. Cached forever per card. */
+export async function fetchCardArt(cardId: string): Promise<{ wide: string; small: string }> {
+  const fallback = { wide: '', small: '' };
+  if (!cardId) return fallback;
+  const cacheKey = `aspect_cardart_v1_${cardId}`;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) return JSON.parse(raw) as { wide: string; small: string };
+  } catch {}
+  try {
+    const j = await fetch(`https://valorant-api.com/v1/playercards/${cardId}`).then((r) => r.json());
+    const out = {
+      wide: String(j?.data?.wideArt ?? ''),
+      small: String(j?.data?.smallArt ?? j?.data?.displayIcon ?? ''),
+    };
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(out));
+    } catch {}
+    return out;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Last N competitive games with map, time, and RR earned — feeds rows AND trend. */
 export async function fetchCompetitiveUpdates(region: string, count = 20): Promise<TrackerMmrPoint[]> {
   const ent = await getEntitlements();

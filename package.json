@@ -1,13 +1,17 @@
 {
   "name": "aspect",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:ui": "tsc -b && vite build",
+    "build": "npm run build:ui && tauri build --no-bundle",
+    "build:bundle": "npm run build:ui && tauri build",
+    "tauri": "tauri",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bump": "node scripts/bump-version.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

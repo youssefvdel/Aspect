@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { detectLocalAccount, detectRegion, fetchMmrDirect, gameData } from '../utils/tracker';
+import { detectLocalAccount, detectRegion, fetchCardArt, fetchIdentityDirect, fetchMmrDirect, gameData } from '../utils/tracker';
 import { fetchTrnActStats } from '../utils/trn';
 
 interface Mini {
@@ -13,6 +13,7 @@ interface Mini {
   avatarUrl: string;
   bannerUrl: string;
   countryCode: string;
+  level: number;
 }
 
 /** Full TRN-style player profile card docked in the app sidebar. */
@@ -39,9 +40,12 @@ export const TrackerMini: React.FC = () => {
         const peakTier = prof.seasons.reduce((m, s) => Math.max(m, s.tier), 0);
         const rawAvatar = trn?.stats.avatarUrl ?? '';
         const cardMatch = rawAvatar.match(/playercards\/([^/]+)/);
-        const bannerUrl = cardMatch
-          ? `https://media.valorant-api.com/playercards/${cardMatch[1]}/wideart.png`
-          : '';
+        // Equipped card straight from Riot (works even when TRN is gated).
+        const ident = await fetchIdentityDirect(region).catch(() => null);
+        const art = ident?.cardId ? await fetchCardArt(ident.cardId) : { wide: '', small: '' };
+        const bannerUrl =
+          art.wide ||
+          (cardMatch ? `https://media.valorant-api.com/playercards/${cardMatch[1]}/wideart.png` : '');
 
         setMini({
           name: name || prof.name,
@@ -51,9 +55,10 @@ export const TrackerMini: React.FC = () => {
           peak: prof.peak,
           icon: gd?.tierIcons[prof.tier] ?? '',
           peakIcon: gd?.tierIcons[peakTier] ?? (gd?.tierIcons[prof.tier] ?? ''),
-          avatarUrl: rawAvatar,
+          avatarUrl: art.small || rawAvatar,
           bannerUrl,
           countryCode: trn?.countryCode ?? '',
+          level: ident?.level ?? 0,
         });
       } catch {}
     })();
@@ -103,6 +108,11 @@ export const TrackerMini: React.FC = () => {
               className="absolute -bottom-0.5 -right-0.5 w-4.5 h-3 object-cover rounded-xs shadow border border-black/40"
               onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
             />
+          ) : null}
+          {mini.level > 0 ? (
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1 rounded-md bg-black/70 border border-m3-outline-subtle text-[8px] font-mono font-bold text-m3-on-surface leading-tight">
+              {mini.level}
+            </span>
           ) : null}
         </div>
 

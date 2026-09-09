@@ -97,6 +97,14 @@ pub struct ConfigFileInfo {
     pub desired_h: Option<u32>,
     pub last_confirmed_desired_w: Option<u32>,
     pub last_confirmed_desired_h: Option<u32>,
+    #[serde(default)]
+    pub window_pos_x: Option<i32>,
+    #[serde(default)]
+    pub window_pos_y: Option<i32>,
+    #[serde(default)]
+    pub resolution_quality: Option<f32>,
+    #[serde(default)]
+    pub use_desired_screen_height: Option<bool>,
 }
 
 /// Per-file result for apply operations — proves the write, not just claims it.
@@ -116,6 +124,12 @@ pub struct VerifyResult {
     pub display_name: String,
     pub matches: bool,
     pub details: String,
+    #[serde(default)]
+    pub health_score: u32,
+    #[serde(default)]
+    pub is_healthy: bool,
+    #[serde(default)]
+    pub issues: Vec<String>,
 }
 
 /// Custom per-file options for the Valorant Config editor tab.
@@ -183,6 +197,10 @@ fn parse_config(path: &Path) -> Option<ConfigFileInfo> {
     let mut desired_h = None;
     let mut last_confirmed_desired_w = None;
     let mut last_confirmed_desired_h = None;
+    let mut window_pos_x = None;
+    let mut window_pos_y = None;
+    let mut resolution_quality = None;
+    let mut use_desired_screen_height = None;
 
     // Whitespace-tolerant like UE4 itself: "Key=value" and "Key = value"
     // both parse (ini-preserve writes new keys spaced).
@@ -208,6 +226,10 @@ fn parse_config(path: &Path) -> Option<ConfigFileInfo> {
             "LastUserConfirmedDesiredScreenHeight" => last_confirmed_desired_h = v.parse::<u32>().ok(),
             "DesiredScreenWidth" => desired_w = v.parse::<u32>().ok(),
             "DesiredScreenHeight" => desired_h = v.parse::<u32>().ok(),
+            "WindowPosX" => window_pos_x = v.parse::<i32>().ok(),
+            "WindowPosY" => window_pos_y = v.parse::<i32>().ok(),
+            "sg.ResolutionQuality" => resolution_quality = v.parse::<f32>().ok(),
+            "bUseDesiredScreenHeight" => use_desired_screen_height = Some(v.eq_ignore_ascii_case("true")),
             _ => {}
         }
     }
@@ -244,6 +266,10 @@ fn parse_config(path: &Path) -> Option<ConfigFileInfo> {
         desired_h,
         last_confirmed_desired_w,
         last_confirmed_desired_h,
+        window_pos_x,
+        window_pos_y,
+        resolution_quality,
+        use_desired_screen_height,
     })
 }
 
@@ -329,6 +355,10 @@ fn write_config_inner(
         ini.set(sec, "FullscreenMode", &v);
         ini.set(sec, "LastConfirmedFullscreenMode", &v);
         ini.set(sec, "PreferredFullscreenMode", &v);
+        if fm == 2 {
+            ini.set(sec, "WindowPosX", "0");
+            ini.set(sec, "WindowPosY", "0");
+        }
     }
     if let Some(lb) = set_letterbox {
         let v = if lb { "True" } else { "False" };
@@ -347,6 +377,14 @@ fn write_config_inner(
         ini.set(sec, "LastUserConfirmedDesiredScreenWidth", &w.to_string());
         ini.set(sec, "LastUserConfirmedDesiredScreenHeight", &h.to_string());
     }
+
+    // Engine settings check: Honor Desired Height
+    let engine_sec = bare_section("[/Script/Engine.GameUserSettings]");
+    ini.set(engine_sec, "bUseDesiredScreenHeight", "True");
+
+    // Scalability Groups: Ensure 100% 3D Render Resolution Scale
+    let scal_sec = bare_section("[ScalabilityGroups]");
+    ini.set(scal_sec, "sg.ResolutionQuality", "100.000000");
 
     // Write unlocked first so verification reads the real bytes.
     store_ini(path, &ini, perms.clone(), false)?;
@@ -428,6 +466,9 @@ pub fn apply_to_all_configs(w: u32, h: u32, lock_readonly: bool) -> Result<usize
 
 /// Per-file apply with verification — backs the new editor tab + Sync All.
 pub fn apply_to_all_configs_verbose(w: u32, h: u32, lock_readonly: bool) -> Vec<ApplyResult> {
+    // 1. Ensure GPU scaling is correctly configured for the user's active GPU vendor
+    crate::gpu::apply_gpu_scaling_for_active_vendor(true);
+
     let configs = find_valorant_configs();
     configs
         .iter()
@@ -437,7 +478,7 @@ pub fn apply_to_all_configs_verbose(w: u32, h: u32, lock_readonly: bool) -> Vec<
                 display_name: cfg.display_name.clone(),
                 ok: true,
                 verified: true,
-                message: format!("{}x{} verified in file", w, h),
+                message: format!("{}×{} verified (FullscreenMode 2, Letterbox False, Pos 0,0)", w, h),
             },
             Err(e) => ApplyResult {
                 path: cfg.path.clone(),
@@ -456,31 +497,96 @@ pub fn verify_all_configs(expected_w: u32, expected_h: u32) -> Vec<VerifyResult>
     find_valorant_configs()
         .iter()
         .map(|cfg| {
-            let res_ok = cfg.res_x == Some(expected_w) && cfg.res_y == Some(expected_h);
-            let fm_ok = cfg.fullscreen_mode == Some(2);
-            let lb_ok = cfg.should_letterbox == Some(false);
-            let matches = res_ok && fm_ok && lb_ok;
-            let details = if matches {
+            let mut issues = Vec::new();
+            let mut score = 100u32;
+
+            // 1. Resolution Check
+            if cfg.res_x != Some(expected_w) || cfg.res_y != Some(expected_h) {
+                issues.push(format!(
+                    "Resolution is {}×{} (target: {}×{})",
+                    cfg.res_x.map(|n| n.to_string()).unwrap_or_else(|| "none".into()),
+                    cfg.res_y.map(|n| n.to_string()).unwrap_or_else(|| "none".into()),
+                    expected_w,
+                    expected_h
+                ));
+                score = score.saturating_sub(30);
+            }
+
+            // 2. Desired Screen Check
+            if cfg.desired_w != Some(expected_w) || cfg.desired_h != Some(expected_h) {
+                issues.push(format!(
+                    "DesiredScreen is {}×{} (target: {}×{})",
+                    cfg.desired_w.map(|n| n.to_string()).unwrap_or_else(|| "none".into()),
+                    cfg.desired_h.map(|n| n.to_string()).unwrap_or_else(|| "none".into()),
+                    expected_w,
+                    expected_h
+                ));
+                score = score.saturating_sub(15);
+            }
+
+            // 3. Letterbox Check (CRITICAL: causes black bars)
+            if cfg.should_letterbox != Some(false) || cfg.last_letterbox != Some(false) {
+                issues.push("bShouldLetterbox is enabled (causes black bars in-game)".to_string());
+                score = score.saturating_sub(30);
+            }
+
+            // 4. FullscreenMode Check
+            if cfg.fullscreen_mode != Some(2) {
+                issues.push(format!(
+                    "FullscreenMode is {} (must be 2 / Borderless for True Stretch)",
+                    cfg.fullscreen_mode.map(|n| n.to_string()).unwrap_or_else(|| "none".into())
+                ));
+                score = score.saturating_sub(25);
+            }
+
+            // 5. Window Alignment Check
+            if let Some(x) = cfg.window_pos_x {
+                if x != 0 {
+                    issues.push(format!("WindowPosX is {} (causes horizontal misalignment)", x));
+                    score = score.saturating_sub(10);
+                }
+            }
+            if let Some(y) = cfg.window_pos_y {
+                if y != 0 {
+                    issues.push(format!("WindowPosY is {} (causes vertical misalignment)", y));
+                    score = score.saturating_sub(10);
+                }
+            }
+
+            // 6. 3D Render Scale Check (0 to 100% graphics scaling)
+            if let Some(rq) = cfg.resolution_quality {
+                if (rq - 100.0).abs() > 0.01 {
+                    issues.push(format!("3D Render Scale is {:.0}% (should be 100% for full clarity)", rq));
+                    score = score.saturating_sub(15);
+                }
+            }
+
+            // 7. Honor Desired Height Check
+            if cfg.use_desired_screen_height == Some(false) {
+                issues.push("bUseDesiredScreenHeight is False (should be True to honor desired height)".to_string());
+                score = score.saturating_sub(10);
+            }
+
+            let is_healthy = issues.is_empty();
+            let matches = is_healthy;
+
+            let details = if is_healthy {
                 format!(
-                    "Verified: FullscreenMode=2, bShouldLetterbox=False, {}x{} in file",
+                    "100% Healthy: {}×{}, FullscreenMode 2, Letterbox OFF, (0,0) flush, 100% Render Scale, Honor Desired Height ON",
                     expected_w, expected_h
                 )
             } else {
-                format!(
-                    "Mismatch: file has FullscreenMode={:?} (want 2), Letterbox={:?} (want False), Res={:?}x{:?} (want {}x{})",
-                    cfg.fullscreen_mode,
-                    cfg.should_letterbox,
-                    cfg.res_x,
-                    cfg.res_y,
-                    expected_w,
-                    expected_h
-                )
+                format!("Health {}%: {}", score, issues.join(" • "))
             };
+
             VerifyResult {
                 path: cfg.path.clone(),
                 display_name: cfg.display_name.clone(),
                 matches,
                 details,
+                health_score: score,
+                is_healthy,
+                issues,
             }
         })
         .collect()
@@ -760,6 +866,32 @@ mod tests {
             }
         });
         assert!(has, "sg.ShadowQuality=3 missing");
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn config_sync_and_health_verification() {
+        let p = polluted_tmp("sync_health.ini");
+        update_config(&p, true, Some((2088, 1440)), true).unwrap();
+        let parsed = parse_config(&p).expect("should parse synced config");
+        assert_eq!(parsed.res_x, Some(2088));
+        assert_eq!(parsed.res_y, Some(1440));
+        assert_eq!(parsed.fullscreen_mode, Some(2));
+        assert_eq!(parsed.should_letterbox, Some(false));
+        assert_eq!(parsed.last_letterbox, Some(false));
+        assert_eq!(parsed.window_pos_x, Some(0));
+        assert_eq!(parsed.window_pos_y, Some(0));
+        assert!(parsed.is_read_only);
+
+        // Verify Engine section bUseDesiredScreenHeight = True
+        let raw = fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("bUseDesiredScreenHeight=True") || raw.contains("bUseDesiredScreenHeight = True"));
+        assert!(raw.contains("sg.ResolutionQuality=100.000000") || raw.contains("sg.ResolutionQuality = 100.000000"));
+
+        // Clean up readonly before removal
+        let mut perms = fs::metadata(&p).unwrap().permissions();
+        perms.set_readonly(false);
+        let _ = fs::set_permissions(&p, perms);
         let _ = fs::remove_file(&p);
     }
 }

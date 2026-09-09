@@ -46,6 +46,8 @@ export interface GpuSettingsReport {
 export interface WindowInfo {
   hwnd: number;
   title: string;
+  class_name?: string;
+  is_game?: boolean;
 }
 
 export interface ConfigFileInfo {
@@ -80,6 +82,9 @@ export interface ValorantVerifyResult {
   display_name: string;
   matches: boolean;
   details: string;
+  health_score?: number;
+  is_healthy?: boolean;
+  issues?: string[];
 }
 
 export interface ValorantCustomOptions {

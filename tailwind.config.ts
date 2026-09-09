@@ -32,6 +32,8 @@ export default {
           'on-tertiary-container': '#ffdad6',
           coral: '#ff8a7a',
           'coral-container': '#5c1d17',
+          gold: '#e8b73a',
+          'gold-container': '#4a3800',
           mint: '#a8f5cc',
           'mint-container': '#1a5238',
           error: '#ffb4ab',

@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Swords, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTrackerData } from '../hooks/useTrackerData';
-import type { TrnMapStat } from '../utils/trn';
+import { fetchTrnMaps, mergeMapStats, type TrnMapStat } from '../utils/trn';
+import { CustomDropdown } from './ValorantConfig';
+import { shortAct } from './Overview';
+import { MapsSkeletons } from './TrackerSkeletons';
 
 type SortKey = 'winPct' | 'matchesWon' | 'matchesLost' | 'kd' | 'adr' | 'acs' | 'damageDeltaPerRound' | 'name';
 
@@ -14,7 +17,7 @@ const formatTime = (totalSeconds: number): string => {
 };
 
 export const TrackerMaps: React.FC = () => {
-  const { trnMaps, games, detailsById, mapById, agentInfo, profile, isLoading } = useTrackerData();
+  const { trnMaps, games, detailsById, mapById, agentInfo, profile, seasonNames, seasonOrder, isLoading } = useTrackerData();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('winPct');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
@@ -145,7 +148,53 @@ export const TrackerMaps: React.FC = () => {
     });
   }, [profile, games, detailsById, mapById, agentInfo]);
 
-  const mapsData = trnMaps.length > 0 ? trnMaps : fallbackMaps;
+  const [actId, setActId] = useState('current');
+  const [actMaps, setActMaps] = useState<TrnMapStat[] | null>(null);
+  const [actLoading, setActLoading] = useState(false);
+
+  const actOptions = useMemo(() => {
+    const base = [
+      { value: 'current', label: 'Current Act' },
+      { value: 'all', label: 'All Acts' },
+    ];
+    if (!profile) return base;
+    const played = new Set(profile.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+    const order = seasonOrder.length > 0 ? seasonOrder : [...played];
+    const ids = order.filter((id) => played.has(id) && id !== profile.currentSeasonId.toLowerCase());
+    return [...base, ...ids.map((id) => ({ value: id, label: seasonNames[id] ?? shortAct(id) }))];
+  }, [profile, seasonOrder, seasonNames]);
+
+  useEffect(() => {
+    if (actId === 'current' || !profile) {
+      setActMaps(null);
+      setActLoading(false);
+      return;
+    }
+    let live = true;
+    setActLoading(true);
+    const { name, tag } = profile;
+    const job =
+      actId === 'all'
+        ? (async (): Promise<TrnMapStat[]> => {
+            const played = new Set(profile.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+            const order = seasonOrder.length > 0 ? seasonOrder : [...played];
+            const ids = [profile.currentSeasonId.toLowerCase(), ...order.filter((id) => id !== profile.currentSeasonId.toLowerCase() && played.has(id))].slice(0, 8);
+            const lists = await Promise.all(ids.map((sid) => fetchTrnMaps(name, tag, sid).catch(() => [] as TrnMapStat[])));
+            return mergeMapStats(lists);
+          })()
+        : fetchTrnMaps(name, tag, actId).catch(() => [] as TrnMapStat[]);
+    job.then((res) => {
+      if (live) {
+        setActMaps(res);
+        setActLoading(false);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [actId, profile, seasonOrder]);
+
+  const mapsData = actId === 'current' ? (trnMaps.length > 0 ? trnMaps : fallbackMaps) : (actMaps ?? []);
 
   // Highlights: find highest numbers in each column across maps
   const maxVals = useMemo(() => {
@@ -194,6 +243,14 @@ export const TrackerMaps: React.FC = () => {
     setExpandedKey((prev) => (prev === key ? null : key));
   };
 
+  if (isLoading && sortedMaps.length === 0) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 py-4 pb-12">
+        <MapsSkeletons />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full min-h-0 overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 py-4 pb-12">
       {/* Title */}
@@ -201,10 +258,22 @@ export const TrackerMaps: React.FC = () => {
         <h2 className="font-display font-black text-xl text-m3-on-surface uppercase tracking-wider">
           MAPS
         </h2>
-        <span className="text-xs text-m3-outline font-mono">
-          {sortedMaps.length} Maps Recorded
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-40">
+            <CustomDropdown value={actId} options={actOptions} onChange={setActId} />
+          </div>
+          <span className="text-xs text-m3-outline font-mono">
+            {sortedMaps.length} Maps Recorded
+          </span>
+        </div>
       </div>
+
+      {actLoading && (
+        <div className="mb-3 px-4 py-2 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-xs text-m3-outline flex items-center gap-2">
+          <span className="w-3.5 h-3.5 border-2 border-m3-primary border-t-transparent rounded-full animate-spin shrink-0" />
+          <span>Loading act data…</span>
+        </div>
+      )}
 
       {/* Main Table Container */}
       <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle shadow-m3-1 overflow-hidden">
@@ -218,84 +287,84 @@ export const TrackerMaps: React.FC = () => {
                 >
                   <span className="flex items-center gap-1">
                     Map Name
-                    {sortKey === 'name' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'name' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                   </span>
                 </th>
                 <th className="py-3 px-3 text-center min-w-[130px]">Top Agents</th>
                 <th
                   onClick={() => handleSort('winPct')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'winPct' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'winPct' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'winPct' && (sortAsc ? <ChevronUp className="w-3.5 h-3.5 text-[#ff4655]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#ff4655]" />)}
+                    {sortKey === 'winPct' && (sortAsc ? <ChevronUp className="w-3.5 h-3.5 text-m3-coral" /> : <ChevronDown className="w-3.5 h-3.5 text-m3-coral" />)}
                     Win %
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('matchesWon')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'matchesWon' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'matchesWon' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'matchesWon' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'matchesWon' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     Wins
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('matchesLost')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'matchesLost' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'matchesLost' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'matchesLost' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'matchesLost' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     Losses
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('kd')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'kd' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'kd' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'kd' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'kd' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     K/D
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('adr')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'adr' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'adr' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'adr' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'adr' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     ADR
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('acs')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'acs' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'acs' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'acs' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'acs' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     ACS
                   </span>
                 </th>
                 <th
                   onClick={() => handleSort('damageDeltaPerRound')}
                   className={`py-3 px-3 cursor-pointer text-center transition-colors ${
-                    sortKey === 'damageDeltaPerRound' ? 'text-[#ff4655] bg-white/[0.02]' : 'hover:text-m3-on-surface'
+                    sortKey === 'damageDeltaPerRound' ? 'text-m3-coral bg-m3-primary/5' : 'hover:text-m3-on-surface'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-1">
-                    {sortKey === 'damageDeltaPerRound' && (sortAsc ? <ChevronUp className="w-3 h-3 text-[#ff4655]" /> : <ChevronDown className="w-3 h-3 text-[#ff4655]" />)}
+                    {sortKey === 'damageDeltaPerRound' && (sortAsc ? <ChevronUp className="w-3 h-3 text-m3-coral" /> : <ChevronDown className="w-3 h-3 text-m3-coral" />)}
                     DDΔ
                   </span>
                 </th>
@@ -327,7 +396,7 @@ export const TrackerMaps: React.FC = () => {
                     >
                       {/* Map Thumbnail & Name */}
                       <td className="py-2.5 px-3.5">
-                        <div className="relative h-11 w-36 rounded-lg overflow-hidden flex items-center px-3 border border-white/10 bg-m3-surface-container-highest shrink-0 shadow-xs">
+                        <div className="relative h-11 w-36 rounded-lg overflow-hidden flex items-center px-3 border border-m3-outline-subtle bg-m3-surface-container-highest shrink-0 shadow-xs">
                           {m.imageUrl && (
                             <img
                               src={m.imageUrl}
@@ -352,10 +421,10 @@ export const TrackerMaps: React.FC = () => {
                                   src={ag.icon}
                                   alt={ag.name}
                                   title={ag.name}
-                                  className="w-7 h-7 rounded-md object-cover bg-m3-surface-container-high border border-white/10"
+                                  className="w-7 h-7 rounded-md object-cover bg-m3-surface-container-high border border-m3-outline-subtle"
                                 />
                               ) : (
-                                <div className="w-7 h-7 rounded-md bg-m3-surface-container-high border border-white/10" />
+                                <div className="w-7 h-7 rounded-md bg-m3-surface-container-high border border-m3-outline-subtle" />
                               )}
                               <span className="text-[10px] font-mono text-m3-outline mt-0.5 tabular-nums">
                                 {Math.round(ag.winPct)}%
@@ -366,50 +435,50 @@ export const TrackerMaps: React.FC = () => {
                       </td>
 
                       {/* Win % */}
-                      <td className={`py-2.5 px-3 text-center font-mono font-bold ${sortKey === 'winPct' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] ${isTopWinPct ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono font-bold ${sortKey === 'winPct' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] ${isTopWinPct ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {m.winPct.toFixed(1)}%
                         </span>
                       </td>
 
                       {/* Wins */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'matchesWon' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopWon ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'matchesWon' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] font-bold ${isTopWon ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {m.matchesWon}
                         </span>
                       </td>
 
                       {/* Losses */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'matchesLost' ? 'bg-white/[0.02]' : ''}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'matchesLost' ? 'bg-m3-primary/5' : ''}`}>
                         <span className="text-[13px] font-bold text-m3-outline">
                           {m.matchesLost}
                         </span>
                       </td>
 
                       {/* K/D */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'kd' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopKd ? 'text-amber-300 font-extrabold' : m.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'kd' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] font-bold ${isTopKd ? 'text-m3-gold font-extrabold' : m.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                           {m.kd.toFixed(2)}
                         </span>
                       </td>
 
                       {/* ADR */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'adr' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopAdr ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'adr' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] font-bold ${isTopAdr ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {m.adr.toFixed(1)}
                         </span>
                       </td>
 
                       {/* ACS */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'acs' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopAcs ? 'text-amber-300 font-extrabold' : 'text-m3-on-surface'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'acs' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] font-bold ${isTopAcs ? 'text-m3-gold font-extrabold' : 'text-m3-on-surface'}`}>
                           {m.acs.toFixed(1)}
                         </span>
                       </td>
 
                       {/* DDΔ */}
-                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'damageDeltaPerRound' ? 'bg-white/[0.02]' : ''}`}>
-                        <span className={`text-[13px] font-bold ${isTopDd ? 'text-amber-300 font-extrabold' : m.damageDeltaPerRound >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <td className={`py-2.5 px-3 text-center font-mono ${sortKey === 'damageDeltaPerRound' ? 'bg-m3-primary/5' : ''}`}>
+                        <span className={`text-[13px] font-bold ${isTopDd ? 'text-m3-gold font-extrabold' : m.damageDeltaPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                           {m.damageDeltaPerRound > 0 ? `+${m.damageDeltaPerRound}` : m.damageDeltaPerRound}
                         </span>
                       </td>
@@ -507,13 +576,13 @@ export const TrackerMaps: React.FC = () => {
                                 <div className="rounded-xl bg-m3-surface-container border border-m3-outline-subtle/60 p-4 shadow-xs">
                                   <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-lg bg-[#ff4655]/15 border border-[#ff4655]/30 flex items-center justify-center text-[#ff4655]">
+                                      <div className="w-7 h-7 rounded-lg bg-m3-coral/15 border border-m3-coral/30 flex items-center justify-center text-m3-coral">
                                         <Swords className="w-4 h-4" />
                                       </div>
                                       <span className="font-display font-extrabold text-sm text-m3-on-surface">Attack</span>
                                     </div>
                                     <span className="font-mono font-bold text-xs text-m3-outline">
-                                      Round Win % <strong className="text-emerald-400 font-extrabold">{m.attackRoundsWinPct.toFixed(1)}%</strong>
+                                      Round Win % <strong className="text-m3-mint font-extrabold">{m.attackRoundsWinPct.toFixed(1)}%</strong>
                                     </span>
                                   </div>
 
@@ -522,11 +591,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Kills</span>
-                                        <span className="font-bold text-emerald-400">{m.attackKills}</span>
+                                        <span className="font-bold text-m3-mint">{m.attackKills}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-emerald-400 rounded-full"
+                                          className="h-full bg-m3-mint rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.attackKills / atkTotal) * 100))}%` }}
                                         />
                                       </div>
@@ -536,11 +605,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Deaths</span>
-                                        <span className="font-bold text-red-400">{m.attackDeaths}</span>
+                                        <span className="font-bold text-m3-coral">{m.attackDeaths}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-red-400 rounded-full"
+                                          className="h-full bg-m3-coral rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.attackDeaths / atkTotal) * 100))}%` }}
                                         />
                                       </div>
@@ -550,11 +619,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Assists</span>
-                                        <span className="font-bold text-amber-300">{m.attackAssists}</span>
+                                        <span className="font-bold text-m3-tertiary">{m.attackAssists}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-amber-400 rounded-full"
+                                          className="h-full bg-m3-tertiary rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.attackAssists / atkTotal) * 100))}%` }}
                                         />
                                       </div>
@@ -566,13 +635,13 @@ export const TrackerMaps: React.FC = () => {
                                 <div className="rounded-xl bg-m3-surface-container border border-m3-outline-subtle/60 p-4 shadow-xs">
                                   <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                                      <div className="w-7 h-7 rounded-lg bg-m3-primary/15 border border-m3-primary/30 flex items-center justify-center text-m3-primary">
                                         <Shield className="w-4 h-4" />
                                       </div>
                                       <span className="font-display font-extrabold text-sm text-m3-on-surface">Defense</span>
                                     </div>
                                     <span className="font-mono font-bold text-xs text-m3-outline">
-                                      Round Win % <strong className="text-emerald-400 font-extrabold">{m.defenseRoundsWinPct.toFixed(1)}%</strong>
+                                      Round Win % <strong className="text-m3-mint font-extrabold">{m.defenseRoundsWinPct.toFixed(1)}%</strong>
                                     </span>
                                   </div>
 
@@ -581,11 +650,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Kills</span>
-                                        <span className="font-bold text-emerald-400">{m.defenseKills}</span>
+                                        <span className="font-bold text-m3-mint">{m.defenseKills}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-emerald-400 rounded-full"
+                                          className="h-full bg-m3-mint rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.defenseKills / defTotal) * 100))}%` }}
                                         />
                                       </div>
@@ -595,11 +664,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Deaths</span>
-                                        <span className="font-bold text-red-400">{m.defenseDeaths}</span>
+                                        <span className="font-bold text-m3-coral">{m.defenseDeaths}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-red-400 rounded-full"
+                                          className="h-full bg-m3-coral rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.defenseDeaths / defTotal) * 100))}%` }}
                                         />
                                       </div>
@@ -609,11 +678,11 @@ export const TrackerMaps: React.FC = () => {
                                     <div>
                                       <div className="flex justify-between text-[11px] mb-1">
                                         <span className="text-m3-outline">Assists</span>
-                                        <span className="font-bold text-amber-300">{m.defenseAssists}</span>
+                                        <span className="font-bold text-m3-tertiary">{m.defenseAssists}</span>
                                       </div>
                                       <div className="h-2 rounded-full bg-m3-surface-container-high overflow-hidden">
                                         <div
-                                          className="h-full bg-amber-400 rounded-full"
+                                          className="h-full bg-m3-tertiary rounded-full"
                                           style={{ width: `${Math.min(100, Math.max(5, (m.defenseAssists / defTotal) * 100))}%` }}
                                         />
                                       </div>

@@ -30,7 +30,7 @@ export const App: React.FC = () => {
   const [shortcut, setShortcut] = useState<ShortcutBinding | null>(null);
   const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const [preferredStretched, setPreferredStretched] = useState<[number, number]>([2090, 1440]);
+  const [preferredStretched, setPreferredStretched] = useState<[number, number]>([2088, 1440]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -115,6 +115,7 @@ export const App: React.FC = () => {
 
     // Listen for background global hotkey toggle events from Rust backend
     let unlistenFn: (() => void) | undefined;
+    let unlistenBlFn: (() => void) | undefined;
     if (isTauri()) {
       listen<DisplayInfo>('display-mode-changed', (event) => {
         setDisplayInfo(event.payload);
@@ -124,6 +125,12 @@ export const App: React.FC = () => {
         );
       }).then((unlisten) => {
         unlistenFn = unlisten;
+      });
+
+      listen<{ hwnd: number; title: string; message: string }>('auto-borderless-applied', (event) => {
+        showToast(`Auto-borderless: ${event.payload.title || 'VALORANT'} fullscreened`, 'success');
+      }).then((unlisten) => {
+        unlistenBlFn = unlisten;
       });
     }
 
@@ -161,6 +168,7 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('blur', handleBlur);
       if (unlistenFn) unlistenFn();
+      if (unlistenBlFn) unlistenBlFn();
     };
   }, []);
 

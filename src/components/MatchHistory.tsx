@@ -5,7 +5,7 @@ import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { matchCard, queueLabel, shortMapName, tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { buildTips } from '../utils/trackerTips';
-import { TrackerSkeletons } from './TrackerSkeletons';
+import { HistorySkeletons } from './TrackerSkeletons';
 import { CustomDropdown } from './ValorantConfig';
 import { MatchDetailModal } from './MatchDetailModal';
 
@@ -87,8 +87,8 @@ const Pill: React.FC<{ label: string; tone: 'gold' | 'red' }> = ({ label, tone }
   <span
     className={`px-1.5 py-px rounded-md text-[10px] font-bold border whitespace-nowrap ${
       tone === 'gold'
-        ? 'bg-amber-400/10 border-amber-400/40 text-amber-200'
-        : 'bg-red-500/10 border-red-500/40 text-red-300'
+        ? 'bg-m3-tertiary/10 border-m3-tertiary/40 text-m3-tertiary'
+        : 'bg-m3-coral/10 border-m3-coral/40 text-m3-coral'
     }`}>
     {label}
   </span>
@@ -158,7 +158,7 @@ const MatchRow: React.FC<{
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index * 0.03, 0.4), duration: 0.3, ease: 'easeOut' }}
       className={`rounded-xl border overflow-hidden ${
-        r.won ? 'bg-emerald-400/[0.07] border-emerald-400/25' : 'bg-m3-surface-container border-m3-outline-subtle'
+        r.won ? 'bg-m3-mint/[0.07] border-m3-mint/25' : 'bg-m3-surface-container border-m3-outline-subtle'
       }`}>
       <button
         onClick={() => {
@@ -167,7 +167,7 @@ const MatchRow: React.FC<{
         className={`w-full px-2.5 py-2 flex items-center gap-2.5 text-left ${
           r.detail ? 'cursor-pointer hover:bg-m3-surface-container-high/30' : ''
         }`}>
-        <span className={`w-1 self-stretch rounded-full shrink-0 ${r.won ? 'bg-emerald-400' : 'bg-red-500/70'}`} />
+        <span className={`w-1 self-stretch rounded-full shrink-0 ${r.won ? 'bg-m3-mint' : 'bg-m3-coral/70'}`} />
         {icon ? (
           <img src={icon} alt={r.agent} className="w-9 h-9 rounded-lg object-cover bg-m3-surface-container-high shrink-0" />
         ) : (
@@ -200,9 +200,9 @@ const MatchRow: React.FC<{
         <div className="flex flex-col items-center shrink-0 w-16">
           <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">Score</span>
           <span className="text-[15px] font-mono font-extrabold tabular-nums whitespace-nowrap">
-            <span className="text-emerald-400">{r.us}</span>
+            <span className="text-m3-mint">{r.us}</span>
             <span className="text-m3-outline"> : </span>
-            <span className="text-red-400">{r.them}</span>
+            <span className="text-m3-coral">{r.them}</span>
           </span>
         </div>
 
@@ -226,7 +226,7 @@ const MatchRow: React.FC<{
         {/* Stat columns */}
         <div className="hidden sm:flex items-center gap-3 sm:gap-4 ml-auto shrink-0">
           <Stat label="K/D">
-            <span className={kd >= 1 ? 'text-emerald-400' : 'text-red-400'}>{kd.toFixed(1)}</span>
+            <span className={kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}>{kd.toFixed(1)}</span>
           </Stat>
           <Stat label="K/D/A">
             <span className="text-m3-on-surface">
@@ -234,7 +234,7 @@ const MatchRow: React.FC<{
             </span>
           </Stat>
           <Stat label="DDΔ">
-            <span className={r.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+            <span className={r.dd >= 0 ? 'text-m3-mint' : 'text-m3-coral'}>
               {r.dd > 0 ? `+${r.dd}` : r.dd}
             </span>
           </Stat>
@@ -260,7 +260,7 @@ const MatchRow: React.FC<{
             e.stopPropagation();
             if (r.detail) onToggle();
           }}
-          className="text-m3-outline hover:text-white p-1 rounded-md text-sm leading-none shrink-0 select-none cursor-pointer"
+          className="text-m3-outline hover:text-m3-on-surface p-1 rounded-md text-sm leading-none shrink-0 select-none cursor-pointer"
         >
           {open ? '▾' : '⋮'}
         </span>
@@ -304,8 +304,8 @@ const MatchRow: React.FC<{
                       isMe ? 'bg-m3-primary/10 border border-m3-primary/30' : ''
                     }`}>
                     <span className="truncate text-m3-on-surface">
-                      <span className="font-semibold">{isMe ? 'You' : p.agent}</span>
-                      <span className="text-m3-outline"> • {p.agent}</span>
+                      <span className="font-semibold">{isMe ? 'You' : (p.name || p.agent)}</span>
+                      <span className="text-m3-outline"> • {p.agent}{p.tag ? ` #${p.tag}` : ''}</span>
                     </span>
                     <span className="font-mono text-m3-on-surface-variant shrink-0 tabular-nums">
                       {p.kills}/{p.deaths}/{p.assists} • {pacs} • {Math.round(phs)}%
@@ -316,9 +316,9 @@ const MatchRow: React.FC<{
             </div>
           ))}
           {tips.length > 0 && (
-            <div className="mt-2 rounded-lg bg-amber-400/10 border border-amber-400/30 p-2 space-y-1">
+            <div className="mt-2 rounded-lg bg-m3-tertiary/10 border border-m3-tertiary/30 p-2 space-y-1">
               {tips.map((t, i) => (
-                <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-200/90 leading-snug">
+                <div key={i} className="flex items-start gap-1.5 text-[10px] text-m3-tertiary/90 leading-snug">
                   <Lightbulb className="w-3 h-3 shrink-0 mt-px" />
                   <span>{t}</span>
                 </div>
@@ -536,7 +536,7 @@ export const MatchHistory: React.FC = () => {
   if (!ready) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
-        <TrackerSkeletons />
+        <HistorySkeletons />
       </div>
     );
   }
@@ -584,12 +584,12 @@ export const MatchHistory: React.FC = () => {
             <div className="flex items-stretch gap-3 flex-wrap">
               <div className="flex flex-col justify-center px-1 min-w-32">
                 <div className="font-display font-extrabold text-base tabular-nums whitespace-nowrap">
-                  <span className="text-emerald-400">{sum.w}W</span>
+                  <span className="text-m3-mint">{sum.w}W</span>
                   <span className="text-m3-outline"> - </span>
-                  <span className="text-red-400">{sum.l}L</span>
+                  <span className="text-m3-coral">{sum.l}L</span>
                   <span className="text-m3-outline text-sm"> ({Math.round(sumWr)}%)</span>
                 </div>
-                <div className="text-[11px] font-mono font-bold text-emerald-400 mt-0.5 whitespace-nowrap">
+                <div className="text-[11px] font-mono font-bold text-m3-mint mt-0.5 whitespace-nowrap">
                   {sum.kd.toFixed(2)} K/D | {Math.round(sum.adr)} ADR
                 </div>
               </div>
@@ -610,7 +610,7 @@ export const MatchHistory: React.FC = () => {
                         <div className="text-[10px] font-mono text-m3-outline">K/D {a.kd.toFixed(2)}</div>
                       </div>
                       <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-m3-outline-subtle/50">
-                        <span className="block h-full bg-emerald-400" style={{ width: `${Math.round(a.wr)}%` }} />
+                        <span className="block h-full bg-m3-mint" style={{ width: `${Math.round(a.wr)}%` }} />
                       </span>
                     </div>
                   );
@@ -632,18 +632,18 @@ export const MatchHistory: React.FC = () => {
                 </span>
                 <button
                   onClick={() => toggleDay(dayIds)}
-                  className="flex items-center gap-1 text-[12px] font-bold text-red-400 hover:text-red-300 cursor-pointer">
+                  className="flex items-center gap-1 text-[12px] font-bold text-m3-coral hover:opacity-80 cursor-pointer">
                   <TrendingUp className="w-3.5 h-3.5" />
                   <span>View Report</span>
                 </button>
                 <span className="text-[13px] font-display font-extrabold mx-auto">
-                  <span className="text-emerald-400">{day.w} W</span>
+                  <span className="text-m3-mint">{day.w} W</span>
                   <span className="text-m3-outline"> // </span>
-                  <span className="text-red-400">{day.l} L</span>
+                  <span className="text-m3-coral">{day.l} L</span>
                 </span>
                 <span className="ml-auto hidden xl:flex items-center gap-4">
                   <Stat label="K/D">
-                    <span className={day.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}>{day.kd.toFixed(1)}</span>
+                    <span className={day.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}>{day.kd.toFixed(1)}</span>
                   </Stat>
                   <span className="flex flex-col items-center">
                     <span className="text-[10px] font-mono text-m3-outline whitespace-nowrap">{day.kda}</span>
@@ -652,7 +652,7 @@ export const MatchHistory: React.FC = () => {
                     </span>
                   </span>
                   <Stat label="DDΔ">
-                    <span className={day.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                    <span className={day.dd >= 0 ? 'text-m3-mint' : 'text-m3-coral'}>
                       {day.dd > 0 ? `+${day.dd}` : day.dd}
                     </span>
                   </Stat>

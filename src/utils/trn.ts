@@ -531,3 +531,189 @@ export async function fetchTrnMaps(name: string, tag: string, seasonId: string, 
     .sort((a: TrnMapStat, b: TrnMapStat) => b.winPct - a.winPct);
 }
 
+/** Matches-weighted average of a per-match rate. */
+function wavg(items: { m: number; v: number }[]): number {
+  let w = 0;
+  let sum = 0;
+  for (const it of items) {
+    w += it.m;
+    sum += it.v * it.m;
+  }
+  return w > 0 ? sum / w : 0;
+}
+
+/** Merge per-act agent tables into an All Acts table (counts summed, rates matches-weighted). */
+export function mergeAgentStats(all: TrnAgentStat[][]): TrnAgentStat[] {
+  const byKey = new Map<string, TrnAgentStat[]>();
+  for (const list of all) {
+    for (const a of list) {
+      const k = (a.agentKey || a.agent).toLowerCase();
+      const l = byKey.get(k) ?? [];
+      l.push(a);
+      byKey.set(k, l);
+    }
+  }
+  const out: TrnAgentStat[] = [];
+  for (const items of byKey.values()) {
+    const first = items[0];
+    const matches = items.reduce((n, a) => n + a.matches, 0);
+    if (matches === 0) continue;
+    const w = (pick: (a: TrnAgentStat) => number): number =>
+      wavg(items.map((a) => ({ m: a.matches, v: pick(a) })));
+    const kills = items.reduce((n, a) => n + a.kills, 0);
+    const deaths = items.reduce((n, a) => n + a.deaths, 0);
+    const assists = items.reduce((n, a) => n + a.assists, 0);
+    const wins = items.reduce((n, a) => n + a.wins, 0);
+    const losses = items.reduce((n, a) => n + a.losses, 0);
+    const timePlayedSeconds = items.reduce((n, a) => n + a.timePlayedSeconds, 0);
+    const mapAgg = new Map<string, { mapName: string; mapKey: string; matches: number; wins: number; kdW: number; kdM: number }>();
+    for (const a of items) {
+      for (const t of a.topMaps ?? []) {
+        const e = mapAgg.get(t.mapKey) ?? { mapName: t.mapName, mapKey: t.mapKey, matches: 0, wins: 0, kdW: 0, kdM: 0 };
+        e.matches += t.matches;
+        e.wins += t.wins;
+        e.kdW += t.kd * t.matches;
+        e.kdM += t.matches;
+        mapAgg.set(t.mapKey, e);
+      }
+    }
+    out.push({
+      agent: first.agent,
+      agentKey: first.agentKey,
+      role: items.find((a) => a.role)?.role,
+      matches,
+      wins,
+      losses,
+      winPct: (wins / matches) * 100,
+      kd: deaths > 0 ? kills / deaths : kills,
+      kda: deaths > 0 ? (kills + assists) / deaths : kills + assists,
+      kills,
+      deaths,
+      assists,
+      adr: w((a) => a.adr),
+      acs: w((a) => a.acs),
+      damageDeltaPerRound: Math.round(w((a) => a.damageDeltaPerRound)),
+      hsPct: w((a) => a.hsPct),
+      timePlayedSeconds,
+      hours: Math.round((timePlayedSeconds / 3600) * 10) / 10,
+      kast: w((a) => a.kast),
+      aces: items.reduce((n, a) => n + a.aces, 0),
+      clutches: items.reduce((n, a) => n + a.clutches, 0),
+      flawless: items.reduce((n, a) => n + a.flawless, 0),
+      firstBloods: items.reduce((n, a) => n + a.firstBloods, 0),
+      firstDeaths: items.reduce((n, a) => n + a.firstDeaths, 0),
+      bestKills: Math.max(...items.map((a) => a.bestKills)),
+      defenseRoundsWon: items.reduce((n, a) => n + a.defenseRoundsWon, 0),
+      defenseRoundsLost: items.reduce((n, a) => n + a.defenseRoundsLost, 0),
+      defenseKd: w((a) => a.defenseKd),
+      defusesPerMatch: w((a) => a.defusesPerMatch),
+      attackRoundsWon: items.reduce((n, a) => n + a.attackRoundsWon, 0),
+      attackRoundsLost: items.reduce((n, a) => n + a.attackRoundsLost, 0),
+      attackKd: w((a) => a.attackKd),
+      plantsPerMatch: w((a) => a.plantsPerMatch),
+      ability1Casts: items.reduce((n, a) => n + a.ability1Casts, 0),
+      ability2Casts: items.reduce((n, a) => n + a.ability2Casts, 0),
+      grenadeCasts: items.reduce((n, a) => n + a.grenadeCasts, 0),
+      ultimateCasts: items.reduce((n, a) => n + a.ultimateCasts, 0),
+      attackKills: items.reduce((n, a) => n + a.attackKills, 0),
+      attackDeaths: items.reduce((n, a) => n + a.attackDeaths, 0),
+      attackAssists: items.reduce((n, a) => n + a.attackAssists, 0),
+      attackRoundsWinPct: w((a) => a.attackRoundsWinPct),
+      defenseKills: items.reduce((n, a) => n + a.defenseKills, 0),
+      defenseDeaths: items.reduce((n, a) => n + a.defenseDeaths, 0),
+      defenseAssists: items.reduce((n, a) => n + a.defenseAssists, 0),
+      defenseRoundsWinPct: w((a) => a.defenseRoundsWinPct),
+      topMaps: [...mapAgg.values()]
+        .map((e) => ({
+          mapName: e.mapName,
+          mapKey: e.mapKey,
+          matches: e.matches,
+          wins: e.wins,
+          winPct: e.matches > 0 ? (e.wins / e.matches) * 100 : 0,
+          kd: e.kdM > 0 ? e.kdW / e.kdM : 0,
+        }))
+        .sort((x, y) => y.matches - x.matches),
+    });
+  }
+  return out.sort((a, b) => b.matches - a.matches);
+}
+
+/** Merge per-act map tables into an All Acts table (counts summed, rates matches-weighted). */
+export function mergeMapStats(all: TrnMapStat[][]): TrnMapStat[] {
+  const byKey = new Map<string, TrnMapStat[]>();
+  for (const list of all) {
+    for (const m of list) {
+      const k = (m.key || m.name).toLowerCase();
+      const l = byKey.get(k) ?? [];
+      l.push(m);
+      byKey.set(k, l);
+    }
+  }
+  const out: TrnMapStat[] = [];
+  for (const items of byKey.values()) {
+    const first = items[0];
+    const matchesPlayed = items.reduce((n, m) => n + m.matchesPlayed, 0);
+    if (matchesPlayed === 0) continue;
+    const w = (pick: (m: TrnMapStat) => number): number =>
+      wavg(items.map((m) => ({ m: m.matchesPlayed, v: pick(m) })));
+    const matchesWon = items.reduce((n, m) => n + m.matchesWon, 0);
+    const matchesLost = items.reduce((n, m) => n + m.matchesLost, 0);
+    const kills = items.reduce((n, m) => n + m.kills, 0);
+    const deaths = items.reduce((n, m) => n + m.deaths, 0);
+    const agentAgg = new Map<string, { name: string; icon: string; matches: number; winW: number; winM: number }>();
+    for (const m of items) {
+      for (const t of m.topAgents ?? []) {
+        const k = t.name.toLowerCase();
+        const e = agentAgg.get(k) ?? { name: t.name, icon: t.icon, matches: 0, winW: 0, winM: 0 };
+        if (!e.icon && t.icon) e.icon = t.icon;
+        e.matches += t.matches;
+        e.winW += t.winPct * t.matches;
+        e.winM += t.matches;
+        agentAgg.set(k, e);
+      }
+    }
+    out.push({
+      key: first.key,
+      name: first.name,
+      imageUrl: items.find((m) => m.imageUrl)?.imageUrl ?? '',
+      matchesPlayed,
+      matchesWon,
+      matchesLost,
+      winPct: (matchesWon / matchesPlayed) * 100,
+      kd: deaths > 0 ? kills / deaths : kills,
+      adr: w((m) => m.adr),
+      acs: w((m) => m.acs),
+      damageDeltaPerRound: Math.round(w((m) => m.damageDeltaPerRound)),
+      kills,
+      deaths,
+      assists: items.reduce((n, m) => n + m.assists, 0),
+      headshotsPct: w((m) => m.headshotsPct),
+      timePlayedSeconds: items.reduce((n, m) => n + m.timePlayedSeconds, 0),
+      aces: items.reduce((n, m) => n + m.aces, 0),
+      clutches: items.reduce((n, m) => n + m.clutches, 0),
+      thrifty: items.reduce((n, m) => n + m.thrifty, 0),
+      flawless: items.reduce((n, m) => n + m.flawless, 0),
+      plants: items.reduce((n, m) => n + m.plants, 0),
+      defuses: items.reduce((n, m) => n + m.defuses, 0),
+      attackKills: items.reduce((n, m) => n + m.attackKills, 0),
+      attackDeaths: items.reduce((n, m) => n + m.attackDeaths, 0),
+      attackAssists: items.reduce((n, m) => n + m.attackAssists, 0),
+      attackRoundsWinPct: w((m) => m.attackRoundsWinPct),
+      defenseKills: items.reduce((n, m) => n + m.defenseKills, 0),
+      defenseDeaths: items.reduce((n, m) => n + m.defenseDeaths, 0),
+      defenseAssists: items.reduce((n, m) => n + m.defenseAssists, 0),
+      defenseRoundsWinPct: w((m) => m.defenseRoundsWinPct),
+      topAgents: [...agentAgg.values()]
+        .map((e) => ({
+          name: e.name,
+          icon: e.icon,
+          matches: e.matches,
+          winPct: e.winM > 0 ? e.winW / e.winM : 0,
+        }))
+        .sort((x, y) => y.matches - x.matches)
+        .slice(0, 3),
+    });
+  }
+  return out.sort((a, b) => b.winPct - a.winPct);
+}
+

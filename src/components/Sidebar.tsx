@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Cpu,
   Sliders,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 import { TrackerMini } from './TrackerMini';
+import { APP_VERSION, appVersion } from '../utils/version';
 
 interface SidebarTab {
   id: TabType;
@@ -70,6 +72,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenUpdates,
 }) => {
   const isStretched = displayInfo?.active_profile === 'stretched';
+  const [appVer, setAppVer] = useState(APP_VERSION);
+
+  useEffect(() => {
+    appVersion().then(setAppVer);
+  }, []);
 
   const renderGroup = (group: TabGroup, isFirst: boolean) => (
     <div key={group.title}>
@@ -159,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {hasUpdate && (
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-pulse" />
             )}
-            <span>v0.1.1</span>
+            <span>v{appVer}</span>
           </button>
         </div>
 

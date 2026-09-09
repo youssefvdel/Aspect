@@ -12,12 +12,16 @@ import {
   Calculator,
 } from 'lucide-react';
 import type { DisplayInfo, ShortcutBinding, WindowInfo } from '../types';
+import { listen } from '@tauri-apps/api/event';
 import {
   formatShortcut,
   vkToName,
   fetchWindows,
   makeWindowBorderless,
   restoreWindow,
+  isTauri,
+  getAutoBorderless,
+  setAutoBorderless as setAutoBorderlessIpc,
 } from '../utils/ipc';
 
 interface UnifiedStretchProps {
@@ -63,9 +67,30 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
   const [selectedHwnd, setSelectedHwnd] = useState<number | null>(null);
   const [blStatus, setBlStatus] = useState<string | null>(null);
   const [blLoading, setBlLoading] = useState(false);
-  // ---- Auto-borderless: while stretched, wait for Valorant and strip its frame ----
+  // ---- Auto-borderless opt-in toggle (default: false / manual control) ----
+  const [autoBorderless, setAutoBorderless] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('aspect_auto_borderless') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [autoBlState, setAutoBlState] = useState<'idle' | 'waiting' | 'done'>('idle');
   const autoBlHwnd = useRef<number | null>(null);
+
+  useEffect(() => {
+    getAutoBorderless().then((enabled) => {
+      setAutoBorderless(enabled);
+    }).catch(() => {});
+  }, []);
+
+  const handleToggleAutoBorderless = (enabled: boolean) => {
+    setAutoBorderless(enabled);
+    try {
+      localStorage.setItem('aspect_auto_borderless', String(enabled));
+    } catch {}
+    setAutoBorderlessIpc(enabled).catch(() => {});
+  };
 
   // ---- Custom Dropdown state ----
   const [isWindowDropdownOpen, setIsWindowDropdownOpen] = useState(false);
@@ -88,7 +113,7 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
   const nativeH = displayInfo?.native_height || 1440;
   const stretchedW = preferredStretched
     ? preferredStretched[0]
-    : Math.round(nativeH * 1.45) + (Math.round(nativeH * 1.45) % 2 !== 0 ? 3 : 2);
+    : Math.round((Math.round(nativeH * 1.45) + 4) / 8) * 8;
   const stretchedH = preferredStretched ? preferredStretched[1] : nativeH;
   const currentHz = displayInfo?.current_hz || 260;
 
@@ -116,18 +141,42 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
   // Inverse of panel-fill scale: native 2560 / stretched 2090 = 1.225x for 1.45:1.
   const modelWiden = (16 / 9) / ratio;
 
+  const isRealGame = (w: WindowInfo): boolean => {
+    if (w.is_game) return true;
+    const t = w.title.toLowerCase().trim();
+    // Exclude third-party companion apps, overlays, launchers, and trackers:
+    if (
+      t.includes('tracker') ||
+      t.includes('overwolf') ||
+      t.includes('blitz') ||
+      t.includes('riot client') ||
+      t.includes('aspect') ||
+      t.includes('discord')
+    ) {
+      return false;
+    }
+    return (
+      t === 'valorant' ||
+      t.startsWith('valorant') ||
+      t.includes('counter-strike') ||
+      t.includes('cs2') ||
+      t.includes('aimlabs')
+    );
+  };
+
   const loadWindows = async () => {
     setBlLoading(true);
     try {
       const list = await fetchWindows();
       setWindows(list);
-      if (list.length > 0 && !selectedHwnd) {
-        const game =
-          list.find((w) => {
-            const t = w.title.toLowerCase();
-            return t.includes('valorant') || t.includes('counter-strike') || t.includes('aimlabs');
-          }) ?? list[0];
-        setSelectedHwnd(game.hwnd);
+      if (list.length > 0) {
+        // Auto-select true game window; NEVER select tracker/overlays
+        const game = list.find((w) => isRealGame(w));
+        if (game) {
+          setSelectedHwnd(game.hwnd);
+        } else if (!selectedHwnd) {
+          setSelectedHwnd(list[0].hwnd);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -141,10 +190,27 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // While stretched: poll for the Valorant window and auto-borderless it once.
-  // Back to native: disarm so the next stretch run watches fresh.
+  // Listen for background auto-borderless events from Rust daemon
   useEffect(() => {
-    if (isNative) {
+    let unlisten: (() => void) | undefined;
+    if (isTauri()) {
+      listen<{ hwnd: number; title: string; message: string }>('auto-borderless-applied', (event) => {
+        setSelectedHwnd(event.payload.hwnd);
+        setBlStatus(event.payload.message);
+        setAutoBlState('done');
+        autoBlHwnd.current = event.payload.hwnd;
+      }).then((fn) => {
+        unlisten = fn;
+      });
+    }
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // While stretched: fallback poll for the real Valorant window ONLY if auto-borderless is explicitly enabled
+  useEffect(() => {
+    if (isNative || !autoBorderless) {
       autoBlHwnd.current = null;
       setAutoBlState('idle');
       return;
@@ -152,15 +218,16 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
     setAutoBlState('waiting');
     let stopped = false;
     const tick = async () => {
-      if (stopped || autoBlHwnd.current) return;
+      if (stopped || autoBlHwnd.current || !autoBorderless) return;
       try {
         const list = await fetchWindows();
-        if (stopped) return;
+        if (stopped || !autoBorderless) return;
         setWindows(list);
-        const game = list.find((w) => w.title.toLowerCase().includes('valorant'));
+        // Strict filter: real game only, never Tracker
+        const game = list.find((w) => isRealGame(w));
         if (game) {
           const msg = await makeWindowBorderless(game.hwnd);
-          if (stopped) return;
+          if (stopped || !autoBorderless) return;
           autoBlHwnd.current = game.hwnd;
           setSelectedHwnd(game.hwnd);
           setBlStatus(msg);
@@ -177,7 +244,7 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNative]);
+  }, [isNative, autoBorderless]);
 
   const handleApplyBorderless = async () => {
     if (!selectedHwnd) return;
@@ -543,7 +610,16 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
               </h2>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            <label className="flex items-center gap-1.5 text-[10px] text-m3-on-surface cursor-pointer select-none bg-m3-surface-container-high px-2 py-1 rounded-full border border-m3-outline-subtle">
+              <input
+                type="checkbox"
+                checked={autoBorderless}
+                onChange={(e) => handleToggleAutoBorderless(e.target.checked)}
+                className="w-3 h-3 rounded accent-m3-primary cursor-pointer"
+              />
+              <span className="font-semibold text-m3-on-surface">Auto-borderless</span>
+            </label>
             <span className="text-[9px] text-m3-primary font-mono tabular-nums px-1.5 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle">
               {windows.length} found
             </span>
