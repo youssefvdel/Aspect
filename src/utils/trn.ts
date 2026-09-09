@@ -126,17 +126,20 @@ export async function fetchTrnActStats(
   tag: string,
   seasonId = '',
   playlist = 'competitive'
-): Promise<{ stats: TrnActStats; defaultSeason: string }> {
+): Promise<{ stats: TrnActStats; defaultSeason: string; countryCode: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let seg: any = null;
   let avatarUrl = '';
   let defaultSeason = '';
+  let countryCode = '';
   if (playlist === 'competitive' && !seasonId) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const j: any = await trnGet(riotId(name, tag));
     seg = pickSeasonSegment(j, '');
     avatarUrl = String(j?.data?.platformInfo?.avatarUrl ?? '');
     defaultSeason = String(j?.data?.metadata?.defaultSeason ?? '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    countryCode = String((j as any)?.data?.userInfo?.countryCode ?? '');
   } else {
     const r = await fetchSeasonSeg(name, tag, playlist, seasonId);
     seg = r.seg;
@@ -194,6 +197,7 @@ export async function fetchTrnActStats(
       hsPercentile: num((seg?.stats?.headshotsPercentage as any)?.percentile),
     },
     defaultSeason,
+    countryCode,
   };
 }
 

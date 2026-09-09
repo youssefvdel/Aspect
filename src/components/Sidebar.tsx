@@ -10,6 +10,7 @@ import {
   History,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
+import { TrackerMini } from './TrackerMini';
 
 interface SidebarTab {
   id: TabType;
@@ -232,8 +233,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Sidebar Footer & Keyboard Navigation Hint */}
-      <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
+      {/* Sidebar Footer: player chip, updates & keyboard hint */}
+      <div className="flex flex-col">
+        <TrackerMini />
+        <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
         {onOpenUpdates && (
           <button
             type="button"
@@ -262,6 +265,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
             Keys 1 - 7
           </span>
+        </div>
         </div>
       </div>
     </aside>

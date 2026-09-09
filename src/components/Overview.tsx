@@ -154,72 +154,6 @@ export const Overview: React.FC = () => {
 
   return (
     <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
-      {/* Left identity rail (TRN home style) */}
-      <aside className="hidden md:flex flex-col gap-2.5 w-60 shrink-0">
-        {profile && (
-          <motion.section variants={rise} custom={0}
-            className="rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-4 flex flex-col items-center gap-2 shadow-m3-1">
-            <div className="flex items-start justify-between w-full">
-              <div className="flex flex-col items-center gap-1 flex-1">
-                {tierIcons[profile.tier] ? (
-                  <img src={tierIcons[profile.tier]} alt={profile.rank} className="w-14 h-14 object-contain" />
-                ) : null}
-                <span className="font-display font-extrabold text-sm text-m3-on-surface text-center">{profile.rank}</span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline">Current</span>
-              </div>
-              {trn?.avatarUrl ? (
-                <img src={trn.avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-m3-primary/50 shrink-0 mt-1" />
-              ) : (
-                <span className="w-16 h-16 rounded-full bg-m3-surface-container-high shrink-0 mt-1" />
-              )}
-              <div className="flex flex-col items-center gap-1 flex-1">
-                {tierIcons[profile.tier] ? (
-                  <img src={tierIcons[profile.tier]} alt={profile.peak} className="w-14 h-14 object-contain opacity-90" />
-                ) : null}
-                <span className="font-display font-extrabold text-sm text-m3-tertiary text-center">{profile.peak}</span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline">Peak</span>
-              </div>
-            </div>
-            <span className="font-display font-extrabold text-base text-m3-on-surface text-center break-all">
-              {profile.name}<span className="text-m3-outline">#{profile.tag}</span>
-            </span>
-            <div className="flex items-center gap-2 w-full pt-1 border-t border-m3-outline-subtle/60">
-              <span className="font-mono text-xs text-m3-primary font-bold tabular-nums">{Math.round(rrNow)} RR</span>
-              <button onClick={refresh} disabled={isLoading} title="Refresh"
-                className="w-7 h-7 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0 ml-auto">
-                <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          </motion.section>
-        )}
-        {trn && (
-          <motion.section variants={rise} custom={1}
-            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2">Tracker score</h4>
-            <div className="flex items-center gap-2.5">
-              <div className="w-12 h-12 rounded-full bg-m3-tertiary-container/50 border-2 border-m3-tertiary/50 flex items-center justify-center shrink-0">
-                <Trophy className="w-5 h-5 text-m3-tertiary" />
-              </div>
-              <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2.5">
-              {[
-                { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
-                { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
-                { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
-                { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.adrPctile },
-              ].map((s) => (
-                <div key={s.label}>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">{s.label}</div>
-                  <div className="text-[13px] font-mono font-bold text-m3-on-surface">{s.v}</div>
-                  <div className="text-[9px] font-mono text-m3-tertiary">{s.p > 0 ? pctLabel(s.p) : ''}</div>
-                </div>
-              ))}
-            </div>
-          </motion.section>
-        )}
-      </aside>
-
       {/* Main column */}
       <div className="flex-1 min-w-0 flex flex-col gap-2.5">
         {banner && (
@@ -248,9 +182,9 @@ export const Overview: React.FC = () => {
 
         {profile ? (
           <>
-            {/* Mobile identity (rail hidden on small screens) */}
+            {/* Rank hero strip (identity lives in the sidebar) */}
             <motion.section variants={rise} custom={1}
-              className="md:hidden rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-3 flex items-center gap-3 shrink-0">
+              className="rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-3 flex items-center gap-3 shrink-0">
               {trn?.avatarUrl ? (
                 <img src={trn.avatarUrl} alt="" className="w-11 h-11 rounded-full object-cover border border-m3-primary/40 shrink-0" />
               ) : null}
@@ -387,33 +321,62 @@ export const Overview: React.FC = () => {
               </motion.section>
             </div>
 
-            {/* Previous acts */}
+            {/* Previous acts + Tracker score, half and half */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 shrink-0">
             {prevActs.length > 0 && (
               <motion.section variants={rise} custom={10}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
                 <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary mb-2.5">Previous acts</h4>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col gap-2">
                   {prevActs.map((s) => {
                     const prev = trnPrev[s.id.toLowerCase()];
                     return (
-                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2.5 flex flex-col items-center gap-1 text-center">
-                        <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline">
-                          {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
-                        </span>
+                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2 flex items-center gap-2.5">
                         {tierIcons[s.tier] ? (
-                          <img src={tierIcons[s.tier]} alt={tierName(s.tier)} className="w-12 h-12 object-contain" />
+                          <img src={tierIcons[s.tier]} alt={tierName(s.tier)} className="w-10 h-10 object-contain shrink-0" />
                         ) : null}
-                        <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-m3-outline">Peak rating</span>
-                        <span className="font-display font-extrabold text-sm text-m3-on-surface">{tierName(s.tier)}</span>
-                        <span className="font-mono text-[10px] text-m3-outline tabular-nums">
-                          {prev ? `K/D ${prev.kd.toFixed(2)} • ${prev.matches} games` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline">
+                            {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
+                          </div>
+                          <div className="font-display font-extrabold text-sm text-m3-on-surface">{tierName(s.tier)}</div>
+                          <div className="font-mono text-[10px] text-m3-outline tabular-nums">
+                            {prev ? `K/D ${prev.kd.toFixed(2)} • ${prev.matches} games` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </motion.section>
             )}
+            {trn && (
+              <motion.section variants={rise} custom={11}
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2.5">Tracker score</h4>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-12 h-12 rounded-full bg-m3-tertiary-container/50 border-2 border-m3-tertiary/50 flex items-center justify-center shrink-0">
+                    <Trophy className="w-5 h-5 text-m3-tertiary" />
+                  </div>
+                  <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2.5">
+                  {[
+                    { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
+                    { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
+                    { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
+                    { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.adrPctile },
+                  ].map((s) => (
+                    <div key={s.label}>
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">{s.label}</div>
+                      <div className="text-[13px] font-mono font-bold text-m3-on-surface">{s.v}</div>
+                      <div className="text-[9px] font-mono text-m3-tertiary">{s.p > 0 ? pctLabel(s.p) : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </motion.section>
+            )}
+            </div>
 
             {/* Recent form */}
             <motion.section variants={rise} custom={12}
