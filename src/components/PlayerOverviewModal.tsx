@@ -88,8 +88,11 @@ export const PlayerOverviewModal: React.FC<Props> = ({
 
   if (!player) return null;
 
-  const currentRank = mmrProfile?.rank || player.rankName || 'Unranked';
-  const currentRr = mmrProfile?.rr ?? 0;
+  const currentRank = player.rankName || mmrProfile?.rank || 'Unranked';
+  const currentRr =
+    mmrProfile && mmrProfile.name.toLowerCase() === player.name.toLowerCase()
+      ? mmrProfile.rr
+      : 0;
 
   return (
     <AnimatePresence>
@@ -103,16 +106,16 @@ export const PlayerOverviewModal: React.FC<Props> = ({
           className="absolute inset-0 bg-black/80 backdrop-blur-md"
         />
 
-        {/* Modal Container */}
+        {/* Modal Container (Google Material 3) */}
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 10 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="relative w-full max-w-2xl rounded-3xl bg-m3-surface-container border border-m3-outline-subtle shadow-m3-3 overflow-hidden flex flex-col z-10 max-h-[90vh]"
+          className="relative w-full max-w-2xl rounded-3xl bg-m3-surface-container-low border border-m3-outline-subtle shadow-m3-3 overflow-hidden flex flex-col z-10 max-h-[90vh]"
         >
           {/* Header */}
-          <div className="p-5 border-b border-m3-outline-subtle bg-m3-surface-container-high/60 flex items-center justify-between gap-4">
+          <div className="p-5 border-b border-m3-outline-subtle bg-m3-surface-container flex items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
               {/* Agent Avatar */}
               <div className="relative w-12 h-12 rounded-2xl overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest shrink-0 shadow-xs">
@@ -142,10 +145,10 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                     </span>
                   )}
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                       player.team === 'Blue'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-400/30'
+                        ? 'bg-m3-mint-container/40 text-m3-mint border border-m3-mint/30'
+                        : 'bg-m3-coral-container/40 text-m3-coral border border-m3-coral/30'
                     }`}
                   >
                     {player.team} Team
@@ -172,7 +175,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                     onViewFullProfile(player.name, player.tag);
                     onClose();
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-m3-primary text-m3-on-primary text-xs font-display font-bold flex items-center gap-1.5 shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
+                  className="px-4 py-1.5 rounded-full bg-m3-primary text-m3-on-primary text-xs font-display font-bold flex items-center gap-1.5 shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
                 >
                   <span>Open Full Tracker</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -181,7 +184,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-xl bg-m3-surface-container-highest hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
