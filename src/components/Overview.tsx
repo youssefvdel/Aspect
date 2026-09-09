@@ -18,6 +18,27 @@ const rise = {
   }),
 };
 
+/** Hit-zone body figure: head/body/legs glow with their share of hits. */
+const BodyFigure: React.FC<{ head: number; body: number; legs: number }> = ({ head, body, legs }) => {
+  const max = Math.max(head, body, legs, 1);
+  const o = (v: number): number => +(0.22 + 0.78 * (v / max)).toFixed(2);
+  const fill = '#5ac8fa';
+  return (
+    <svg width="48" height="92" viewBox="0 0 48 92" className="shrink-0" aria-label="Hit zones">
+      {/* head */}
+      <circle cx="24" cy="9" r="7.5" fill={fill} opacity={o(head)} />
+      {/* arms */}
+      <rect x="6" y="22" width="6" height="26" rx="3" fill={fill} opacity={o(body)} />
+      <rect x="36" y="22" width="6" height="26" rx="3" fill={fill} opacity={o(body)} />
+      {/* torso */}
+      <rect x="15" y="20" width="18" height="32" rx="6" fill={fill} opacity={o(body)} />
+      {/* legs */}
+      <rect x="15.5" y="54" width="7.5" height="32" rx="3.5" fill={fill} opacity={o(legs)} />
+      <rect x="25" y="54" width="7.5" height="32" rx="3.5" fill={fill} opacity={o(legs)} />
+    </svg>
+  );
+};
+
 const shortAct = (label: string): string =>
   label
     .replace('Episode', 'E')
@@ -293,7 +314,9 @@ export const Overview: React.FC = () => {
                   <span className="text-[9px] text-m3-outline">Act-wide</span>
                 </div>
                 {S && hitTotal > 0 ? (
-                  <div className="flex flex-col gap-1.5 text-[11px]">
+                  <div className="flex gap-2.5 items-start">
+                    <BodyFigure head={S.hsPct} body={bodyPct} legs={legPct} />
+                    <div className="flex-1 flex flex-col gap-1.5 text-[11px] min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-m3-outline w-8">Head</span>
                       <span className="font-mono font-bold text-m3-primary">{S.hsPct.toFixed(2)}%</span>
@@ -308,6 +331,7 @@ export const Overview: React.FC = () => {
                       <span className="text-m3-outline w-8">Legs</span>
                       <span className="font-mono font-bold text-m3-on-surface">{legPct.toFixed(2)}%</span>
                       <span className="font-mono text-m3-outline tabular-nums ml-auto">{S.legHits.toLocaleString()} hits</span>
+                    </div>
                     </div>
                   </div>
                 ) : (
