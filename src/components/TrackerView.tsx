@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Overview } from './Overview';
 import { MatchHistory } from './MatchHistory';
+import { TrackerMaps } from './TrackerMaps';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Target } from 'lucide-react';
@@ -22,7 +23,7 @@ const TABS: SubTabItem[] = [
 
 export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initialSubTab = 'overview' }) => {
   const [subTab, setSubTab] = useState<TrackerSubTab>(initialSubTab);
-  const { trn, trnAgents, agentInfo, games, mapById, agg } = useTrackerData();
+  const { trn, trnAgents, agentInfo, agg } = useTrackerData();
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-m3-surface">
@@ -184,30 +185,8 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'maps' && (
-            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 pt-3.5 pb-8">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
-                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Map Records (Recent Games)</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {Array.from(new Set(games.map((g) => mapById[g.matchId]).filter(Boolean))).map((mapName) => {
-                    const mapGames = games.filter((g) => mapById[g.matchId] === mapName);
-                    const wins = mapGames.filter((g) => g.change > 0).length;
-                    const wr = mapGames.length > 0 ? (wins / mapGames.length) * 100 : 0;
-                    return (
-                      <div key={mapName} className="rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle/50 p-3.5 flex flex-col justify-between">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-display font-bold text-sm text-m3-on-surface">{mapName}</span>
-                          <span className={`text-xs font-mono font-bold ${wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {wr.toFixed(0)}% WR
-                          </span>
-                        </div>
-                        <div className="text-[11px] font-mono text-m3-outline">
-                          {wins}W – {mapGames.length - wins}L • {mapGames.length} played
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+              <TrackerMaps />
             </motion.div>
           )}
         </AnimatePresence>

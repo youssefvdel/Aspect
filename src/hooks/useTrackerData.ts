@@ -11,7 +11,7 @@ import {
   shortMapName,
   type AggStats,
 } from '../utils/tracker';
-import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
+import { fetchTrnActStats, fetchTrnAgents, fetchTrnMaps, type TrnActStats, type TrnAgentStat, type TrnMapStat } from '../utils/trn';
 
 export interface TrackerData {
   profile: TrackerProfile | null;
@@ -26,6 +26,7 @@ export interface TrackerData {
   agg: AggStats | null;
   trn: TrnActStats | null;
   trnAgents: TrnAgentStat[];
+  trnMaps: TrnMapStat[];
   trnPrev: Record<string, { kd: number; matches: number }>;
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
@@ -51,6 +52,7 @@ export function useTrackerData(): TrackerData {
   const [agg, setAgg] = useState<AggStats | null>(null);
   const [trn, setTrn] = useState<TrnActStats | null>(null);
   const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
+  const [trnMaps, setTrnMaps] = useState<TrnMapStat[]>([]);
   const [trnPrev, setTrnPrev] = useState<Record<string, { kd: number; matches: number }>>({});
   const [trnDone, setTrnDone] = useState(false);
   const [detailsDone, setDetailsDone] = useState(false);
@@ -105,6 +107,9 @@ export function useTrackerData(): TrackerData {
           fetchTrnAgents(accName, accTag, prof.currentSeasonId)
             .then(setTrnAgents)
             .catch(() => setTrnAgents([]));
+          fetchTrnMaps(accName, accTag, prof.currentSeasonId)
+            .then(setTrnMaps)
+            .catch(() => setTrnMaps([]));
         }
       } else {
         setTrnDone(true);
@@ -161,5 +166,5 @@ export function useTrackerData(): TrackerData {
 
   const ready = !isLoading && profile !== null && trnDone && detailsDone;
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, banner, setBanner, refresh };
 }
