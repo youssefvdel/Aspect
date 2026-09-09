@@ -68,7 +68,7 @@ const PLAYLISTS = [
 ];
 
 export const Overview: React.FC = () => {
-  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, banner, setBanner, refresh } =
+  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, ready, banner, setBanner, refresh } =
     useTrackerData();
 
   // View selection (mirrors TRN's Playlist/Act boxes; stats sections follow it).
@@ -142,7 +142,7 @@ export const Overview: React.FC = () => {
   const bodyPct = hitTotal > 0 ? ((S?.bodyHits ?? 0) / hitTotal) * 100 : 0;
   const legPct = hitTotal > 0 ? ((S?.legHits ?? 0) / hitTotal) * 100 : 0;
 
-  if (isLoading && !profile) {
+  if (!ready) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
         <TrackerSkeletons />

@@ -180,8 +180,7 @@ const MatchRow: React.FC<{
 };
 
 export const MatchHistory: React.FC = () => {
-  const { profile, games, queueById, mapById, detailsById, agentInfo, weapons, agg, isLoading, banner, setBanner } =
-    useTrackerData();
+  const { profile, games, queueById, mapById, detailsById, agentInfo, weapons, agg, isLoading, ready, banner, setBanner } = useTrackerData();
   const [agentFilter, setAgentFilter] = useState('All');
   const [mapFilter, setMapFilter] = useState('All');
   const puuid = profile?.puuid ?? '';
@@ -362,7 +361,7 @@ export const MatchHistory: React.FC = () => {
       .slice(0, 4);
   }, [rows, games, mapById]);
 
-  if (isLoading && games.length === 0) {
+  if (!ready) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
         <TrackerSkeletons />

@@ -31,6 +31,7 @@ export interface TrackerData {
   detailsReady: number;
   detailsTotal: number;
   isLoading: boolean;
+  ready: boolean;
   banner: string | null;
   setBanner: (m: string | null) => void;
   refresh: () => Promise<void>;
@@ -51,6 +52,8 @@ export function useTrackerData(): TrackerData {
   const [trn, setTrn] = useState<TrnActStats | null>(null);
   const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
   const [trnPrev, setTrnPrev] = useState<Record<string, { kd: number; matches: number }>>({});
+  const [trnDone, setTrnDone] = useState(false);
+  const [detailsDone, setDetailsDone] = useState(false);
   const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
   const [detailsReady, setDetailsReady] = useState(0);
   const [detailsTotal, setDetailsTotal] = useState(0);
@@ -61,6 +64,8 @@ export function useTrackerData(): TrackerData {
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setBanner(null);
+    setTrnDone(false);
+    setDetailsDone(false);
     try {
       const region = await detectRegion();
       let accName = '';
@@ -94,12 +99,16 @@ export function useTrackerData(): TrackerData {
       if (accName) {
         fetchTrnActStats(accName, accTag, prof.currentSeasonId)
           .then(({ stats }) => setTrn(stats))
-          .catch(() => setTrn(null));
+          .catch(() => setTrn(null))
+          .finally(() => setTrnDone(true));
         if (prof.currentSeasonId) {
           fetchTrnAgents(accName, accTag, prof.currentSeasonId)
             .then(setTrnAgents)
             .catch(() => setTrnAgents([]));
         }
+      } else {
+        setTrnDone(true);
+      }
         // Previous-act K/D + match counts (max 3, best effort).
         {
           const played = new Set(prof.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
@@ -119,7 +128,6 @@ export function useTrackerData(): TrackerData {
             setTrnPrev(m);
           });
         }
-      }
       const puuid = prof.puuid;
       const ids = comp.map((g) => g.matchId).filter(Boolean);
       setDetailsTotal(ids.length);
@@ -131,10 +139,15 @@ export function useTrackerData(): TrackerData {
             setDetailsById(byId);
             setDetailsReady(Object.keys(byId).length);
           })
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => setDetailsDone(true));
+      } else {
+        setDetailsDone(true);
       }
     } catch (e) {
       setBanner(String(e instanceof Error ? e.message : e));
+      setTrnDone(true);
+      setDetailsDone(true);
     } finally {
       setIsLoading(false);
     }
@@ -146,5 +159,7 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, banner, setBanner, refresh };
+  const ready = !isLoading && profile !== null && trnDone && detailsDone;
+
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, banner, setBanner, refresh };
 }
