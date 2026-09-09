@@ -68,7 +68,7 @@ const PLAYLISTS = [
 ];
 
 export const Overview: React.FC = () => {
-  const { profile, games, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, banner, setBanner, refresh } =
+  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, banner, setBanner, refresh } =
     useTrackerData();
 
   // View selection (mirrors TRN's Playlist/Act boxes; stats sections follow it).
@@ -123,9 +123,6 @@ export const Overview: React.FC = () => {
   const kills = S?.kills ?? agg?.kills ?? 0;
   const deaths = S?.deaths ?? agg?.deaths ?? 0;
   const assists = S?.assists ?? agg?.assists ?? 0;
-  const form = games.slice(0, 10);
-  const formW = form.filter((g) => g.change > 0).length;
-  const maxAbs = Math.max(10, ...games.map((p) => Math.abs(p.change)));
   const rrNow = useCountUp(profile?.rr ?? 0, 900, !!profile);
 
   const orderIdx = (id: string): number => {
@@ -394,33 +391,9 @@ export const Overview: React.FC = () => {
             )}
             </div>
 
-            {/* Recent form */}
-            <motion.section variants={rise} custom={12}
-              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary">Recent form</h4>
-                <span className="text-[11px] font-bold text-m3-on-surface">
-                  {formW}W–{form.length - formW}L <span className="text-m3-outline font-semibold">last {form.length}</span>
-                </span>
-              </div>
-              {games.length > 0 && (
-                <div className="flex items-end gap-1 h-16">
-                  {[...games].slice(0, 20).reverse().map((p, i) => {
-                    const h = Math.max(8, Math.round((Math.abs(p.change) / maxAbs) * 100));
-                    return (
-                      <motion.div key={p.matchId || p.when}
-                        title={`${p.tier}: ${p.change > 0 ? '+' : ''}${p.change} RR`}
-                        initial={{ height: '8%' }}
-                        animate={{ height: `${h}%` }}
-                        transition={{ delay: 0.3 + i * 0.03, type: 'spring', stiffness: 200, damping: 20 }}
-                        className={`flex-1 rounded-sm ${p.change >= 0 ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
-                    );
-                  })}
-                </div>
-              )}
-            </motion.section>
-          </>
-        ) : (
+            {/* Recent form removed — trend lives in Match History. */}
+            </>
+            ) : (
           !isLoading && (
             <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant shrink-0">
               Open the Riot Client and this tab fills itself — rank, season stats, recent form. No keys, no signup.
