@@ -177,14 +177,14 @@ export const Overview: React.FC = () => {
 
   if (!ready) {
     return (
-      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
         <OverviewSkeletons />
       </div>
     );
   }
 
   return (
-    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
       {banner && (
         <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
@@ -236,7 +236,7 @@ export const Overview: React.FC = () => {
 
           {/* Secondary stats row */}
           <motion.section variants={rise} custom={6}
-            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
+            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 sm:p-4 shadow-m3-1 shrink-0">
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
               <SmallStat label="Wins" value={String(wins)} tone="win" />
               <SmallStat label="Losses" value={String(losses)} tone="loss" />
@@ -246,14 +246,6 @@ export const Overview: React.FC = () => {
               <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : '—'} locked={!S} />
               <SmallStat label="Flawless" value={String(S?.flawless ?? agg?.flawless ?? '…')} />
               <SmallStat label="Clutches" value={String(S?.clutches ?? agg?.clutches ?? '…')} />
-            </div>
-            <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
-              <Lock className="w-3 h-3 shrink-0" />
-              <span>
-                {S
-                  ? `Act-wide stats via TRN (${wins}W–${losses}L${S.ties > 0 ? `–${S.ties}T` : ''}) • rank live from Riot Client`
-                  : 'Act-wide stats loading — rank and games live from Riot.'}
-              </span>
             </div>
           </motion.section>
 

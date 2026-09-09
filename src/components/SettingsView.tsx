@@ -59,33 +59,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 pt-2.5 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {subTab === 'setup' && (
-            <motion.div key="setup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <SettingsComponent
-                displayInfo={displayInfo}
-                onStretchResChanged={onStretchResChanged}
-                onRefreshDisplayInfo={onRefreshDisplayInfo}
-              />
-            </motion.div>
-          )}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+        <div className="max-w-6xl mx-auto h-full w-full">
+          <AnimatePresence mode="wait">
+            {subTab === 'setup' && (
+              <motion.div key="setup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <SettingsComponent
+                  displayInfo={displayInfo}
+                  onStretchResChanged={onStretchResChanged}
+                  onRefreshDisplayInfo={onRefreshDisplayInfo}
+                />
+              </motion.div>
+            )}
 
-          {subTab === 'valorant' && (
-            <motion.div key="valorant" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <ValorantConfig />
-            </motion.div>
-          )}
+            {subTab === 'valorant' && (
+              <motion.div key="valorant" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <ValorantConfig />
+              </motion.div>
+            )}
 
-          {subTab === 'gpu' && (
-            <motion.div key="gpu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <HardwareScaling
-                gpuInfo={gpuInfo}
-                onOpenControlPanel={onOpenControlPanel}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+            {subTab === 'gpu' && (
+              <motion.div key="gpu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <HardwareScaling
+                  gpuInfo={gpuInfo}
+                  onOpenControlPanel={onOpenControlPanel}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

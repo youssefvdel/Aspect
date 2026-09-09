@@ -61,31 +61,33 @@ export const UtilityView: React.FC<UtilityViewProps> = ({
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 pt-2.5 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {subTab === 'switcher' && (
-            <motion.div key="switcher" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <UnifiedStretch
-                displayInfo={displayInfo}
-                shortcut={shortcut ?? null}
-                preferredStretched={preferredStretched}
-                onToggle={onToggle}
-                onApplyResolution={onApplyResolution}
-                onSaveShortcut={onSaveShortcut}
-                isLoading={isLoading}
-              />
-            </motion.div>
-          )}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+        <div className="max-w-6xl mx-auto h-full w-full">
+          <AnimatePresence mode="wait">
+            {subTab === 'switcher' && (
+              <motion.div key="switcher" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <UnifiedStretch
+                  displayInfo={displayInfo}
+                  shortcut={shortcut ?? null}
+                  preferredStretched={preferredStretched}
+                  onToggle={onToggle}
+                  onApplyResolution={onApplyResolution}
+                  onSaveShortcut={onSaveShortcut}
+                  isLoading={isLoading}
+                />
+              </motion.div>
+            )}
 
-          {subTab === 'visualizer' && (
-            <motion.div key="visualizer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <ResolutionVisualizer
-                displayInfo={displayInfo}
-                onApplyResolution={onApplyResolution}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+            {subTab === 'visualizer' && (
+              <motion.div key="visualizer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <ResolutionVisualizer
+                  displayInfo={displayInfo}
+                  onApplyResolution={onApplyResolution}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

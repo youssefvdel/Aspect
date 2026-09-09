@@ -363,14 +363,14 @@ export const MatchHistory: React.FC = () => {
 
   if (!ready) {
     return (
-      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
         <TrackerSkeletons />
       </div>
     );
   }
 
   return (
-    <div className="h-full min-h-0 flex gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+    <div className="h-full min-h-0 flex gap-4 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
       {/* Left rail */}
       <aside className="hidden lg:flex flex-col gap-2.5 w-56 shrink-0">
         <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
