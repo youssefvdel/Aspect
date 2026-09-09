@@ -508,7 +508,8 @@ export function deriveHeroics(
     const iDied = kl.some((k) => k.victimPuuid === puuid);
     const myKills = kl.filter((k) => k.killerPuuid === puuid).length;
     if (won && myTeam && myDeaths === 0) flawless++;
-    if (won && !iDied && myKills > 0 && mateDeaths >= 2) clutch = true;
+    // Real clutch: I survived with a kill while 2+ mates were already dead (>=3 = 3vX or worse).
+    if (won && !iDied && myKills > 0 && mateDeaths >= 3) clutch = true;
     if (myKills >= 5) ace = true;
   }
   const flat = [...detail.kills].sort((a, b) => a.round - b.round || a.timeInRound - b.timeInRound);
@@ -563,9 +564,11 @@ export function matchCard(detail: TrackerMatchDetail, puuid: string): MatchCard 
     if (myK.length >= 5) aces++;
     if (myK.length > 0 || iAssisted || !iDied) kastRounds++;
     const mateDeaths = kl.filter((k) => k.victimTeam === myTeam && k.victimPuuid !== puuid).length;
-    if (myK.length > 0 && mateDeaths >= 2) {
+    // Won clutch: alive at the end with 2+ mates down. Lost clutch: fought
+    // alone to the end (last alive) but the round slipped away.
+    if (myK.length > 0 && mateDeaths >= 3) {
       if (won && !iDied) clutchWon = true;
-      if (!won) clutchLost = true;
+      if (!won && mateDeaths >= 4) clutchLost = true;
     }
     for (const k of myK) {
       const w = (k.weapon || '').toLowerCase();
