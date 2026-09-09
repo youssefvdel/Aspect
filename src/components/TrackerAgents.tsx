@@ -631,18 +631,18 @@ export const TrackerAgents: React.FC = () => {
                                   <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-2">
                                     Map Records with {a.agent}
                                   </div>
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
                                     {a.topMaps.map((tm) => (
                                       <div key={tm.mapKey} className="p-2.5 rounded-xl bg-m3-surface-container-high/50 border border-m3-outline-subtle/50 flex flex-col justify-between">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-1">
                                           <span className="font-display font-bold text-xs text-white truncate">{tm.mapName}</span>
-                                          <span className={`font-mono font-bold text-xs ${tm.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                          <span className={`font-mono font-bold text-xs shrink-0 ${tm.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
                                             {Math.round(tm.winPct)}%
                                           </span>
                                         </div>
                                         <div className="flex items-center justify-between text-[10px] text-m3-outline font-mono mt-1">
-                                          <span>{tm.matches} matches</span>
-                                          <span>K/D {tm.kd.toFixed(2)}</span>
+                                          <span>{tm.matches}m</span>
+                                          <span>{tm.kd.toFixed(2)} KD</span>
                                         </div>
                                       </div>
                                     ))}
@@ -660,28 +660,28 @@ export const TrackerAgents: React.FC = () => {
                                     <div className="p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50 flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                         <Zap className="w-3.5 h-3.5 text-m3-primary" />
-                                        <span className="text-[11px] text-m3-outline font-semibold">Ability 1 Casts</span>
+                                        <span className="text-[11px] text-m3-outline font-semibold">Ability 1 (C)</span>
                                       </div>
                                       <span className="font-mono font-bold text-xs text-white">{a.ability1Casts}</span>
                                     </div>
                                     <div className="p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50 flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                         <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                                        <span className="text-[11px] text-m3-outline font-semibold">Ability 2 Casts</span>
+                                        <span className="text-[11px] text-m3-outline font-semibold">Ability 2 (Q)</span>
                                       </div>
                                       <span className="font-mono font-bold text-xs text-white">{a.ability2Casts}</span>
                                     </div>
                                     <div className="p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50 flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                         <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
-                                        <span className="text-[11px] text-m3-outline font-semibold">Grenade Casts</span>
+                                        <span className="text-[11px] text-m3-outline font-semibold">Signature (E)</span>
                                       </div>
                                       <span className="font-mono font-bold text-xs text-white">{a.grenadeCasts}</span>
                                     </div>
                                     <div className="p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50 flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                         <Swords className="w-3.5 h-3.5 text-[#ff4655]" />
-                                        <span className="text-[11px] text-m3-outline font-semibold">Ultimate Casts</span>
+                                        <span className="text-[11px] text-m3-outline font-semibold">Ultimate (X)</span>
                                       </div>
                                       <span className="font-mono font-bold text-xs text-white">{a.ultimateCasts}</span>
                                     </div>

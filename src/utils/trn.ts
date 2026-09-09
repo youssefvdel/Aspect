@@ -282,6 +282,23 @@ export async function fetchTrnAgents(name: string, tag: string, seasonId: string
   const agentSegs = segs.filter((s: any) => s?.type === 'agent');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const agentTopMapSegs = segs.filter((s: any) => s?.type === 'agent-top-map');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapTopAgentSegs = segs.filter((s: any) => s?.type === 'map-top-agent');
+
+  const mapNameMap: Record<string, string> = {
+    abyss: 'Abyss',
+    sunset: 'Sunset',
+    haven: 'Haven',
+    ascent: 'Ascent',
+    lotus: 'Lotus',
+    summit: 'Summit',
+    split: 'Split',
+    bind: 'Bind',
+    breeze: 'Breeze',
+    fracture: 'Fracture',
+    pearl: 'Pearl',
+    icebox: 'Icebox',
+  };
 
   return agentSegs
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -292,28 +309,52 @@ export async function fetchTrnAgents(name: string, tag: string, seasonId: string
       const m = num(s?.stats?.matchesPlayed?.value);
       const w = num(s?.stats?.matchesWon?.value);
       const l = num(s?.stats?.matchesLost?.value);
-      const key = String(s?.attributes?.key ?? s?.metadata?.name ?? '').toLowerCase();
+      const agentName = String(s?.metadata?.name ?? s?.attributes?.agent ?? '?');
+      const key = String(s?.attributes?.key ?? agentName).toLowerCase();
 
-      const topMaps: TrnAgentTopMap[] = agentTopMapSegs
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((tm: any) => {
-          const matchKey = String(tm?.attributes?.agentKey ?? '').toLowerCase();
-          const matchName = String(tm?.metadata?.name ?? '').toLowerCase();
-          return matchKey === key || matchName === String(s?.metadata?.name ?? '').toLowerCase();
-        })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((tm: any) => ({
-          mapName: String(tm?.metadata?.name ?? tm?.attributes?.mapKey ?? 'Map'),
-          mapKey: String(tm?.attributes?.mapKey ?? ''),
-          matches: num(tm?.stats?.matchesPlayed?.value),
-          wins: num(tm?.stats?.matchesWon?.value),
-          winPct: num(tm?.stats?.matchesWinPct?.value),
-          kd: num(tm?.stats?.kDRatio?.value),
-        }))
-        .sort((x: TrnAgentTopMap, y: TrnAgentTopMap) => y.matches - x.matches);
+      // Merge maps from both agent-top-map and map-top-agent
+      const agentMapEntries = new Map<string, TrnAgentTopMap>();
+
+      for (const tm of agentTopMapSegs) {
+        const matchName = String(tm?.metadata?.name ?? '').toLowerCase();
+        if (matchName === agentName.toLowerCase()) {
+          const mk = String(tm?.attributes?.mapKey ?? '').toLowerCase();
+          const cleanName = mapNameMap[mk] || (mk ? mk.charAt(0).toUpperCase() + mk.slice(1) : 'Map');
+          agentMapEntries.set(mk, {
+            mapName: cleanName,
+            mapKey: mk,
+            matches: num(tm?.stats?.matchesPlayed?.value),
+            wins: num(tm?.stats?.matchesWon?.value),
+            winPct: num(tm?.stats?.matchesWinPct?.value),
+            kd: num(tm?.stats?.kDRatio?.value),
+          });
+        }
+      }
+
+      for (const ma of mapTopAgentSegs) {
+        const matchName = String(ma?.metadata?.name ?? '').toLowerCase();
+        if (matchName === agentName.toLowerCase()) {
+          const mk = String(ma?.attributes?.mapKey ?? '').toLowerCase();
+          if (!agentMapEntries.has(mk)) {
+            const cleanName = mapNameMap[mk] || (mk ? mk.charAt(0).toUpperCase() + mk.slice(1) : 'Map');
+            agentMapEntries.set(mk, {
+              mapName: cleanName,
+              mapKey: mk,
+              matches: num(ma?.stats?.matchesPlayed?.value),
+              wins: num(ma?.stats?.matchesWon?.value),
+              winPct: num(ma?.stats?.matchesWinPct?.value),
+              kd: num(ma?.stats?.kDRatio?.value),
+            });
+          }
+        }
+      }
+
+      const topMaps = Array.from(agentMapEntries.values())
+        .filter((tm) => tm.matches > 0)
+        .sort((x, y) => y.matches - x.matches);
 
       return {
-        agent: String(s?.metadata?.name ?? s?.attributes?.agent ?? '?'),
+        agent: agentName,
         agentKey: key,
         role: s?.metadata?.role ? String(s.metadata.role) : undefined,
         matches: m,
