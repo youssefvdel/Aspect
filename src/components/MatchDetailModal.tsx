@@ -278,7 +278,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         {/* Body Content */}
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-4">
           {/* Rounds Timeline Strip */}
-          <div className="rounded-xl bg-[#16202c] border border-white/10 p-2.5 shrink-0">
+          <div className="rounded-xl bg-m3-surface-container border border-m3-outline-subtle p-2.5 shrink-0">
             <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-1.5">
               Round Timeline ({detail.rounds.length} Rounds)
             </div>
@@ -352,7 +352,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           {activeTab === 'scoreboard' && (
             <div className="flex flex-col gap-4">
               {/* Team Blue Table */}
-              <div className="rounded-xl border border-white/10 overflow-hidden bg-[#16202c]">
+              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container-low">
                 {/* Team Blue Banner */}
                 <div className="px-3.5 py-1.5 bg-emerald-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-emerald-300">
                   <div className="flex items-center gap-2">
@@ -490,7 +490,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
 
               {/* Team Red Table */}
-              <div className="rounded-xl border border-white/10 overflow-hidden bg-[#16202c]">
+              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container-low">
                 {/* Team Red Banner */}
                 <div className="px-3.5 py-1.5 bg-red-950/40 border-b border-white/10 flex items-center justify-between text-xs font-bold text-red-300">
                   <div className="flex items-center gap-2">
@@ -631,7 +631,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
           {activeTab === 'performance' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-xl bg-[#16202c] border border-white/10 p-4">
+              <div className="rounded-xl bg-m3-surface-container border border-m3-outline-subtle p-4">
                 <h4 className="font-display font-bold text-sm text-white mb-3 flex items-center gap-2">
                   <Crosshair className="w-4 h-4 text-emerald-400" />
                   <span>First Bloods & Multikills</span>
@@ -648,7 +648,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
               </div>
 
-              <div className="rounded-xl bg-[#16202c] border border-white/10 p-4">
+              <div className="rounded-xl bg-m3-surface-container border border-m3-outline-subtle p-4">
                 <h4 className="font-display font-bold text-sm text-white mb-3 flex items-center gap-2">
                   <Flame className="w-4 h-4 text-amber-400" />
                   <span>Damage Output & Impact</span>
@@ -668,7 +668,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           )}
 
           {activeTab === 'economy' && (
-            <div className="p-8 rounded-xl bg-[#16202c] border border-white/10 text-center">
+            <div className="p-8 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-center">
               <Coins className="w-8 h-8 text-amber-300 mx-auto mb-2" />
               <div className="font-display font-bold text-base text-white">Match Economy Breakdown</div>
               <div className="text-xs text-m3-outline mt-1">
@@ -680,7 +680,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           {activeTab === 'rounds' && (
             <div className="flex flex-col gap-2">
               {detail.rounds.map((r, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[#16202c] border border-white/10 text-xs">
+                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-xs">
                   <div className="flex items-center gap-3">
                     <span className="font-mono font-bold text-m3-outline">Round {i + 1}</span>
                     <span className={`font-bold ${r.winningTeam === 'Blue' ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -696,7 +696,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           {activeTab === 'duels' && (
             <div className="flex flex-col gap-2">
               {detail.kills.slice(0, 20).map((k, i) => (
-                <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#16202c] border border-white/10 text-xs">
+                <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-xs">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-m3-outline text-[11px]">R{k.round + 1}</span>
                     <span className={`font-bold ${k.killerTeam === 'Blue' ? 'text-emerald-400' : 'text-red-400'}`}>
