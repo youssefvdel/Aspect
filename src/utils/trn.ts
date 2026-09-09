@@ -258,6 +258,15 @@ export interface TrnAgentStat {
   flawless: number;
   firstBloods: number;
   firstDeaths: number;
+  bestKills: number;
+  defenseRoundsWon: number;
+  defenseRoundsLost: number;
+  defenseKd: number;
+  defusesPerMatch: number;
+  attackRoundsWon: number;
+  attackRoundsLost: number;
+  attackKd: number;
+  plantsPerMatch: number;
   ability1Casts: number;
   ability2Casts: number;
   grenadeCasts: number;
@@ -378,6 +387,15 @@ export async function fetchTrnAgents(name: string, tag: string, seasonId: string
         flawless: num(s?.stats?.flawless?.value),
         firstBloods: num(s?.stats?.firstBloods?.value),
         firstDeaths: num(s?.stats?.firstDeaths?.value),
+        bestKills: num(s?.stats?.mostKillsInMatch?.value),
+        defenseRoundsWon: num(s?.stats?.defenseRoundsWon?.value),
+        defenseRoundsLost: num(s?.stats?.defenseRoundsLost?.value),
+        defenseKd: num(s?.stats?.defenseKDRatio?.value),
+        defusesPerMatch: num(s?.stats?.defusesPerMatch?.value),
+        attackRoundsWon: num(s?.stats?.attackRoundsWon?.value),
+        attackRoundsLost: num(s?.stats?.attackRoundsLost?.value),
+        attackKd: num(s?.stats?.attackKDRatio?.value),
+        plantsPerMatch: num(s?.stats?.plantsPerMatch?.value),
         ability1Casts: num(s?.stats?.ability1Casts?.value),
         ability2Casts: num(s?.stats?.ability2Casts?.value),
         grenadeCasts: num(s?.stats?.grenadeCasts?.value),
