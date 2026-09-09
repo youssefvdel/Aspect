@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lightbulb, Lock } from 'lucide-react';
+import { Check, Lightbulb, TrendingUp } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
-import { matchCard, queueLabel, shortMapName } from '../utils/tracker';
+import { matchCard, queueLabel, shortMapName, tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { buildTips } from '../utils/trackerTips';
 import { TrackerSkeletons } from './TrackerSkeletons';
@@ -14,19 +14,18 @@ const ago = (ms: number): string => {
   if (mins < 60) return `${mins}m ago`;
   const h = Math.round(mins / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
+  return `${Math.round(h / 24)}d ago`;
 };
 
 const dayLabel = (ms: number): string => {
-  if (!ms) return '';
-  const d = new Date(ms);
-  const now = new Date();
-  const yest = new Date(now);
-  yest.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return 'Today';
-  if (d.toDateString() === yest.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (!ms) return 'Older';
+  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const ordinal = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
 interface Row {
@@ -41,7 +40,65 @@ interface Row {
   a: number;
   acs: number;
   dd: number;
+  hsPct: number;
+  place: number;
+  kast: number;
+  cw: number;
+  cl: number;
+  k3: number;
+  k4: number;
+  aces: number;
+  trs: number;
 }
+
+/** Local per-match performance estimate (0-1000 scale, same shape as TRN's TRS). */
+const trsFor = (kd: number, ddPerRound: number, kast: number, k3: number, k4: number, aces: number, cw: number): number => {
+  const v = 320 + (kd - 1) * 220 + ddPerRound * 2.2 + (kast - 70) * 2.5 + k3 * 8 + k4 * 15 + aces * 40 + cw * 25;
+  return Math.max(50, Math.min(999, Math.round(v)));
+};
+
+/** Count clutch rounds fought alone (won vs lost). Mirrors matchCard's clutch rule. */
+const countClutch = (detail: TrackerMatchDetail, puuid: string): { won: number; lost: number } => {
+  const me = detail.players.find((p) => p.puuid === puuid);
+  const myTeam = me?.team ?? '';
+  const byRound = new Map<number, typeof detail.kills>();
+  for (const k of detail.kills) {
+    const l = byRound.get(k.round) ?? [];
+    l.push(k);
+    byRound.set(k.round, l);
+  }
+  let won = 0;
+  let lost = 0;
+  for (const [num, kl] of byRound) {
+    const roundWon = detail.rounds[num]?.winningTeam === myTeam;
+    const myK = kl.filter((k) => k.killerPuuid === puuid);
+    const iDied = kl.some((k) => k.victimPuuid === puuid);
+    const mateDeaths = kl.filter((k) => k.victimTeam === myTeam && k.victimPuuid !== puuid).length;
+    if (myK.length > 0 && mateDeaths >= 3) {
+      if (roundWon && !iDied) won++;
+      else if (!roundWon && mateDeaths >= 4) lost++;
+    }
+  }
+  return { won, lost };
+};
+
+const Pill: React.FC<{ label: string; tone: 'gold' | 'red' }> = ({ label, tone }) => (
+  <span
+    className={`px-1.5 py-px rounded-md text-[10px] font-bold border whitespace-nowrap ${
+      tone === 'gold'
+        ? 'bg-amber-400/10 border-amber-400/40 text-amber-200'
+        : 'bg-red-500/10 border-red-500/40 text-red-300'
+    }`}>
+    {label}
+  </span>
+);
+
+const Stat: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className = '' }) => (
+  <div className={`flex flex-col items-center min-w-0 ${className}`}>
+    <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline whitespace-nowrap">{label}</span>
+    <span className="text-[15px] font-mono font-bold tabular-nums whitespace-nowrap">{children}</span>
+  </div>
+);
 
 const MatchRow: React.FC<{
   r: Row;
@@ -49,9 +106,11 @@ const MatchRow: React.FC<{
   map: string;
   index: number;
   icon: string;
+  rankIcon: string;
   puuid: string;
-}> = ({ r, queue, map, index, icon, puuid }) => {
-  const [open, setOpen] = useState(false);
+  open: boolean;
+  onToggle: () => void;
+}> = ({ r, queue, map, index, icon, rankIcon, puuid, open, onToggle }) => {
   const card = useMemo(() => (r.detail ? matchCard(r.detail, puuid) : null), [r.detail, puuid]);
   const teams = useMemo(() => {
     if (!r.detail) return [];
@@ -61,85 +120,160 @@ const MatchRow: React.FC<{
         score: r.detail!.teamScore[t] ?? 0,
         players: [...r.detail!.players]
           .filter((p) => p.team === t)
-          .sort((a, b) => b.kills - a.kills || a.deaths - b.deaths),
+          .sort((a, b) => b.score - a.score || b.kills - a.kills),
       }))
       .filter((x) => x.players.length > 0);
   }, [r.detail]);
   const tips = useMemo(() => (r.detail && puuid ? buildTips(r.detail, puuid) : []), [r.detail, puuid]);
-
-  const badges: { label: string; good: boolean }[] = [];
-  if (card) {
-    if (card.kills4 > 0) badges.push({ label: '4k', good: true });
-    else if (card.kills3 > 0) badges.push({ label: '3k', good: true });
-    if (card.aces > 0) badges.push({ label: 'Ace', good: true });
-    if (card.clutchWon) badges.push({ label: 'Clutch', good: true });
-    if (card.clutchLost) badges.push({ label: 'Clutch Lost', good: false });
-    if (card.kastPct >= 85) badges.push({ label: 'High KAST', good: true });
-  }
   const kd = r.d > 0 ? r.k / r.d : r.k;
+
+  const pills: { label: string; tone: 'gold' | 'red' }[] = [];
+  if (r.k3 > 0) {
+    pills.push({ label: '3k', tone: 'gold' });
+    if (r.k3 > 1) pills.push({ label: `x${r.k3}`, tone: 'gold' });
+  }
+  if (r.k4 > 0) {
+    pills.push({ label: '4k', tone: 'gold' });
+    if (r.k4 > 1) pills.push({ label: `x${r.k4}`, tone: 'gold' });
+  }
+  if (r.aces > 0) {
+    pills.push({ label: 'Ace', tone: 'gold' });
+    if (r.aces > 1) pills.push({ label: `x${r.aces}`, tone: 'gold' });
+  }
+  if (r.cw > 0) {
+    pills.push({ label: '1v1 Clutch', tone: 'gold' });
+    if (r.cw > 1) pills.push({ label: `x${r.cw}`, tone: 'gold' });
+  }
+  if (r.cl > 0) {
+    pills.push({ label: '1v1 Lost', tone: 'red' });
+    if (r.cl > 1) pills.push({ label: `x${r.cl}`, tone: 'red' });
+  }
+  if (r.kast >= 85) pills.push({ label: 'High KAST', tone: 'gold' });
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index * 0.03, 0.4), duration: 0.3, ease: 'easeOut' }}
-      className={`rounded-xl border overflow-hidden ${r.won ? 'bg-emerald-400/[0.07] border-emerald-400/25' : 'bg-m3-surface-container-low/60 border-m3-outline-subtle/60'}`}>
-      <button onClick={() => r.detail && setOpen((o) => !o)}
-        className={`w-full px-2.5 py-2 flex items-center gap-2.5 text-left ${r.detail ? 'cursor-pointer hover:bg-m3-surface-container-high/30' : ''}`}>
-        <span className={`w-1 self-stretch rounded-full shrink-0 ${r.won ? 'bg-m3-tertiary' : 'bg-red-500/70'}`} />
+      className={`rounded-xl border overflow-hidden ${
+        r.won ? 'bg-emerald-400/[0.07] border-emerald-400/25' : 'bg-m3-surface-container border-m3-outline-subtle'
+      }`}>
+      <button
+        onClick={() => r.detail && onToggle()}
+        className={`w-full px-2.5 py-2 flex items-center gap-2.5 text-left ${
+          r.detail ? 'cursor-pointer hover:bg-m3-surface-container-high/30' : ''
+        }`}>
+        <span className={`w-1 self-stretch rounded-full shrink-0 ${r.won ? 'bg-emerald-400' : 'bg-red-500/70'}`} />
         {icon ? (
           <img src={icon} alt={r.agent} className="w-9 h-9 rounded-lg object-cover bg-m3-surface-container-high shrink-0" />
         ) : (
           <span className="w-9 h-9 rounded-lg bg-m3-surface-container-high shrink-0" />
         )}
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] text-m3-outline">{ago(r.g.when)} // {queue}</div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12px] font-bold text-m3-on-surface">{map}</span>
-            <span className={`text-[12px] font-mono font-bold ${r.won ? 'text-emerald-400' : 'text-red-400'}`}>
-              {r.detail ? `${r.us} : ${r.them}` : ''}
-            </span>
-            <span className={`text-[11px] font-mono font-bold ${r.g.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {r.g.change > 0 ? `+${r.g.change}` : r.g.change} RR
-            </span>
+
+        {/* Map + mode + placement */}
+        <div className="w-32 sm:w-40 shrink-0 min-w-0">
+          <div className="text-[10px] text-m3-outline truncate">
+            {ago(r.g.when)} // {queue}
           </div>
-          {badges.length > 0 && (
-            <div className="flex items-center gap-1 mt-1 flex-wrap">
-              {badges.map((b) => (
-                <span key={b.label}
-                  className={`px-1.5 py-px rounded-md text-[9px] font-bold border ${b.good ? 'bg-amber-400/10 border-amber-400/40 text-amber-200' : 'bg-red-500/10 border-red-500/40 text-red-300'}`}>
-                  {b.label}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="hidden sm:flex items-center gap-3 shrink-0 text-right">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">K/D</div>
-            <div className={`text-[13px] font-mono font-bold ${kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>{kd.toFixed(1)}</div>
-          </div>
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">K/D/A</div>
-            <div className="text-[13px] font-mono font-bold text-m3-on-surface tabular-nums">{r.k} / {r.d} / {r.a}</div>
-          </div>
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">DDΔ</div>
-            <div className={`text-[13px] font-mono font-bold ${r.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{r.dd > 0 ? `+${r.dd}` : r.dd}</div>
-          </div>
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">ACS</div>
-            <div className="text-[13px] font-mono font-bold text-m3-on-surface">{r.acs}</div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[15px] font-display font-extrabold text-m3-on-surface truncate">{map}</span>
+            {r.place > 0 && (
+              <span className="text-[9px] font-mono font-bold text-m3-outline border border-m3-outline-subtle rounded px-1 py-px shrink-0">
+                {ordinal(r.place)}
+              </span>
+            )}
           </div>
         </div>
-        <div className="sm:hidden shrink-0 text-right">
-          <div className="text-[12px] font-mono font-bold text-m3-on-surface tabular-nums">{r.k}/{r.d}/{r.a}</div>
+
+        {/* Rank */}
+        {rankIcon ? (
+          <img src={rankIcon} alt={r.g.tier} title={r.g.tier} className="w-7 h-7 object-contain shrink-0 hidden sm:block" />
+        ) : (
+          <span className="w-7 shrink-0 hidden sm:block" />
+        )}
+
+        {/* Score */}
+        <div className="flex flex-col items-center shrink-0 w-16">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">Score</span>
+          <span className="text-[15px] font-mono font-extrabold tabular-nums whitespace-nowrap">
+            <span className="text-emerald-400">{r.us}</span>
+            <span className="text-m3-outline"> : </span>
+            <span className="text-red-400">{r.them}</span>
+          </span>
+        </div>
+
+        {/* TRS */}
+        <div className="flex-col items-center shrink-0 w-12 hidden md:flex">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">TRS</span>
+          <span className="text-[15px] font-mono font-extrabold text-m3-on-surface tabular-nums" title="Local performance estimate">
+            {r.trs}
+          </span>
+        </div>
+
+        {/* Heroic pills */}
+        {pills.length > 0 && (
+          <div className="hidden xl:flex items-center gap-1 flex-wrap flex-1 min-w-0 max-w-56">
+            {pills.map((b, i) => (
+              <Pill key={`${b.label}-${i}`} label={b.label} tone={b.tone} />
+            ))}
+          </div>
+        )}
+
+        {/* Stat columns */}
+        <div className="hidden sm:flex items-center gap-3 sm:gap-4 ml-auto shrink-0">
+          <Stat label="K/D">
+            <span className={kd >= 1 ? 'text-emerald-400' : 'text-red-400'}>{kd.toFixed(1)}</span>
+          </Stat>
+          <Stat label="K/D/A">
+            <span className="text-m3-on-surface">
+              {r.k} <span className="text-m3-outline">/</span> {r.d} <span className="text-m3-outline">/</span> {r.a}
+            </span>
+          </Stat>
+          <Stat label="DDΔ">
+            <span className={r.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+              {r.dd > 0 ? `+${r.dd}` : r.dd}
+            </span>
+          </Stat>
+          <Stat label="HS%" className="hidden lg:flex">
+            <span className="text-m3-on-surface">{r.hsPct > 0 ? Math.round(r.hsPct) : '—'}</span>
+          </Stat>
+          <Stat label="ACS">
+            <span className="text-m3-on-surface">{r.acs}</span>
+          </Stat>
+        </div>
+
+        {/* Mobile compact */}
+        <div className="sm:hidden ml-auto shrink-0 text-right">
+          <div className="text-[13px] font-mono font-bold text-m3-on-surface tabular-nums">
+            {r.k}/{r.d}/{r.a}
+          </div>
           <div className="text-[10px] font-mono text-m3-outline">ACS {r.acs}</div>
         </div>
-        {r.detail && <span className="text-[10px] text-m3-outline shrink-0">{open ? '▾' : '▸'}</span>}
+
+        <span className="text-m3-outline text-sm leading-none shrink-0 select-none">⋮</span>
       </button>
+
       {open && r.detail && (
         <div className="px-2.5 pb-2.5 pt-1 border-t border-m3-outline-subtle/50">
+          <div className="flex items-center gap-2 px-1 py-1.5 text-[10px] font-mono text-m3-outline">
+            <span>
+              {r.g.change > 0 ? `+${r.g.change}` : r.g.change} RR
+            </span>
+            <span>•</span>
+            <span>
+              HS {r.hsPct > 0 ? `${r.hsPct.toFixed(1)}%` : '—'}
+            </span>
+            <span>•</span>
+            <span>KAST {r.kast}%</span>
+            {card && card.kills3 + card.kills4 + card.aces > 0 && (
+              <>
+                <span>•</span>
+                <span>
+                  {card.kills3}×3k {card.kills4}×4k {card.aces}×Ace
+                </span>
+              </>
+            )}
+          </div>
           {teams.map((t) => (
             <div key={t.team} className="mt-1.5">
               <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-m3-outline mb-1">
@@ -148,15 +282,20 @@ const MatchRow: React.FC<{
               {t.players.map((p) => {
                 const isMe = p.puuid === puuid;
                 const pacs = p.rounds > 0 ? Math.round(p.score / p.rounds) : 0;
+                const hits = p.headshots + p.bodyshots + p.legshots;
+                const phs = hits > 0 ? (p.headshots / hits) * 100 : 0;
                 return (
-                  <div key={p.puuid || `${p.agent}-${p.kills}`}
-                    className={`flex items-center justify-between gap-2 py-1 px-1.5 rounded-lg text-[11px] ${isMe ? 'bg-m3-primary/10 border border-m3-primary/30' : ''}`}>
+                  <div
+                    key={p.puuid || `${p.agent}-${p.kills}`}
+                    className={`flex items-center justify-between gap-2 py-1 px-1.5 rounded-lg text-[11px] ${
+                      isMe ? 'bg-m3-primary/10 border border-m3-primary/30' : ''
+                    }`}>
                     <span className="truncate text-m3-on-surface">
                       <span className="font-semibold">{isMe ? 'You' : p.agent}</span>
                       <span className="text-m3-outline"> • {p.agent}</span>
                     </span>
                     <span className="font-mono text-m3-on-surface-variant shrink-0 tabular-nums">
-                      {p.kills}/{p.deaths}/{p.assists} • {pacs}
+                      {p.kills}/{p.deaths}/{p.assists} • {pacs} • {Math.round(phs)}%
                     </span>
                   </div>
                 );
@@ -180,9 +319,11 @@ const MatchRow: React.FC<{
 };
 
 export const MatchHistory: React.FC = () => {
-  const { profile, games, queueById, mapById, detailsById, agentInfo, weapons, agg, isLoading, ready, banner, setBanner } = useTrackerData();
+  const { profile, games, queueById, mapById, detailsById, agentInfo, tierIcons, isLoading, ready, banner, setBanner } =
+    useTrackerData();
   const [agentFilter, setAgentFilter] = useState('All');
   const [mapFilter, setMapFilter] = useState('All');
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const puuid = profile?.puuid ?? '';
 
   const infoByName = useMemo(() => {
@@ -190,6 +331,17 @@ export const MatchHistory: React.FC = () => {
     for (const v of Object.values(agentInfo)) m[v.name.toLowerCase()] = v;
     return m;
   }, [agentInfo]);
+
+  const tierIconByName = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (let t = 0; t <= 30; t++) {
+      try {
+        const n = tierName(t);
+        if (n && tierIcons[t]) m[n.toLowerCase()] = tierIcons[t];
+      } catch {}
+    }
+    return m;
+  }, [tierIcons]);
 
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
@@ -202,28 +354,56 @@ export const MatchHistory: React.FC = () => {
       if (mapFilter !== 'All' && map !== mapFilter) continue;
       const myTeam = me?.team ?? '';
       const us = myTeam && detail ? (detail.teamScore[myTeam] ?? 0) : 0;
-      const them = myTeam && detail
-        ? Math.max(0, ...Object.entries(detail.teamScore).filter(([t]) => t !== myTeam).map(([, n]) => n), 0)
-        : 0;
+      const them =
+        myTeam && detail
+          ? Math.max(0, ...Object.entries(detail.teamScore).filter(([t]) => t !== myTeam).map(([, n]) => n), 0)
+          : 0;
       const won = detail && us !== them ? us > them : g.change > 0;
+      const k = me?.kills ?? 0;
+      const d = me?.deaths ?? 0;
+      const a = me?.assists ?? 0;
+      const acs = me && me.rounds > 0 ? Math.round(me.score / me.rounds) : 0;
+      const dd = me ? me.damage - me.damageTaken : 0;
+      const hits = (me?.headshots ?? 0) + (me?.bodyshots ?? 0) + (me?.legshots ?? 0);
+      const hsPct = hits > 0 ? ((me?.headshots ?? 0) / hits) * 100 : 0;
+      const place = detail
+        ? [...detail.players].sort((x, y) => y.score - x.score).findIndex((p) => p.puuid === puuid) + 1
+        : 0;
+      let kast = 0;
+      let k3 = 0;
+      let k4 = 0;
+      let aces = 0;
+      let cw = 0;
+      let cl = 0;
+      if (detail) {
+        try {
+          const c = matchCard(detail, puuid);
+          kast = c.kastPct;
+          k3 = c.kills3;
+          k4 = c.kills4;
+          aces = c.aces;
+        } catch {}
+        try {
+          const cc = countClutch(detail, puuid);
+          cw = cc.won;
+          cl = cc.lost;
+        } catch {}
+      }
+      const kd = d > 0 ? k / d : k;
+      const ddPr = me && me.rounds > 0 ? (me.damage - me.damageTaken) / me.rounds : 0;
       out.push({
-        g,
-        detail,
-        agent,
-        won,
-        us,
-        them,
-        k: me?.kills ?? 0,
-        d: me?.deaths ?? 0,
-        a: me?.assists ?? 0,
-        acs: me && me.rounds > 0 ? Math.round(me.score / me.rounds) : 0,
-        dd: me ? me.damage - me.damageTaken : 0,
+        g, detail, agent, won, us, them, k, d, a, acs, dd, hsPct, place,
+        kast, cw, cl, k3, k4, aces,
+        trs: detail ? trsFor(kd, ddPr, kast, k3, k4, aces, cw) : 0,
       });
     }
     return out;
   }, [games, detailsById, puuid, mapById, agentFilter, mapFilter]);
 
-  const agentsPlayed = useMemo(() => [...new Set(rows.map((r) => r.agent).filter((a) => a && a !== '?'))].sort(), [rows]);
+  const agentsPlayed = useMemo(
+    () => [...new Set(rows.map((r) => r.agent).filter((a) => a && a !== '?'))].sort(),
+    [rows]
+  );
   const mapsPlayed = useMemo(
     () => [...new Set(games.map((g) => mapById[g.matchId] ?? shortMapName(g.mapId, {})).filter((m) => m && m !== '?'))].sort(),
     [games, mapById]
@@ -273,7 +453,7 @@ export const MatchHistory: React.FC = () => {
   const days = useMemo(() => {
     const groups = new Map<string, Row[]>();
     for (const r of rows) {
-      const key = dayLabel(r.g.when) || 'Older';
+      const key = dayLabel(r.g.when);
       const l = groups.get(key) ?? [];
       l.push(r);
       groups.set(key, l);
@@ -283,6 +463,8 @@ export const MatchHistory: React.FC = () => {
       let k = 0;
       let d = 0;
       let a = 0;
+      let hs = 0;
+      let hits = 0;
       let dmg = 0;
       let rds = 0;
       for (const r of rs) {
@@ -292,6 +474,8 @@ export const MatchHistory: React.FC = () => {
         a += r.a;
         const me = r.detail?.players.find((p) => p.puuid === puuid);
         if (me) {
+          hs += me.headshots;
+          hits += me.headshots + me.bodyshots + me.legshots;
           dmg += me.damage;
           rds += me.rounds;
         }
@@ -303,63 +487,32 @@ export const MatchHistory: React.FC = () => {
         l: rs.length - w,
         kd: d > 0 ? k / d : k,
         kda: `${k}K // ${d}D // ${a}A`,
+        kdaNum: d + a > 0 ? (k + a) / Math.max(1, d) : k + a,
+        dd: dmg - rs.reduce((s, r) => s + (r.detail?.players.find((p) => p.puuid === puuid)?.damageTaken ?? 0), 0),
+        hsPct: hits > 0 ? (hs / hits) * 100 : 0,
         acs: rds > 0 ? Math.round(dmg / rds) : 0,
       };
     });
   }, [rows, puuid]);
 
-  const roles = useMemo(() => {
-    const m = new Map<string, { w: number; n: number; k: number; d: number; a: number; icon: string }>();
-    for (const r of rows) {
-      const info = infoByName[r.agent.toLowerCase()];
-      const role = info?.role || 'Unknown';
-      if (role === 'Unknown') continue;
-      const e = m.get(role) ?? { w: 0, n: 0, k: 0, d: 0, a: 0, icon: info.roleIcon };
-      e.n++;
-      if (r.won) e.w++;
-      e.k += r.k;
-      e.d += r.d;
-      e.a += r.a;
-      m.set(role, e);
-    }
-    return [...m.entries()].map(([role, e]) => ({
-      role,
-      icon: e.icon,
-      wr: e.n > 0 ? (e.w / e.n) * 100 : 0,
-      rec: `${e.w}W - ${e.n - e.w}L`,
-      kda: `${(e.d > 0 ? (e.k + e.a) / e.d : e.k + e.a).toFixed(2)}`,
-      kdaLine: `${e.k} // ${e.d} // ${e.a}`,
-    }));
-  }, [rows, infoByName]);
+  const toggle = (id: string) => {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
-  const topWeapons = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows) {
-      if (!r.detail) continue;
-      const c = matchCard(r.detail, puuid);
-      for (const [w, n] of Object.entries(c.weaponKills)) m.set(w, (m.get(w) ?? 0) + n);
-    }
-    return [...m.entries()]
-      .map(([id, kills]) => ({ name: weapons[id.toLowerCase()] ?? 'Ability', kills }))
-      .sort((a, b) => b.kills - a.kills)
-      .slice(0, 4);
-  }, [rows, puuid, weapons]);
-
-  const topMaps = useMemo(() => {
-    const m = new Map<string, { n: number; w: number }>();
-    for (const r of rows) {
-      const map = mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {});
-      if (!map || map === '?') continue;
-      const e = m.get(map) ?? { n: 0, w: 0 };
-      e.n++;
-      if (r.won) e.w++;
-      m.set(map, e);
-    }
-    return [...m.entries()]
-      .map(([map, e]) => ({ map, ...e, wr: e.n > 0 ? Math.round((e.w / e.n) * 100) : 0 }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 4);
-  }, [rows, games, mapById]);
+  const toggleDay = (ids: string[]) => {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      const allOpen = ids.every((id) => next.has(id));
+      if (allOpen) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
 
   if (!ready) {
     return (
@@ -369,80 +522,20 @@ export const MatchHistory: React.FC = () => {
     );
   }
 
-  return (
-    <div className="h-full min-h-0 flex gap-4 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
-      {/* Left rail */}
-      <aside className="hidden lg:flex flex-col gap-2.5 w-56 shrink-0">
-        <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
-          <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-1">Accuracy</h4>
-          <div className="text-[10px] text-m3-outline mb-2">Last {rows.length} matches</div>
-          <div className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2.5 text-[10px] text-m3-outline flex items-start gap-1.5">
-            <Lock className="w-3 h-3 shrink-0 mt-px" />
-            <span>Riot hides hit data from past matches — unlocks with live tracking.</span>
-          </div>
-        </section>
-        {roles.length > 0 && (
-          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2">Roles</h4>
-            <div className="flex flex-col gap-2.5">
-              {roles.map((r) => (
-                <div key={r.role} className="flex items-center gap-2">
-                  {r.icon ? <img src={r.icon} alt={r.role} className="w-7 h-7 object-contain shrink-0" /> : null}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-m3-on-surface-variant">{r.role}</div>
-                    <div className={`text-[12px] font-bold ${r.wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      WR {r.wr.toFixed(1)}%
-                    </div>
-                    <div className="text-[10px] font-mono text-m3-outline">{r.rec}</div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[12px] font-mono font-bold text-m3-on-surface">KDA {r.kda}</div>
-                    <div className="text-[10px] font-mono text-m3-outline">{r.kdaLine}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-        {topWeapons.length > 0 && (
-          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2">Top weapons</h4>
-            <div className="flex flex-col gap-2">
-              {topWeapons.map((w) => (
-                <div key={w.name} className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-m3-on-surface truncate">{w.name}</span>
-                  <span className="text-[11px] font-mono text-m3-outline shrink-0">{w.kills} kills</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-        {topMaps.length > 0 && (
-          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2">Top maps</h4>
-            <div className="flex flex-col gap-2">
-              {topMaps.map((m) => (
-                <div key={m.map} className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-m3-on-surface truncate">{m.map}</span>
-                  <span className={`text-[11px] font-mono font-bold shrink-0 ${m.wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {m.wr}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </aside>
+  const sumWr = rows.length > 0 ? (sum.w / rows.length) * 100 : 0;
 
-      {/* Main column */}
-      <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+  return (
+    <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+      <div className="flex flex-col gap-3">
         {banner && (
           <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-2">
               <Check className="w-3.5 h-3.5 text-m3-primary shrink-0" />
               <span>{banner}</span>
             </div>
-            <button onClick={() => setBanner(null)} className="text-m3-primary hover:underline text-xs ml-3 cursor-pointer font-bold shrink-0">
+            <button
+              onClick={() => setBanner(null)}
+              className="text-m3-primary hover:underline text-xs ml-3 cursor-pointer font-bold shrink-0">
               Dismiss
             </button>
           </div>
@@ -451,45 +544,55 @@ export const MatchHistory: React.FC = () => {
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           <div className="w-36">
-            <CustomDropdown value={agentFilter} options={[{ value: 'All', label: 'All Agents' }, ...agentsPlayed.map((a) => ({ value: a, label: a }))]} onChange={setAgentFilter} />
+            <CustomDropdown
+              value={agentFilter}
+              options={[{ value: 'All', label: 'All Agents' }, ...agentsPlayed.map((a) => ({ value: a, label: a }))]}
+              onChange={setAgentFilter}
+            />
           </div>
           <div className="w-36">
-            <CustomDropdown value={mapFilter} options={[{ value: 'All', label: 'All Maps' }, ...mapsPlayed.map((m) => ({ value: m, label: m }))]} onChange={setMapFilter} />
+            <CustomDropdown
+              value={mapFilter}
+              options={[{ value: 'All', label: 'All Maps' }, ...mapsPlayed.map((m) => ({ value: m, label: m }))]}
+              onChange={setMapFilter}
+            />
           </div>
-          {agg && (
-            <span className="ml-auto text-[10px] font-mono text-m3-outline">
-              {agg.matches} scoreboards • {agg.kills}K // {agg.deaths}D
-            </span>
-          )}
         </div>
 
-        {/* Summary */}
+        {/* Summary bar */}
         {rows.length > 0 && (
-          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shrink-0">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div>
-                <span className="font-display font-extrabold text-lg text-emerald-400">{sum.w}W</span>
-                <span className="text-m3-outline font-bold"> - </span>
-                <span className="font-display font-extrabold text-lg text-red-400">{sum.l}L</span>
-                <span className="text-[11px] text-m3-outline ml-1.5">
-                  ({rows.length > 0 ? Math.round((sum.w / rows.length) * 100) : 0}%)
-                </span>
-                <div className="text-[10px] font-mono text-m3-outline mt-0.5">
+          <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shadow-m3-1 shrink-0">
+            <div className="flex items-stretch gap-3 flex-wrap">
+              <div className="flex flex-col justify-center px-1 min-w-32">
+                <div className="font-display font-extrabold text-base tabular-nums whitespace-nowrap">
+                  <span className="text-emerald-400">{sum.w}W</span>
+                  <span className="text-m3-outline"> - </span>
+                  <span className="text-red-400">{sum.l}L</span>
+                  <span className="text-m3-outline text-sm"> ({Math.round(sumWr)}%)</span>
+                </div>
+                <div className="text-[11px] font-mono font-bold text-emerald-400 mt-0.5 whitespace-nowrap">
                   {sum.kd.toFixed(2)} K/D | {Math.round(sum.adr)} ADR
                 </div>
               </div>
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-stretch gap-2 ml-auto flex-wrap">
                 {topAgents.map((a) => {
                   const info = infoByName[a.name.toLowerCase()];
                   return (
-                    <div key={a.name} className="flex items-center gap-1.5 rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2 py-1.5">
-                      {info?.icon ? <img src={info.icon} alt={a.name} className="w-8 h-8 rounded-lg object-cover" /> : null}
-                      <div>
-                        <div className="text-[10px] font-bold text-m3-on-surface whitespace-nowrap">
+                    <div
+                      key={a.name}
+                      className="relative flex items-center gap-2 rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 px-2.5 pt-2 pb-3 overflow-hidden min-w-36">
+                      {info?.icon ? (
+                        <img src={info.icon} alt={a.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      ) : null}
+                      <div className="min-w-0">
+                        <div className="text-[12px] font-bold text-m3-on-surface whitespace-nowrap tabular-nums">
                           {a.w}W - {a.n - a.w}L ({Math.round(a.wr)}%)
                         </div>
                         <div className="text-[10px] font-mono text-m3-outline">K/D {a.kd.toFixed(2)}</div>
                       </div>
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-m3-outline-subtle/50">
+                        <span className="block h-full bg-emerald-400" style={{ width: `${Math.round(a.wr)}%` }} />
+                      </span>
                     </div>
                   );
                 })}
@@ -499,31 +602,66 @@ export const MatchHistory: React.FC = () => {
         )}
 
         {/* Day groups */}
-        {days.map((day) => (
-          <div key={day.label} className="flex flex-col gap-1.5 shrink-0">
-            <div className="flex items-center gap-2 px-1 flex-wrap">
-              <span className="text-[12px] font-bold text-m3-on-surface">{day.label}</span>
-              <span className="text-[10px] font-mono text-m3-outline border border-m3-outline-subtle rounded-md px-1.5 py-px">
-                {day.rs.length}
-              </span>
-              <span className="text-[11px] font-bold ml-2">
-                <span className="text-emerald-400">{day.w} W</span>
-                <span className="text-m3-outline"> // </span>
-                <span className="text-red-400">{day.l} L</span>
-              </span>
-              <span className="ml-auto text-[10px] font-mono text-m3-outline hidden sm:block">
-                K/D {day.kd.toFixed(1)} • {day.kda} • ACS {day.acs}
-              </span>
+        {days.map((day) => {
+          const dayIds = day.rs.map((r) => r.g.matchId || String(r.g.when));
+          return (
+            <div key={day.label} className="flex flex-col gap-2 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 px-1 flex-wrap">
+                <span className="text-[13px] font-display font-bold text-m3-on-surface">{day.label}</span>
+                <span className="text-[10px] font-mono font-bold text-m3-outline bg-m3-surface-container-high border border-m3-outline-subtle rounded-md px-1.5 py-px">
+                  {day.rs.length}
+                </span>
+                <button
+                  onClick={() => toggleDay(dayIds)}
+                  className="flex items-center gap-1 text-[12px] font-bold text-red-400 hover:text-red-300 cursor-pointer">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>View Report</span>
+                </button>
+                <span className="text-[13px] font-display font-extrabold mx-auto">
+                  <span className="text-emerald-400">{day.w} W</span>
+                  <span className="text-m3-outline"> // </span>
+                  <span className="text-red-400">{day.l} L</span>
+                </span>
+                <span className="ml-auto hidden xl:flex items-center gap-4">
+                  <Stat label="K/D">
+                    <span className={day.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}>{day.kd.toFixed(1)}</span>
+                  </Stat>
+                  <span className="flex flex-col items-center">
+                    <span className="text-[10px] font-mono text-m3-outline whitespace-nowrap">{day.kda}</span>
+                    <span className="text-[13px] font-mono font-bold text-m3-on-surface tabular-nums">
+                      {day.kdaNum.toFixed(2)} K/D/A
+                    </span>
+                  </span>
+                  <Stat label="DDΔ">
+                    <span className={day.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {day.dd > 0 ? `+${day.dd}` : day.dd}
+                    </span>
+                  </Stat>
+                  <Stat label="HS%">
+                    <span className="text-m3-on-surface">{Math.round(day.hsPct)}</span>
+                  </Stat>
+                  <Stat label="ACS">
+                    <span className="text-m3-on-surface">{day.acs}</span>
+                  </Stat>
+                </span>
+              </div>
+              {day.rs.map((r, i) => (
+                <MatchRow
+                  key={r.g.matchId || r.g.when}
+                  r={r}
+                  index={i}
+                  queue={queueLabel(detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || '')}
+                  map={mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {})}
+                  icon={infoByName[r.agent.toLowerCase()]?.icon ?? ''}
+                  rankIcon={tierIconByName[r.g.tier.toLowerCase()] ?? ''}
+                  puuid={puuid}
+                  open={openIds.has(r.g.matchId || String(r.g.when))}
+                  onToggle={() => toggle(r.g.matchId || String(r.g.when))}
+                />
+              ))}
             </div>
-            {day.rs.map((r, i) => (
-              <MatchRow key={r.g.matchId || r.g.when} r={r} index={i}
-                queue={queueLabel(detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || '')}
-                map={mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {})}
-                icon={infoByName[r.agent.toLowerCase()]?.icon ?? ''}
-                puuid={puuid} />
-            ))}
-          </div>
-        ))}
+          );
+        })}
 
         {!profile && !isLoading && (
           <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant shrink-0">

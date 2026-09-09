@@ -451,13 +451,7 @@ export const Overview: React.FC = () => {
                   background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}15 0%, transparent 60%)`,
                 }}>
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h4 className="font-display font-bold text-sm text-m3-on-surface">Tracker Score</h4>
-                    <div className="text-[10px] text-m3-outline leading-tight text-right flex items-center gap-1">
-                      <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 text-red-400 font-bold flex items-center justify-center text-[9px] shrink-0">!</span>
-                      <span>Personal performance rating relative to others players in your skill range.</span>
-                    </div>
-                  </div>
+                  <h4 className="font-display font-bold text-sm text-m3-on-surface mb-2">Tracker Score</h4>
 
                   <div className="flex items-center gap-2.5 my-1">
                     <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={44} />

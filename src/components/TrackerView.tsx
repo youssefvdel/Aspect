@@ -51,7 +51,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
       </nav>
 
       {/* Tab Content Body */}
-      <div className="flex-1 min-h-0 pt-2.5 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <AnimatePresence mode="wait">
           {subTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
@@ -66,7 +66,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'performance' && (
-            <motion.div key="perf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
+            <motion.div key="perf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 pt-3.5 pb-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3 flex items-center gap-2">
@@ -132,7 +132,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'agents' && (
-            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
+            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 pt-3.5 pb-8">
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Agent Performance (Act-Wide)</h4>
                 {trnAgents.length > 0 ? (
@@ -184,7 +184,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'maps' && (
-            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
+            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 sm:px-6 pt-3.5 pb-8">
               <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Map Records (Recent Games)</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
