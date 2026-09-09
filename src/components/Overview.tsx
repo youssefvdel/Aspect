@@ -42,12 +42,21 @@ const BodyFigure: React.FC<{ head: number; body: number; legs: number }> = ({ he
   );
 };
 
-const shortAct = (label: string): string =>
-  label
+const shortAct = (label: string): string => {
+  const m = label.match(/(?:V|Season\s*)(\d+)[\s:·]*ACT\s*([IVXLCDM]+|\d+)/i);
+  if (m) {
+    const ep = m[1];
+    const act = m[2];
+    const romans: Record<string, string> = { I: '1', II: '2', III: '3', IV: '4', V: '5', VI: '6' };
+    const num = romans[act.toUpperCase()] ?? act;
+    return `V${ep}:A${num}`;
+  }
+  return label
     .replace('Episode', 'E')
     .replace(/V(\d+)/, 'V$1')
     .replace('ACT', 'A')
     .replace(/\s*·\s*/g, ':');
+};
 
 const pctLabel = (p: number): string => (p >= 50 ? `Top ${Math.round(100 - p)}%` : `Bottom ${Math.round(p)}%`);
 
@@ -150,10 +159,13 @@ export const Overview: React.FC = () => {
     const i = seasonOrder.indexOf(id.toLowerCase());
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
-  const prevActs = (profile?.seasons ?? [])
-    .filter((s) => s.id.toLowerCase() !== (profile?.currentSeasonId ?? '').toLowerCase())
-    .sort((a, b) => orderIdx(a.id) - orderIdx(b.id))
-    .slice(0, 3);
+  const recentActs = useMemo(() => {
+    if (!profile) return [];
+    return (profile.seasons ?? [])
+      .filter((s) => s.games > 0)
+      .sort((a, b) => orderIdx(a.id) - orderIdx(b.id))
+      .slice(0, 3);
+  }, [profile, seasonOrder]);
 
   const topAgent = agents[0] ?? null;
   const topAgentMeta = topAgent
@@ -390,37 +402,46 @@ export const Overview: React.FC = () => {
 
           {/* Lower Row: Previous Acts & Tracker Score sharing 50/50 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
-            {/* Previous Acts */}
-            {prevActs.length > 0 && (
+            {/* Previous Acts (3 compact columns) */}
+            {recentActs.length > 0 && (
               <motion.section variants={rise} custom={10}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between shadow-m3-1">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface">Previous Acts</h4>
                   <span className="text-[10px] text-m3-outline uppercase tracking-wider font-semibold">Competitive History</span>
                 </div>
-                <div className="flex flex-col gap-2.5 flex-1 justify-around">
-                  {prevActs.map((s) => {
+                <div className="grid grid-cols-3 gap-2 flex-1 items-center text-center py-1">
+                  {recentActs.map((s) => {
+                    const isCurrent = s.id.toLowerCase() === profile?.currentSeasonId.toLowerCase();
                     const prev = trnPrev[s.id.toLowerCase()];
+                    const rankTier = isCurrent ? profile.tier : s.tier;
+                    const rName = isCurrent ? profile.rank : tierName(s.tier);
+                    const kdVal = isCurrent ? (S?.kd ?? agg?.kd ?? 0) : (prev?.kd ?? 0);
+                    const matchesCount = isCurrent
+                      ? (S ? S.wins + S.losses + S.ties : profile.games)
+                      : (prev?.matches ?? s.games);
+                    const icon = tierIcons[rankTier];
+
                     return (
-                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/70 border border-m3-outline-subtle/60 p-2.5 flex items-center gap-3">
-                        {tierIcons[s.tier] ? (
-                          <img src={tierIcons[s.tier]} alt={tierName(s.tier)} className="w-10 h-10 object-contain shrink-0" />
-                        ) : null}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-m3-outline truncate">
-                              {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
-                            </span>
-                            {prev ? (
-                              <span className="font-mono text-[11px] font-bold text-m3-primary tabular-nums">
-                                K/D {prev.kd.toFixed(2)}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="font-display font-extrabold text-sm text-m3-on-surface">{tierName(s.tier)}</div>
-                          <div className="font-mono text-[11px] text-m3-outline tabular-nums">
-                            {prev ? `${prev.matches} matches played` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
-                          </div>
+                      <div key={s.id} className="flex flex-col items-center justify-between h-full py-1">
+                        <span className="text-[11px] font-bold text-m3-outline uppercase tracking-wider">
+                          {shortAct(seasonNames[s.id.toLowerCase()] ?? s.id)}
+                        </span>
+                        <div className="my-1.5 flex items-center justify-center">
+                          {icon ? (
+                            <img src={icon} alt={rName} className="w-11 h-11 object-contain drop-shadow-sm" />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-m3-surface-container-high" />
+                          )}
+                        </div>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline/70">
+                          Peak Rating
+                        </span>
+                        <div className="font-display font-bold text-xs sm:text-sm text-m3-on-surface leading-tight mt-0.5 truncate max-w-full">
+                          {rName}
+                        </div>
+                        <div className="text-[10px] text-m3-outline mt-1 font-medium truncate max-w-full">
+                          K/D <strong className="text-m3-on-surface font-mono font-bold">{kdVal.toFixed(2)}</strong> Matches <strong className="text-m3-on-surface font-mono font-bold">{matchesCount}</strong>
                         </div>
                       </div>
                     );
@@ -432,41 +453,57 @@ export const Overview: React.FC = () => {
             {/* Tracker Score */}
             {trn && (
               <motion.section variants={rise} custom={11}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 overflow-hidden relative flex flex-col justify-between"
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between shadow-m3-1"
                 style={{
-                  borderColor: `${scoreTier(trn.trnScore).color}55`,
-                  background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}26 0%, transparent 55%)`,
+                  borderColor: `${scoreTier(trn.trnScore).color}44`,
+                  background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}15 0%, transparent 60%)`,
                 }}>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-display font-bold text-sm text-m3-on-surface">Tracker Score</h4>
-                  <div className="text-[10px] text-m3-outline leading-tight text-right max-w-[200px]">
-                    Personal performance rating relative to your skill range.
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="font-display font-bold text-sm text-m3-on-surface">Tracker Score</h4>
+                    <div className="text-[10px] text-m3-outline leading-tight text-right flex items-center gap-1">
+                      <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 text-red-400 font-bold flex items-center justify-center text-[9px] shrink-0">!</span>
+                      <span>Personal performance rating relative to others players in your skill range.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 my-1">
+                    <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={44} />
+                    <div className="font-display font-black text-3xl text-m3-on-surface tabular-nums leading-none">
+                      {trn.trnScore}
+                    </div>
+                    <div className="text-[10px] font-bold text-m3-outline px-2 py-0.5 rounded-md bg-m3-surface-container-high border border-m3-outline-subtle ml-1">
+                      Tracker Score - Tier {scoreTier(trn.trnScore).tier}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 my-2">
-                  <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={58} />
-                  <div className="font-display font-black text-3xl text-m3-on-surface tabular-nums leading-none">{trn.trnScore}</div>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5 mt-2 pt-2.5 border-t border-m3-outline-subtle/60">
+
+                <div className="flex items-center justify-between gap-1 mt-3 pt-2">
                   {[
-                    { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
-                    { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
-                    { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
-                    { label: 'DDΔ/Round', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.ddPctile },
+                    { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile, color: '#2cd5f6' },
+                    { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile, color: '#3ae374' },
+                    { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile, color: '#ff7675' },
+                    { label: 'DDΔ/Round', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.ddPctile, color: '#f5b041' },
                   ].map((s, i) => {
                     const g = gradeFor(s.p);
-                    const gc = (
-                      { S: '#40c4ff', A: '#3ddc84', B: '#e8b73a', C: '#9fb2c8', D: '#c98a94' } as Record<string, string>
-                    )[g];
                     return (
-                      <div key={s.label} className={`text-center px-1 py-2 rounded-xl ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}
-                        style={{ background: `linear-gradient(0deg, ${gc}2e 0%, transparent 100%)` }}>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline truncate">{s.label}</div>
-                        <div className="text-[15px] font-mono font-bold text-m3-on-surface mt-0.5">{s.v}</div>
-                        <div className="text-[10px] font-mono font-bold truncate mt-0.5" style={{ color: gc }}>
-                          {s.p > 0 ? `${g} • ${pctLabel(s.p)}` : ''}
+                      <React.Fragment key={s.label}>
+                        {i > 0 && <span className="text-m3-outline-subtle font-bold text-xs px-0.5 select-none">+</span>}
+                        <div
+                          className="flex-1 text-center pb-1.5 border-b-2"
+                          style={{ borderBottomColor: s.color }}
+                        >
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline truncate">
+                            {s.label}
+                          </div>
+                          <div className="text-[15px] font-mono font-bold text-m3-on-surface mt-0.5 tabular-nums">
+                            {s.v}
+                          </div>
+                          <div className="text-[10px] font-mono font-bold truncate mt-0.5" style={{ color: s.color }}>
+                            <span>{g}</span> <span className="text-m3-outline font-normal">· {pctLabel(s.p)}</span>
+                          </div>
                         </div>
-                      </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>
