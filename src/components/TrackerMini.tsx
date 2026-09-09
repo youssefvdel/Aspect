@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { detectLocalAccount, detectRegion, fetchMmrDirect, gameData, tierName } from '../utils/tracker';
+import { detectLocalAccount, detectRegion, fetchMmrDirect, gameData } from '../utils/tracker';
 import { fetchTrnActStats } from '../utils/trn';
 
 interface Mini {
@@ -83,7 +83,7 @@ export const TrackerMini: React.FC = () => {
           <div className="flex flex-col items-center gap-0.5 w-16">
             {mini.peakIcon ? <img src={mini.peakIcon} alt={mini.peak} className="w-10 h-10 object-contain opacity-90" /> : null}
             <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-m3-tertiary text-center leading-tight">
-              {tierName(mini.peakTier) || mini.peak}
+              {mini.peak}
             </span>
             <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-m3-outline">Peak</span>
           </div>

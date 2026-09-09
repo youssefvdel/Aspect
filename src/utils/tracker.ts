@@ -30,6 +30,7 @@ export async function detectLocalAccount(): Promise<LocalRiotAccount> {
 
 /** Tier id → name fallback when only the number arrives. */
 export const tierName = (id: number): string => {
+  if (!Number.isFinite(id)) return '—';
   if (id >= 27) return 'Radiant';
   if (id < 3) return 'Unrated';
   const tiers = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Ascendant', 'Immortal'];
