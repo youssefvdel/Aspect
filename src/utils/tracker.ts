@@ -354,7 +354,7 @@ const normTeam = (t: unknown): string => {
  * names show as agent, HS% stays live-only.
  */
 export async function fetchMatchDetailDirect(region: string, matchId: string): Promise<TrackerMatchDetail> {
-  const cacheKey = `aspect_match_v1_${matchId}`;
+  const cacheKey = `aspect_match_v2_${matchId}`;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (raw) return JSON.parse(raw) as TrackerMatchDetail;
@@ -378,6 +378,7 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
       damage: dmg,
       score: Number(st.score ?? 0),
       rounds: Number(st.roundsPlayed ?? 0),
+      playtimeMs: Number(st.playtimeMillis ?? 0),
       headshots: 0,
       bodyshots: 0,
       legshots: 0,
@@ -443,6 +444,51 @@ export interface AggStats {
   matches: number;
   kd: number;
   adr: number;
+  flawless: number;
+  clutches: number;
+  aces: number;
+  firstKills: number;
+  firstDeaths: number;
+  topAgent: { name: string; matches: number; hours: number };
+}
+
+/** Round-level heroics + identity, derived purely from a cached scoreboard. */
+export function deriveHeroics(
+  detail: TrackerMatchDetail,
+  puuid: string
+): { flawless: number; clutch: boolean; ace: boolean; firstKill: boolean; firstDeath: boolean; agent: string; playtimeMs: number } {
+  const me = detail.players.find((p) => p.puuid === puuid);
+  const myTeam = me?.team ?? '';
+  const byRound = new Map<number, TrackerDuel[]>();
+  for (const k of detail.kills) {
+    const l = byRound.get(k.round) ?? [];
+    l.push(k);
+    byRound.set(k.round, l);
+  }
+  let flawless = 0;
+  let clutch = false;
+  let ace = false;
+  for (const [num, kl] of byRound) {
+    const round = detail.rounds[num];
+    const won = round?.winningTeam === myTeam;
+    const myDeaths = kl.filter((k) => k.victimTeam === myTeam).length;
+    const mateDeaths = kl.filter((k) => k.victimTeam === myTeam && k.victimPuuid !== puuid).length;
+    const iDied = kl.some((k) => k.victimPuuid === puuid);
+    const myKills = kl.filter((k) => k.killerPuuid === puuid).length;
+    if (won && myTeam && myDeaths === 0) flawless++;
+    if (won && !iDied && myKills > 0 && mateDeaths >= 2) clutch = true;
+    if (myKills >= 5) ace = true;
+  }
+  const flat = [...detail.kills].sort((a, b) => a.round - b.round || a.timeInRound - b.timeInRound);
+  return {
+    flawless,
+    clutch,
+    ace,
+    firstKill: flat.length > 0 && flat[0].killerPuuid === puuid,
+    firstDeath: flat.length > 0 && flat[0].victimPuuid === puuid,
+    agent: me?.agent ?? 'Agent',
+    playtimeMs: Number((me as TrackerPlayer & { playtimeMs?: number })?.playtimeMs ?? 0),
+  };
 }
 
 /** Aggregate K/D/ADR over a set of matches (details cached forever, repeats are free). */
@@ -465,8 +511,15 @@ export async function aggregateDetails(
   let damage = 0;
   let rounds = 0;
   let matches = 0;
+  let flawless = 0;
+  let clutches = 0;
+  let aces = 0;
+  let firstKills = 0;
+  let firstDeaths = 0;
+  const agentUse = new Map<string, { matches: number; ms: number }>();
   for (const id of matchIds) {
-    const me = byId[id]?.players.find((p) => p.puuid === puuid);
+    const d = byId[id];
+    const me = d?.players.find((p) => p.puuid === puuid);
     if (!me) continue;
     matches++;
     kills += me.kills;
@@ -474,6 +527,22 @@ export async function aggregateDetails(
     assists += me.assists;
     damage += me.damage;
     rounds += me.rounds;
+    const h = deriveHeroics(d, puuid);
+    flawless += h.flawless;
+    if (h.clutch) clutches++;
+    if (h.ace) aces++;
+    if (h.firstKill) firstKills++;
+    if (h.firstDeath) firstDeaths++;
+    const a = agentUse.get(h.agent) ?? { matches: 0, ms: 0 };
+    a.matches++;
+    a.ms += h.playtimeMs;
+    agentUse.set(h.agent, a);
+  }
+  let topAgent = { name: '—', matches: 0, hours: 0 };
+  for (const [name, a] of agentUse) {
+    if (a.matches > topAgent.matches) {
+      topAgent = { name, matches: a.matches, hours: Math.round((a.ms / 3600000) * 10) / 10 };
+    }
   }
   return {
     agg: {
@@ -485,6 +554,12 @@ export async function aggregateDetails(
       matches,
       kd: deaths > 0 ? kills / deaths : kills,
       adr: rounds > 0 ? damage / rounds : 0,
+      flawless,
+      clutches,
+      aces,
+      firstKills,
+      firstDeaths,
+      topAgent,
     },
     byId,
   };

@@ -175,14 +175,41 @@ export const Overview: React.FC = () => {
               <SmallStat label="Deaths" value={agg ? String(agg.deaths) : '…'} />
               <SmallStat label="Assists" value={agg ? String(agg.assists) : '…'} />
               <SmallStat label="Headshots" value="—" locked />
-              <SmallStat label="Flawless" value="—" locked />
-              <SmallStat label="Clutches" value="—" locked />
+              <SmallStat label="Flawless" value={agg ? String(agg.flawless) : '…'} />
+              <SmallStat label="Clutches" value={agg ? String(agg.clutches) : '…'} />
             </div>
             <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
               <Lock className="w-3 h-3 shrink-0" />
-              <span>K/D stats cover your last {agg ? agg.matches : '…'} games{agg ? '' : ' (scoreboards loading…)'} — headshots stay locked until live tracking lands, Riot hides them from past matches.</span>
+              <span>K/D stats cover your last {agg ? agg.matches : '…'} games{agg ? '' : ' (scoreboards loading…)'} — only headshots stay locked, Riot strips them from past matches.</span>
             </div>
           </motion.section>
+
+          {/* Heroics + top agent */}
+          {agg && (
+            <motion.section variants={rise} custom={7}
+              className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Top agent</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface truncate">{agg.topAgent.name}</span>
+                <span className="text-[10px] text-m3-outline">{agg.topAgent.matches} games • {agg.topAgent.hours}h</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">Aces</span>
+                <span className="font-display font-extrabold text-xl text-m3-on-surface tabular-nums">{agg.aces}</span>
+                <span className="text-[10px] text-m3-outline">5K rounds</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">First kills</span>
+                <span className="font-display font-extrabold text-xl text-m3-tertiary tabular-nums">{agg.firstKills}</span>
+                <span className="text-[10px] text-m3-outline">opening duels won</span>
+              </div>
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline">First deaths</span>
+                <span className="font-display font-extrabold text-xl text-red-400 tabular-nums">{agg.firstDeaths}</span>
+                <span className="text-[10px] text-m3-outline">opening duels lost</span>
+              </div>
+            </motion.section>
+          )}
 
           {/* Previous acts */}
           {prevActs.length > 0 && (

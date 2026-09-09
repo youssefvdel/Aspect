@@ -144,6 +144,7 @@ export interface TrackerPlayer {
   damage: number;
   score: number;
   rounds: number;
+  playtimeMs: number;
   headshots: number;
   bodyshots: number;
   legshots: number;
