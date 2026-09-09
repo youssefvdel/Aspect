@@ -454,6 +454,17 @@ export function vkToName(vk: number): string {
     case 0x14: return 'Caps';
     case 0x2C: return 'PrintScreen';
     case 0x90: return 'NumLock';
+    case 0xC0: return '`';
+    case 0xBA: return ';';
+    case 0xBB: return '=';
+    case 0xBC: return ',';
+    case 0xBD: return '-';
+    case 0xBE: return '.';
+    case 0xBF: return '/';
+    case 0xDB: return '[';
+    case 0xDC: return '\\';
+    case 0xDD: return ']';
+    case 0xDE: return "'";
     case 0x04: return 'Mouse 3';
     case 0x05: return 'Mouse 4';
     case 0x06: return 'Mouse 5';

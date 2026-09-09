@@ -33,16 +33,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [subTab, setSubTab] = useState<SettingsSubTab>(initialSubTab);
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-m3-surface">
       {/* Material 3 Tab Row Navigation */}
-      <nav className="flex items-center gap-6 px-4 sm:px-6 bg-m3-surface-container-low border-b border-m3-outline-subtle text-xs sm:text-[13px] font-semibold shrink-0 overflow-x-auto custom-scrollbar select-none z-10 shadow-xs">
+      <nav className="flex items-center gap-1 sm:gap-2 px-4 sm:px-6 bg-m3-surface-container-low border-b border-m3-outline-subtle h-11 shrink-0 select-none z-10">
         {SUBTABS.map((t) => {
           const active = subTab === t.id;
           return (
             <button
               key={t.id}
               onClick={() => setSubTab(t.id)}
-              className={`relative py-3 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative h-full px-3.5 sm:px-4 flex items-center justify-center text-xs sm:text-[13px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                 active ? 'text-m3-primary font-bold font-display' : 'text-m3-outline hover:text-m3-on-surface'
               }`}
             >
@@ -50,7 +50,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {active && (
                 <motion.span
                   layoutId="settings-active-subtab"
-                  className="absolute bottom-0 left-0 right-0 h-[3px] bg-m3-primary rounded-t-full shadow-xs"
+                  className="absolute -bottom-px left-2 right-2 h-[2.5px] bg-m3-primary rounded-full shadow-xs"
                 />
               )}
             </button>
@@ -59,7 +59,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 pt-3 overflow-hidden">
+      <div className="flex-1 min-h-0 pt-2.5 overflow-hidden">
         <AnimatePresence mode="wait">
           {subTab === 'setup' && (
             <motion.div key="setup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">

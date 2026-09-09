@@ -3,24 +3,13 @@ import { Overview } from './Overview';
 import { MatchHistory } from './MatchHistory';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Crosshair, Shield, Target, Swords } from 'lucide-react';
+import { Shield, Target } from 'lucide-react';
 
-export type TrackerSubTab =
-  | 'overview'
-  | 'matches'
-  | 'performance'
-  | 'agents'
-  | 'maps'
-  | 'weapons'
-  | 'encounters'
-  | 'customs'
-  | 'crosshairs'
-  | 'lineups';
+export type TrackerSubTab = 'overview' | 'matches' | 'performance' | 'agents' | 'maps';
 
 interface SubTabItem {
   id: TrackerSubTab;
   label: string;
-  badge?: string;
 }
 
 const TABS: SubTabItem[] = [
@@ -29,11 +18,6 @@ const TABS: SubTabItem[] = [
   { id: 'performance', label: 'Performance' },
   { id: 'agents', label: 'Agents' },
   { id: 'maps', label: 'Maps' },
-  { id: 'weapons', label: 'Weapons' },
-  { id: 'encounters', label: 'Encounters', badge: 'NEW' },
-  { id: 'customs', label: 'Customs' },
-  { id: 'crosshairs', label: 'Crosshairs' },
-  { id: 'lineups', label: 'Lineups' },
 ];
 
 export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initialSubTab = 'overview' }) => {
@@ -41,29 +25,24 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
   const { trn, trnAgents, agentInfo, games, mapById, agg } = useTrackerData();
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-m3-surface">
       {/* Material 3 Tab Row Navigation */}
-      <nav className="flex items-center gap-6 px-4 sm:px-6 bg-m3-surface-container-low border-b border-m3-outline-subtle text-xs sm:text-[13px] font-semibold shrink-0 overflow-x-auto custom-scrollbar select-none z-10 shadow-xs">
+      <nav className="flex items-center gap-1 sm:gap-2 px-4 sm:px-6 bg-m3-surface-container-low border-b border-m3-outline-subtle h-11 shrink-0 select-none z-10">
         {TABS.map((t) => {
           const active = subTab === t.id;
           return (
             <button
               key={t.id}
               onClick={() => setSubTab(t.id)}
-              className={`relative py-3 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`relative h-full px-3.5 sm:px-4 flex items-center justify-center text-xs sm:text-[13px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                 active ? 'text-m3-primary font-bold font-display' : 'text-m3-outline hover:text-m3-on-surface'
               }`}
             >
               <span>{t.label}</span>
-              {t.badge && (
-                <span className="text-[9px] font-bold text-m3-primary bg-m3-primary/15 border border-m3-primary/40 rounded-full px-1.5 py-0.5 leading-none">
-                  {t.badge}
-                </span>
-              )}
               {active && (
                 <motion.span
                   layoutId="tracker-active-subtab"
-                  className="absolute bottom-0 left-0 right-0 h-[3px] bg-m3-primary rounded-t-full shadow-xs"
+                  className="absolute -bottom-px left-2 right-2 h-[2.5px] bg-m3-primary rounded-full shadow-xs"
                 />
               )}
             </button>
@@ -72,7 +51,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
       </nav>
 
       {/* Tab Content Body */}
-      <div className="flex-1 min-h-0 pt-3 overflow-hidden">
+      <div className="flex-1 min-h-0 pt-2.5 overflow-hidden">
         <AnimatePresence mode="wait">
           {subTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
@@ -87,9 +66,9 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'performance' && (
-            <motion.div key="perf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
+            <motion.div key="perf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
+                <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3 flex items-center gap-2">
                     <Target className="w-4 h-4 text-m3-primary" />
                     <span>Duel Performance Breakdown</span>
@@ -120,7 +99,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
+                <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3 flex items-center gap-2">
                     <Shield className="w-4 h-4 text-emerald-400" />
                     <span>Combat Rating & Economy</span>
@@ -153,21 +132,21 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'agents' && (
-            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
+            <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Agent Performance (Act-Wide)</h4>
                 {trnAgents.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-m3-outline-subtle/60 text-m3-outline font-semibold">
-                          <th className="py-2 px-2">Agent</th>
-                          <th className="py-2 px-2">Matches</th>
-                          <th className="py-2 px-2">Win %</th>
-                          <th className="py-2 px-2">K/D</th>
-                          <th className="py-2 px-2">ADR</th>
-                          <th className="py-2 px-2">ACS</th>
-                          <th className="py-2 px-2">HS %</th>
+                          <th className="py-2.5 px-2.5">Agent</th>
+                          <th className="py-2.5 px-2.5">Matches</th>
+                          <th className="py-2.5 px-2.5">Win %</th>
+                          <th className="py-2.5 px-2.5">K/D</th>
+                          <th className="py-2.5 px-2.5">ADR</th>
+                          <th className="py-2.5 px-2.5">ACS</th>
+                          <th className="py-2.5 px-2.5">HS %</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -176,21 +155,21 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
                             (x) => x.name.toLowerCase() === a.agent.toLowerCase()
                           )?.icon;
                           return (
-                            <tr key={a.agent} className="border-b border-m3-outline-subtle/30 hover:bg-m3-surface-container-high/40">
-                              <td className="py-2.5 px-2 font-bold text-m3-on-surface flex items-center gap-2">
+                            <tr key={a.agent} className="border-b border-m3-outline-subtle/30 hover:bg-m3-surface-container-high/40 transition-colors">
+                              <td className="py-2.5 px-2.5 font-bold text-m3-on-surface flex items-center gap-2">
                                 {icon && <img src={icon} alt={a.agent} className="w-7 h-7 rounded-md object-cover bg-m3-surface-container-high" />}
                                 <span>{a.agent}</span>
                               </td>
-                              <td className="py-2.5 px-2 font-mono">{a.matches}</td>
-                              <td className={`py-2.5 px-2 font-mono font-bold ${a.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <td className="py-2.5 px-2.5 font-mono">{a.matches}</td>
+                              <td className={`py-2.5 px-2.5 font-mono font-bold ${a.winPct >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {a.winPct.toFixed(1)}%
                               </td>
-                              <td className={`py-2.5 px-2 font-mono font-bold ${a.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <td className={`py-2.5 px-2.5 font-mono font-bold ${a.kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {a.kd.toFixed(2)}
                               </td>
-                              <td className="py-2.5 px-2 font-mono">{Math.round(a.adr)}</td>
-                              <td className="py-2.5 px-2 font-mono">{Math.round(a.acs)}</td>
-                              <td className="py-2.5 px-2 font-mono text-m3-primary">{a.hsPct.toFixed(1)}%</td>
+                              <td className="py-2.5 px-2.5 font-mono">{Math.round(a.adr)}</td>
+                              <td className="py-2.5 px-2.5 font-mono">{Math.round(a.acs)}</td>
+                              <td className="py-2.5 px-2.5 font-mono text-m3-primary font-bold">{a.hsPct.toFixed(1)}%</td>
                             </tr>
                           );
                         })}
@@ -205,8 +184,8 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           )}
 
           {subTab === 'maps' && (
-            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
+            <motion.div key="maps" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full px-4 pb-4">
+              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shadow-m3-1">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Map Records (Recent Games)</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {Array.from(new Set(games.map((g) => mapById[g.matchId]).filter(Boolean))).map((mapName) => {
@@ -214,7 +193,7 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
                     const wins = mapGames.filter((g) => g.change > 0).length;
                     const wr = mapGames.length > 0 ? (wins / mapGames.length) * 100 : 0;
                     return (
-                      <div key={mapName} className="rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle/50 p-3 flex flex-col justify-between">
+                      <div key={mapName} className="rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle/50 p-3.5 flex flex-col justify-between">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-display font-bold text-sm text-m3-on-surface">{mapName}</span>
                           <span className={`text-xs font-mono font-bold ${wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -228,56 +207,6 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
                     );
                   })}
                 </div>
-              </div>
-            </motion.div>
-          )}
-
-          {subTab === 'weapons' && (
-            <motion.div key="weapons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
-                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Weapon Accuracy & Kills</h4>
-                <div className="rounded-xl bg-m3-surface-container-high/30 border border-m3-outline-subtle/50 p-4 text-xs text-m3-outline flex items-center gap-2">
-                  <Crosshair className="w-4 h-4 text-m3-primary shrink-0" />
-                  <span>Individual weapon kill distribution and headshot rates update dynamically during match history analysis.</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {subTab === 'encounters' && (
-            <motion.div key="encounters" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-display font-bold text-sm text-m3-on-surface flex items-center gap-2">
-                    <Swords className="w-4 h-4 text-m3-primary" />
-                    <span>Player Encounters</span>
-                  </h4>
-                  <span className="text-[9px] font-bold text-m3-primary bg-m3-primary/15 border border-m3-primary/40 rounded-full px-2 py-0.5 leading-none">
-                    NEW FEATURE
-                  </span>
-                </div>
-                <p className="text-xs text-m3-outline leading-relaxed mb-4">
-                  Track rivals and frequent teammates across your competitive games. See your head-to-head K/D against specific players when you encounter them again.
-                </p>
-                <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-xs text-m3-outline">
-                  Live encounter scouting actives automatically when playing matches in current act.
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {(subTab === 'customs' || subTab === 'crosshairs' || subTab === 'lineups') && (
-            <motion.div key="other" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full p-2">
-              <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-6 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-m3-surface-container-high flex items-center justify-center text-m3-primary mx-auto mb-3">
-                  <Sparkles className="w-6 h-6" />
-                </div>
-                <h4 className="font-display font-bold text-base text-m3-on-surface capitalize mb-1">{subTab}</h4>
-                <p className="text-xs text-m3-outline max-w-md mx-auto">
-                  {subTab === 'customs' && 'Custom game lobby history and tournament statistics.'}
-                  {subTab === 'crosshairs' && 'Save, generate, and test crosshair profiles directly in Aspect.'}
-                  {subTab === 'lineups' && 'Interactive map lineups and ability trajectory guides for your agent pool.'}
-                </p>
               </div>
             </motion.div>
           )}
