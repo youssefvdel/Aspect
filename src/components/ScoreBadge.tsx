@@ -1,4 +1,9 @@
 import React from 'react';
+import scoreS from '../assets/badges/score-s.svg';
+import scoreA from '../assets/badges/score-a.svg';
+import scoreB from '../assets/badges/score-b.svg';
+import scoreC from '../assets/badges/score-c.svg';
+import scoreD from '../assets/badges/score-d.svg';
 
 export type ScoreTier = 'S' | 'A' | 'B' | 'C' | 'D';
 
@@ -24,40 +29,8 @@ export const gradeFor = (pct: number): ScoreTier => {
   return 'D';
 };
 
-const TIER_COLOR: Record<ScoreTier, string> = {
-  S: '#40c4ff',
-  A: '#3ddc84',
-  B: '#e8b73a',
-  C: '#9fb2c8',
-  D: '#c98a94',
-};
-
-/** Hex-badge with crown, tinted by tier — same language as TRN's, our own art. */
+/** Hex-badge per tier (local assets). */
 export const ScoreBadge: React.FC<{ tier: ScoreTier; size?: number }> = ({ tier, size = 64 }) => {
-  const c = TIER_COLOR[tier];
-  const cx = 50;
-  const cy = 54;
-  const pt = (i: number, r: number): string => {
-    const a = (Math.PI / 3) * i - Math.PI / 6;
-    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
-  };
-  const ring = [0, 1, 2, 3, 4, 5].map((i) => pt(i, 44)).join(' ');
-  const inner = [0, 1, 2, 3, 4, 5].map((i) => pt(i, 30)).join(' ');
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 108" aria-label={`${tier} tier`}>
-      <polygon points={ring} fill="#14141c" stroke={c} strokeWidth="5" strokeLinejoin="round" opacity="0.95" />
-      <polygon points={ring} fill="none" stroke={c} strokeWidth="1.5" strokeLinejoin="round" opacity="0.35" transform={`translate(0,0) scale(1)`} />
-      <polygon points={inner} fill="#0b0b12" stroke="#2a2a38" strokeWidth="2" strokeLinejoin="round" />
-      {/* crown */}
-      <g transform="translate(50,54)">
-        <path
-          d="M-16,8 L-20,-8 L-10,-1 L-5,-12 L0,-2 L5,-12 L10,-1 L20,-8 L16,8 Z M-13,12 L13,12 L11,16 L-11,16 Z"
-          fill="#f2f2f5"
-        />
-        <circle cx="-5" cy="-14" r="2.2" fill={c} />
-        <circle cx="5" cy="-14" r="2.2" fill={c} />
-        <circle cx="0" cy="-4" r="2.2" fill={c} />
-      </g>
-    </svg>
-  );
+  const src = { S: scoreS, A: scoreA, B: scoreB, C: scoreC, D: scoreD }[tier];
+  return <img src={src} alt={`${tier} tier`} width={size} height={size} className="object-contain shrink-0" />;
 };
