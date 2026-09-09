@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lock, RefreshCw } from 'lucide-react';
+import { Check, Lock, RefreshCw, Skull, Crosshair, Award } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
@@ -258,20 +258,35 @@ export const Overview: React.FC = () => {
             {/* Records + Top Agent + Accuracy */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
               <motion.section variants={rise} custom={7}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col gap-2.5 justify-center">
-                <div>
-                  <div className="text-[10px] text-m3-outline">Match Kills (Best)</div>
-                  <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums">{S ? String(S.bestKills || '…') : '…'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-m3-outline">First Kills / Deaths</div>
-                  <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums">
-                    {S ? `${S.firstKills} / ${S.firstDeaths}` : agg ? `${agg.firstKills} / ${agg.firstDeaths}` : '…'}
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col gap-3 justify-center">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-full bg-[#c9a227] flex items-center justify-center shrink-0">
+                    <Skull className="w-[18px] h-[18px] text-[#1a1405]" strokeWidth={2.2} />
+                  </span>
+                  <div>
+                    <div className="text-[10px] text-m3-outline">Match Kills (Best)</div>
+                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">{S ? String(S.bestKills || '…') : '…'}</div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-[10px] text-m3-outline">Aces</div>
-                  <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums">{S?.aces ?? agg?.aces ?? '…'}</div>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0">
+                    <Crosshair className="w-[18px] h-[18px] text-white" strokeWidth={2.2} />
+                  </span>
+                  <div>
+                    <div className="text-[10px] text-m3-outline">First Kills / Deaths</div>
+                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
+                      {S ? `${S.firstKills} / ${S.firstDeaths}` : agg ? `${agg.firstKills} / ${agg.firstDeaths}` : '…'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0">
+                    <Award className="w-[18px] h-[18px] text-white" strokeWidth={2.2} />
+                  </span>
+                  <div>
+                    <div className="text-[10px] text-m3-outline">Aces</div>
+                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">{S?.aces ?? agg?.aces ?? '…'}</div>
+                  </div>
                 </div>
               </motion.section>
 
