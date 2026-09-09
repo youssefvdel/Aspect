@@ -137,7 +137,7 @@ async function riotGet(host: string, path: string): Promise<any> {
 
 let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string> } | null = null;
 
-const GAME_DATA_KEY = 'aspect_game_data_v2';
+const GAME_DATA_KEY = 'aspect_game_data_v3';
 
 /** Static Riot metadata via public valorant-api.com, cached 30 days. */
 export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string> }> {
@@ -183,16 +183,20 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
     for (const c of compList) {
       const cuuid = String(c?.uuid ?? '').toLowerCase();
       const suuid = String(c?.seasonUuid ?? '').toLowerCase();
-      if (!cuuid) continue;
+      if (!cuuid && !suuid) continue;
       const act = names[suuid] ?? '';
       const ep = /Episode(V\d+)/i.exec(String(c?.assetPath ?? ''))?.[1] ?? '';
-      seasons[cuuid] = [ep, act].filter(Boolean).join(' · ') || 'Season';
+      const label = [ep, act].filter(Boolean).join(' · ') || 'Season';
+      // Riot keys player seasons by the SEASON uuid (SeasonID), not the
+      // competitive uuid — index both so lookups always hit.
+      if (cuuid) seasons[cuuid] = label;
+      if (suuid) seasons[suuid] = label;
     }
     seasonOrder = compList
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .slice().sort((a: any, b: any) => String(b?.endTime ?? '').localeCompare(String(a?.endTime ?? '')))
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => String(c?.uuid ?? '').toLowerCase()).filter(Boolean);
+      .map((c: any) => String(c?.seasonUuid ?? c?.uuid ?? '').toLowerCase()).filter(Boolean);
     // newest tier set wins; tier id matches Riot's numbering 0–27.
     const sets = Array.isArray(ct?.data) ? ct.data : [];
     const tiers = sets.length > 0 ? sets[sets.length - 1]?.tiers ?? [] : [];
