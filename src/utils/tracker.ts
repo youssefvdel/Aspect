@@ -383,8 +383,8 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
     const dmg = (Array.isArray(p?.roundDamage) ? p.roundDamage : []).reduce((n: number, r: any) => n + Number(r?.damage ?? 0), 0);
     return {
       puuid: String(p?.subject ?? ''),
-      name: '',
-      tag: '',
+      name: String(p?.gameName ?? ''),
+      tag: String(p?.tagLine ?? ''),
       team: normTeam(p?.teamId),
       agent: amap[String(p?.characterId ?? '').toLowerCase()] ?? 'Agent',
       kills: Number(st.kills ?? 0),
@@ -398,6 +398,8 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
       headshots: 0,
       bodyshots: 0,
       legshots: 0,
+      accountLevel: Number(p?.accountLevel ?? 0),
+      tier: Number(p?.competitiveTier ?? 0),
     };
   });
   if (players.length === 0) throw new Error('Empty scoreboard.');
@@ -422,7 +424,11 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
   }
   const roundsSrc: unknown[] = Array.isArray(j?.roundResults) ? j.roundResults : [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rounds = (roundsSrc as any[]).map((r) => ({ winningTeam: normTeam(r?.winningTeam) }));
+  const rounds = (roundsSrc as any[]).map((r) => ({
+    winningTeam: normTeam(r?.winningTeam),
+    roundResult: String(r?.roundResult ?? 'Elimination'),
+    ceremony: String(r?.roundCeremony ?? ''),
+  }));
   const kills: TrackerDuel[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (roundsSrc as any[]).forEach((r) => {
@@ -430,6 +436,16 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pstats: any[] = Array.isArray(r?.playerStats) ? r.playerStats : [];
     for (const ps of pstats) {
+      const sub = String(ps?.subject ?? '');
+      const p = players.find((x) => x.puuid === sub);
+      if (p) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const d of (Array.isArray(ps?.damage) ? ps.damage : []) as any[]) {
+          p.headshots += Number(d?.headshots ?? 0);
+          p.bodyshots += Number(d?.bodyshots ?? 0);
+          p.legshots += Number(d?.legshots ?? 0);
+        }
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const kl: any[] = Array.isArray(ps?.kills) ? ps.kills : [];
       for (const k of kl) {
@@ -460,6 +476,7 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
     teamScore,
     queue: String(mi.queueID ?? ''),
     when: Number(mi.gameStartMillis ?? 0),
+    durationMs: Number(mi.gameLengthMillis ?? 0),
   };
   try {
     localStorage.setItem(cacheKey, JSON.stringify(out));

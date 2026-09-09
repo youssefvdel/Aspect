@@ -149,16 +149,19 @@ export interface TrackerPlayer {
   headshots: number;
   bodyshots: number;
   legshots: number;
+  accountLevel?: number;
+  tier?: number;
 }
 
 export interface TrackerMatchDetail {
-  rounds: { winningTeam: string }[];
+  rounds: { winningTeam: string; roundResult?: string; ceremony?: string }[];
   players: TrackerPlayer[];
   kills: TrackerDuel[];
   mapId: string;
   teamScore: Record<string, number>;
   queue: string;
   when: number;
+  durationMs?: number;
 }
 
 export interface TrackerDuel {

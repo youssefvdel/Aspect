@@ -7,6 +7,7 @@ import { useTrackerData } from '../hooks/useTrackerData';
 import { buildTips } from '../utils/trackerTips';
 import { TrackerSkeletons } from './TrackerSkeletons';
 import { CustomDropdown } from './ValorantConfig';
+import { MatchDetailModal } from './MatchDetailModal';
 
 const ago = (ms: number): string => {
   if (!ms) return '';
@@ -110,7 +111,8 @@ const MatchRow: React.FC<{
   puuid: string;
   open: boolean;
   onToggle: () => void;
-}> = ({ r, queue, map, index, icon, rankIcon, puuid, open, onToggle }) => {
+  onOpenModal: () => void;
+}> = ({ r, queue, map, index, icon, rankIcon, puuid, open, onToggle, onOpenModal }) => {
   const card = useMemo(() => (r.detail ? matchCard(r.detail, puuid) : null), [r.detail, puuid]);
   const teams = useMemo(() => {
     if (!r.detail) return [];
@@ -159,7 +161,9 @@ const MatchRow: React.FC<{
         r.won ? 'bg-emerald-400/[0.07] border-emerald-400/25' : 'bg-m3-surface-container border-m3-outline-subtle'
       }`}>
       <button
-        onClick={() => r.detail && onToggle()}
+        onClick={() => {
+          if (r.detail) onOpenModal();
+        }}
         className={`w-full px-2.5 py-2 flex items-center gap-2.5 text-left ${
           r.detail ? 'cursor-pointer hover:bg-m3-surface-container-high/30' : ''
         }`}>
@@ -250,7 +254,16 @@ const MatchRow: React.FC<{
           <div className="text-[10px] font-mono text-m3-outline">ACS {r.acs}</div>
         </div>
 
-        <span className="text-m3-outline text-sm leading-none shrink-0 select-none">⋮</span>
+        <span
+          role="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (r.detail) onToggle();
+          }}
+          className="text-m3-outline hover:text-white p-1 rounded-md text-sm leading-none shrink-0 select-none cursor-pointer"
+        >
+          {open ? '▾' : '⋮'}
+        </span>
       </button>
 
       {open && r.detail && (
@@ -324,6 +337,12 @@ export const MatchHistory: React.FC = () => {
   const [agentFilter, setAgentFilter] = useState('All');
   const [mapFilter, setMapFilter] = useState('All');
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [selectedMatch, setSelectedMatch] = useState<{
+    detail: TrackerMatchDetail;
+    game: TrackerMmrPoint;
+    mapName: string;
+    queue: string;
+  } | null>(null);
   const puuid = profile?.puuid ?? '';
 
   const infoByName = useMemo(() => {
@@ -657,6 +676,16 @@ export const MatchHistory: React.FC = () => {
                   puuid={puuid}
                   open={openIds.has(r.g.matchId || String(r.g.when))}
                   onToggle={() => toggle(r.g.matchId || String(r.g.when))}
+                  onOpenModal={() => {
+                    if (r.detail) {
+                      setSelectedMatch({
+                        detail: r.detail,
+                        game: r.g,
+                        mapName: mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {}),
+                        queue: queueLabel(detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || ''),
+                      });
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -669,6 +698,20 @@ export const MatchHistory: React.FC = () => {
           </div>
         )}
       </div>
+
+      <MatchDetailModal
+        isOpen={!!selectedMatch}
+        onClose={() => setSelectedMatch(null)}
+        detail={selectedMatch?.detail ?? null}
+        game={selectedMatch?.game ?? null}
+        mapName={selectedMatch?.mapName ?? ''}
+        queue={selectedMatch?.queue ?? ''}
+        puuid={puuid}
+        myAccountName={profile?.name}
+        myAccountTag={profile?.tag}
+        tierIcons={tierIcons}
+        agentInfo={agentInfo}
+      />
     </div>
   );
 };
