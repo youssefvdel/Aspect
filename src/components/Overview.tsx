@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lock, RefreshCw, Skull, Crosshair, Award } from 'lucide-react';
+import { Check, Lock, RefreshCw, Skull, Award } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
+import firstbloodsIcon from '../assets/icons/firstbloods.png';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { useCountUp } from '../hooks/useCountUp';
 import { TrackerSkeletons } from './TrackerSkeletons';
@@ -269,9 +270,7 @@ export const Overview: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <span className="w-9 h-9 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0">
-                    <Crosshair className="w-[18px] h-[18px] text-white" strokeWidth={2.2} />
-                  </span>
+                  <img src={firstbloodsIcon} alt="" className="w-9 h-9 rounded-full shrink-0" />
                   <div>
                     <div className="text-[10px] text-m3-outline">First Kills / Deaths</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
