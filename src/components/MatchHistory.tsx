@@ -96,10 +96,10 @@ const MatchRow: React.FC<{
           <div className="text-[10px] text-m3-outline">{ago(r.g.when)} // {queue}</div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[12px] font-bold text-m3-on-surface">{map}</span>
-            <span className={`text-[12px] font-mono font-bold ${r.won ? 'text-m3-tertiary' : 'text-red-400'}`}>
+            <span className={`text-[12px] font-mono font-bold ${r.won ? 'text-emerald-400' : 'text-red-400'}`}>
               {r.detail ? `${r.us} : ${r.them}` : ''}
             </span>
-            <span className={`text-[11px] font-mono font-bold ${r.g.change >= 0 ? 'text-m3-tertiary' : 'text-red-400'}`}>
+            <span className={`text-[11px] font-mono font-bold ${r.g.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {r.g.change > 0 ? `+${r.g.change}` : r.g.change} RR
             </span>
           </div>
@@ -117,7 +117,7 @@ const MatchRow: React.FC<{
         <div className="hidden sm:flex items-center gap-3 shrink-0 text-right">
           <div>
             <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">K/D</div>
-            <div className={`text-[13px] font-mono font-bold ${kd >= 1 ? 'text-m3-tertiary' : 'text-red-400'}`}>{kd.toFixed(1)}</div>
+            <div className={`text-[13px] font-mono font-bold ${kd >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>{kd.toFixed(1)}</div>
           </div>
           <div>
             <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">K/D/A</div>
@@ -125,7 +125,7 @@ const MatchRow: React.FC<{
           </div>
           <div>
             <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">DDΔ</div>
-            <div className={`text-[13px] font-mono font-bold ${r.dd >= 0 ? 'text-m3-tertiary' : 'text-red-400'}`}>{r.dd > 0 ? `+${r.dd}` : r.dd}</div>
+            <div className={`text-[13px] font-mono font-bold ${r.dd >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{r.dd > 0 ? `+${r.dd}` : r.dd}</div>
           </div>
           <div>
             <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">ACS</div>
@@ -390,7 +390,7 @@ export const MatchHistory: React.FC = () => {
                   {r.icon ? <img src={r.icon} alt={r.role} className="w-7 h-7 object-contain shrink-0" /> : null}
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] text-m3-on-surface-variant">{r.role}</div>
-                    <div className={`text-[12px] font-bold ${r.wr >= 50 ? 'text-m3-tertiary' : 'text-red-400'}`}>
+                    <div className={`text-[12px] font-bold ${r.wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
                       WR {r.wr.toFixed(1)}%
                     </div>
                     <div className="text-[10px] font-mono text-m3-outline">{r.rec}</div>
@@ -424,7 +424,7 @@ export const MatchHistory: React.FC = () => {
               {topMaps.map((m) => (
                 <div key={m.map} className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-semibold text-m3-on-surface truncate">{m.map}</span>
-                  <span className={`text-[11px] font-mono font-bold shrink-0 ${m.wr >= 50 ? 'text-m3-tertiary' : 'text-red-400'}`}>
+                  <span className={`text-[11px] font-mono font-bold shrink-0 ${m.wr >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {m.wr}%
                   </span>
                 </div>
@@ -468,7 +468,7 @@ export const MatchHistory: React.FC = () => {
           <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 shrink-0">
             <div className="flex items-center gap-4 flex-wrap">
               <div>
-                <span className="font-display font-extrabold text-lg text-m3-tertiary">{sum.w}W</span>
+                <span className="font-display font-extrabold text-lg text-emerald-400">{sum.w}W</span>
                 <span className="text-m3-outline font-bold"> - </span>
                 <span className="font-display font-extrabold text-lg text-red-400">{sum.l}L</span>
                 <span className="text-[11px] text-m3-outline ml-1.5">
@@ -507,7 +507,7 @@ export const MatchHistory: React.FC = () => {
                 {day.rs.length}
               </span>
               <span className="text-[11px] font-bold ml-2">
-                <span className="text-m3-tertiary">{day.w} W</span>
+                <span className="text-emerald-400">{day.w} W</span>
                 <span className="text-m3-outline"> // </span>
                 <span className="text-red-400">{day.l} L</span>
               </span>

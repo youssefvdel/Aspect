@@ -79,7 +79,7 @@ const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone
       {label}
       {locked && <Lock className="w-2.5 h-2.5" />}
     </span>
-    <span className={`font-display font-extrabold text-base sm:text-lg tabular-nums truncate ${tone === 'win' ? 'text-m3-tertiary' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
+    <span className={`font-display font-extrabold text-base sm:text-lg tabular-nums truncate ${tone === 'win' ? 'text-emerald-400' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
   </div>
 );
 
