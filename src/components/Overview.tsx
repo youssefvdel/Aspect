@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lock, RefreshCw, Trophy } from 'lucide-react';
+import { Check, Lock, RefreshCw } from 'lucide-react';
 import { tierName } from '../utils/tracker';
+import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { useCountUp } from '../hooks/useCountUp';
@@ -355,10 +356,17 @@ export const Overview: React.FC = () => {
                 className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
                 <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2.5">Tracker score</h4>
                 <div className="flex items-center gap-2.5">
-                  <div className="w-12 h-12 rounded-full bg-m3-tertiary-container/50 border-2 border-m3-tertiary/50 flex items-center justify-center shrink-0">
-                    <Trophy className="w-5 h-5 text-m3-tertiary" />
+                  <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={56} />
+                  <div>
+                    <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums leading-none">{trn.trnScore}</div>
+                    <div className="font-display font-extrabold text-sm tabular-nums leading-tight"
+                      style={{ color: scoreTier(trn.trnScore).color }}>
+                      {scoreTier(trn.trnScore).tier}
+                    </div>
                   </div>
-                  <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</div>
+                  <div className="text-[9px] text-m3-outline leading-snug ml-auto max-w-32">
+                    Performance rating relative to your skill range.
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-2.5">
                   {[
@@ -366,13 +374,21 @@ export const Overview: React.FC = () => {
                     { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
                     { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
                     { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.adrPctile },
-                  ].map((s) => (
-                    <div key={s.label}>
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">{s.label}</div>
-                      <div className="text-[13px] font-mono font-bold text-m3-on-surface">{s.v}</div>
-                      <div className="text-[9px] font-mono text-m3-tertiary">{s.p > 0 ? pctLabel(s.p) : ''}</div>
-                    </div>
-                  ))}
+                  ].map((s) => {
+                    const g = gradeFor(s.p);
+                    const gc = (
+                      { S: '#40c4ff', A: '#3ddc84', B: '#e8b73a', C: '#9fb2c8', D: '#c98a94' } as Record<string, string>
+                    )[g];
+                    return (
+                      <div key={s.label}>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">{s.label}</div>
+                        <div className="text-[13px] font-mono font-bold text-m3-on-surface">{s.v}</div>
+                        <div className="text-[9px] font-mono font-bold" style={{ color: gc }}>
+                          {s.p > 0 ? `${g} - ${pctLabel(s.p)}` : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </motion.section>
             )}
