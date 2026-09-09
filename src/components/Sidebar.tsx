@@ -153,9 +153,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <aside className="w-68 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30">
+    <aside className="w-68 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30 overflow-hidden">
       {/* Brand & Top Section */}
-      <div className="flex flex-col">
+      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto custom-scrollbar">
         {/* App Identity */}
         <div className="p-4 sm:p-5 border-b border-m3-outline-subtle flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -234,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Sidebar Footer: player chip, updates & keyboard hint */}
-      <div className="flex flex-col">
+      <div className="flex flex-col shrink-0">
         <TrackerMini />
         <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
         {onOpenUpdates && (

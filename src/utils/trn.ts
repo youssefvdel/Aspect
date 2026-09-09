@@ -75,10 +75,11 @@ function pickSeasonSegment(j: any, seasonId: string): any | null {
   const segs = Array.isArray(j?.data?.segments) ? j.data.segments : [];
   if (seasonId) {
     // Strict: a wrong act's numbers are worse than none (caller falls back).
+    const sid = seasonId.toLowerCase();
     return (
       segs.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (s: any) => s?.type === 'season' && s?.attributes?.seasonId === seasonId
+        (s: any) => s?.type === 'season' && String(s?.attributes?.seasonId ?? '').toLowerCase() === sid
       ) ?? null
     );
   }
@@ -111,7 +112,7 @@ async function fetchSeasonSeg(name: string, tag: string, playlist: string, seaso
   const hit = seasonId
     ? segs.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (s: any) => s?.type === 'season' && s?.attributes?.seasonId === seasonId
+        (s: any) => s?.type === 'season' && String(s?.attributes?.seasonId ?? '').toLowerCase() === seasonId.toLowerCase()
       )
     : segs.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

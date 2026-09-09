@@ -4,20 +4,15 @@ const Block: React.FC<{ className?: string; style?: React.CSSProperties }> = ({ 
   <div style={style} className={`animate-pulse bg-m3-surface-container-high ${className}`} />
 );
 
-/** Mirrors the Overview layout: selectors, hero strip, tiles, substats, trio, halves. */
+/** Mirrors the Overview layout: filter bar, 4 tiles, 8 substats, 3 cards, 2 cards. */
 export const OverviewSkeletons: React.FC = () => (
   <div className="flex flex-col gap-2.5 w-full">
-    <div className="grid grid-cols-2 gap-2">
-      <Block className="h-8 rounded-lg" />
-      <Block className="h-8 rounded-lg" />
-    </div>
-    <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3 flex items-center gap-3">
-      <Block className="w-11 h-11 rounded-full shrink-0" />
-      <div className="flex-1 flex flex-col gap-2">
-        <Block className="h-4 w-40 rounded-lg" />
-        <Block className="h-3 w-28 rounded-full" />
+    <div className="flex items-center justify-between gap-3 shrink-0">
+      <div className="flex items-center gap-3">
+        <Block className="h-9 w-40 rounded-xl" />
+        <Block className="h-9 w-48 rounded-xl" />
       </div>
-      <Block className="h-8 w-8 rounded-full shrink-0" />
+      <Block className="h-9 w-24 rounded-xl" />
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {[0, 1, 2, 3].map((i) => (

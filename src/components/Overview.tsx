@@ -7,15 +7,15 @@ import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat }
 import firstbloodsIcon from '../assets/icons/firstbloods.png';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { useCountUp } from '../hooks/useCountUp';
-import { TrackerSkeletons } from './TrackerSkeletons';
+import { OverviewSkeletons } from './TrackerSkeletons';
 import { CustomDropdown } from './ValorantConfig';
 
 const rise = {
-  hidden: { opacity: 0, y: 14 },
+  hidden: { opacity: 0, y: 12 },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.04, duration: 0.35, ease: 'easeOut' as const },
+    transition: { delay: i * 0.04, duration: 0.3, ease: 'easeOut' as const },
   }),
 };
 
@@ -23,7 +23,7 @@ const rise = {
 const BodyFigure: React.FC<{ head: number; body: number; legs: number }> = ({ head, body, legs }) => {
   const max = Math.max(head, body, legs, 1);
   const o = (v: number): number => +(0.22 + 0.78 * (v / max)).toFixed(2);
-  const fill = '#5ac8fa';
+  const fill = '#00c3ff';
   return (
     <svg width="48" height="92" viewBox="0 0 48 92" className="shrink-0" aria-label="Hit zones">
       {/* head */}
@@ -47,7 +47,6 @@ const shortAct = (label: string): string =>
     .replace('ACT', 'A')
     .replace(/\s*·\s*/g, ':');
 
-/** "Top 13%" / "Bottom 29%" from a TRN percentile. */
 const pctLabel = (p: number): string => (p >= 50 ? `Top ${Math.round(100 - p)}%` : `Bottom ${Math.round(p)}%`);
 
 const BigTile: React.FC<{ label: string; value?: string; numeric?: number; decimals?: number; suffix?: string; locked?: boolean; index: number }> = ({
@@ -63,11 +62,11 @@ const BigTile: React.FC<{ label: string; value?: string; numeric?: number; decim
   return (
     <motion.div variants={rise} custom={index}
       className={`rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col gap-1 min-w-0 ${locked ? 'opacity-70' : ''}`}>
-      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-outline flex items-center gap-1">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-m3-outline flex items-center gap-1">
         {label}
-        {locked && <Lock className="w-2.5 h-2.5" />}
+        {locked && <Lock className="w-3 h-3" />}
       </span>
-      <span className="font-display font-black text-2xl text-m3-on-surface tabular-nums truncate">
+      <span className="font-display font-black text-2xl sm:text-3xl text-m3-on-surface tabular-nums truncate mt-0.5">
         {locked ? (value ?? '—') : numeric !== undefined ? <>{v.toFixed(decimals)}{suffix}</> : (value ?? '—')}
       </span>
     </motion.div>
@@ -80,7 +79,7 @@ const SmallStat: React.FC<{ label: string; value: string; locked?: boolean; tone
       {label}
       {locked && <Lock className="w-2.5 h-2.5" />}
     </span>
-    <span className={`font-display font-extrabold text-lg tabular-nums truncate ${tone === 'win' ? 'text-m3-tertiary' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
+    <span className={`font-display font-extrabold text-base sm:text-lg tabular-nums truncate ${tone === 'win' ? 'text-m3-tertiary' : tone === 'loss' ? 'text-red-400' : 'text-m3-on-surface'}`}>{value}</span>
   </div>
 );
 
@@ -93,7 +92,6 @@ export const Overview: React.FC = () => {
   const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, ready, banner, setBanner, refresh } =
     useTrackerData();
 
-  // View selection (mirrors TRN's Playlist/Act boxes; stats sections follow it).
   const [playlist, setPlaylist] = useState('competitive');
   const [seasonId, setSeasonId] = useState('');
   const [selStats, setSelStats] = useState<TrnActStats | null>(null);
@@ -145,7 +143,6 @@ export const Overview: React.FC = () => {
   const kills = S?.kills ?? agg?.kills ?? 0;
   const deaths = S?.deaths ?? agg?.deaths ?? 0;
   const assists = S?.assists ?? agg?.assists ?? 0;
-  const rrNow = useCountUp(profile?.rr ?? 0, 900, !!profile);
 
   const orderIdx = (id: string): number => {
     const i = seasonOrder.indexOf(id.toLowerCase());
@@ -167,216 +164,243 @@ export const Overview: React.FC = () => {
   if (!ready) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
-        <TrackerSkeletons />
+        <OverviewSkeletons />
       </div>
     );
   }
 
   return (
-    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
-      {/* Main column */}
-      <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-        {banner && (
-          <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
-            <div className="flex items-center space-x-2">
-              <Check className="w-3.5 h-3.5 text-m3-primary shrink-0" />
-              <span>{banner}</span>
-            </div>
-            <button onClick={() => setBanner(null)} className="text-m3-primary hover:underline text-xs ml-3 cursor-pointer font-bold shrink-0">
-              Dismiss
-            </button>
+    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar pb-2">
+      {banner && (
+        <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-2">
+            <Check className="w-3.5 h-3.5 text-m3-primary shrink-0" />
+            <span>{banner}</span>
           </div>
-        )}
+          <button onClick={() => setBanner(null)} className="text-m3-primary hover:underline text-xs ml-3 cursor-pointer font-bold shrink-0">
+            Dismiss
+          </button>
+        </div>
+      )}
 
-        {/* Playlist / Act selectors */}
-        <motion.div variants={rise} custom={0} className="grid grid-cols-2 gap-2 shrink-0">
-          <div>
+      {/* Header filter bar */}
+      <div className="flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-40">
             <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline mb-1 px-1">Playlist</div>
             <CustomDropdown value={playlist} options={PLAYLISTS} onChange={(v) => setPlaylist(v)} />
           </div>
-          <div>
+          <div className="w-48">
             <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline mb-1 px-1">Act</div>
             <CustomDropdown value={seasonId} options={seasonOptions} onChange={(v) => setSeasonId(v)} />
           </div>
-        </motion.div>
+        </div>
+        <button
+          onClick={refresh}
+          disabled={isLoading}
+          title="Refresh stats"
+          className="self-end mb-0.5 h-9 px-3.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-high flex items-center gap-2 text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-m3-primary' : ''}`} />
+          <span>Refresh</span>
+        </button>
+      </div>
 
-        {profile ? (
-          <>
-            {/* Rank hero strip (identity lives in the sidebar) */}
-            <motion.section variants={rise} custom={1}
-              className="rounded-2xl bg-m3-surface-container border border-m3-primary/30 p-3 flex items-center gap-3 shrink-0">
-              {trn?.avatarUrl ? (
-                <img src={trn.avatarUrl} alt="" className="w-11 h-11 rounded-full object-cover border border-m3-primary/40 shrink-0" />
-              ) : null}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-display font-extrabold text-base text-m3-on-surface">{profile.rank}</span>
-                  <span className="font-mono text-xs text-m3-primary font-bold tabular-nums">{Math.round(rrNow)} RR</span>
-                </div>
-                <div className="text-[11px] text-m3-outline truncate">{profile.name}#{profile.tag}</div>
-              </div>
-              <button onClick={refresh} disabled={isLoading} title="Refresh"
-                className="w-8 h-8 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0">
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </motion.section>
+      {profile && (
+        <>
+          {/* Primary KPI Tiles */}
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+            <BigTile index={2} label="Win %" numeric={selLoading ? undefined : winPct} decimals={2} suffix="%" value={selLoading ? '…' : undefined} />
+            <BigTile index={3} label="K/D" numeric={selLoading ? undefined : kd} decimals={3} value={selLoading ? '…' : undefined} />
+            {S ? (
+              <BigTile index={4} label="Headshot %" numeric={S.hsPct} decimals={2} suffix="%" />
+            ) : (
+              <BigTile index={4} label="Headshot %" value="—" locked />
+            )}
+            <BigTile index={5} label="Damage/Round" numeric={selLoading ? undefined : adr} decimals={2} value={selLoading ? '…' : undefined} />
+          </section>
 
-            {/* Headline tiles */}
-            <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0 opacity-100">
-              <BigTile index={2} label="Win %" numeric={selLoading ? undefined : winPct} decimals={2} suffix="%" value={selLoading ? '…' : undefined} />
-              <BigTile index={3} label="K/D" numeric={selLoading ? undefined : kd} decimals={3} value={selLoading ? '…' : undefined} />
-              {S ? (
-                <BigTile index={4} label="Headshot %" numeric={S.hsPct} decimals={2} suffix="%" />
-              ) : (
-                <BigTile index={4} label="Headshot %" value="—" locked />
-              )}
-              <BigTile index={5} label="Damage/Round" numeric={selLoading ? undefined : adr} decimals={2} value={selLoading ? '…' : undefined} />
-            </section>
+          {/* Secondary stats row */}
+          <motion.section variants={rise} custom={6}
+            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+              <SmallStat label="Wins" value={String(wins)} tone="win" />
+              <SmallStat label="Losses" value={String(losses)} tone="loss" />
+              <SmallStat label="Kills" value={kills ? kills.toLocaleString() : '…'} />
+              <SmallStat label="Deaths" value={deaths ? deaths.toLocaleString() : '…'} />
+              <SmallStat label="Assists" value={assists ? assists.toLocaleString() : '…'} />
+              <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : '—'} locked={!S} />
+              <SmallStat label="Flawless" value={String(S?.flawless ?? agg?.flawless ?? '…')} />
+              <SmallStat label="Clutches" value={String(S?.clutches ?? agg?.clutches ?? '…')} />
+            </div>
+            <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
+              <Lock className="w-3 h-3 shrink-0" />
+              <span>
+                {S
+                  ? `Act-wide stats via TRN (${wins}W–${losses}L${S.ties > 0 ? `–${S.ties}T` : ''}) • rank live from Riot Client`
+                  : 'Act-wide stats loading — rank and games live from Riot.'}
+              </span>
+            </div>
+          </motion.section>
 
-            {/* Sub stats */}
-            <motion.section variants={rise} custom={6}
-              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shrink-0">
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                <SmallStat label="Wins" value={String(wins)} tone="win" />
-                <SmallStat label="Losses" value={S && S.ties > 0 ? String(losses) : String(losses)} tone="loss" />
-                <SmallStat label="Kills" value={kills ? kills.toLocaleString() : '…'} />
-                <SmallStat label="Deaths" value={deaths ? deaths.toLocaleString() : '…'} />
-                <SmallStat label="Assists" value={assists ? assists.toLocaleString() : '…'} />
-                <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : '—'} locked={!S} />
-                <SmallStat label="Flawless" value={String(S?.flawless ?? agg?.flawless ?? '…')} />
-                <SmallStat label="Clutches" value={String(S?.clutches ?? agg?.clutches ?? '…')} />
-              </div>
-              <div className="mt-2.5 pt-2.5 border-t border-m3-outline-subtle/60 text-[10px] text-m3-outline flex items-center gap-1.5">
-                <Lock className="w-3 h-3 shrink-0" />
-                <span>
-                  {S
-                    ? `Act-wide via TRN (${wins}W–${losses}L${S.ties > 0 ? `–${S.ties}T` : ''}) • rank live from Riot`
-                    : 'Act-wide stats loading — rank and trend are live from Riot.'}
-                </span>
-              </div>
-            </motion.section>
-
-            {/* Records + Top Agent + Accuracy */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
-              <motion.section variants={rise} custom={7}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col gap-3 justify-center">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-9 h-9 rounded-full bg-[#c9a227] flex items-center justify-center shrink-0">
-                    <Skull className="w-[18px] h-[18px] text-[#1a1405]" strokeWidth={2.2} />
+          {/* Middle Row: Combat Highlights | Top Agent | Accuracy */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
+            {/* Combat Highlights */}
+            <motion.section variants={rise} custom={7}
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              <h4 className="font-display font-bold text-sm text-m3-on-surface mb-2">Combat Highlights</h4>
+              <div className="flex flex-col gap-3 flex-1 justify-around">
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-full bg-[#c9a227] flex items-center justify-center shrink-0 shadow-sm">
+                    <Skull className="w-5 h-5 text-[#1a1405]" strokeWidth={2.2} />
                   </span>
                   <div>
-                    <div className="text-[10px] text-m3-outline">Match Kills (Best)</div>
-                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">{S ? String(S.bestKills || '…') : '…'}</div>
+                    <div className="text-[11px] font-medium text-m3-outline">Match Kills (Best)</div>
+                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
+                      {S ? String(S.bestKills || '…') : '…'}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <img src={firstbloodsIcon} alt="" className="w-9 h-9 rounded-full shrink-0" />
+                <div className="flex items-center gap-3">
+                  <img src={firstbloodsIcon} alt="" className="w-10 h-10 rounded-full shrink-0 shadow-sm" />
                   <div>
-                    <div className="text-[10px] text-m3-outline">First Kills / Deaths</div>
+                    <div className="text-[11px] font-medium text-m3-outline">First Kills / Deaths</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
                       {S ? `${S.firstKills} / ${S.firstDeaths}` : agg ? `${agg.firstKills} / ${agg.firstDeaths}` : '…'}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <span className="w-9 h-9 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0">
-                    <Award className="w-[18px] h-[18px] text-white" strokeWidth={2.2} />
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-full bg-[#e5484d] flex items-center justify-center shrink-0 shadow-sm">
+                    <Award className="w-5 h-5 text-white" strokeWidth={2.2} />
                   </span>
                   <div>
-                    <div className="text-[10px] text-m3-outline">Aces</div>
-                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">{S?.aces ?? agg?.aces ?? '…'}</div>
+                    <div className="text-[11px] font-medium text-m3-outline">Aces</div>
+                    <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
+                      {S?.aces ?? agg?.aces ?? '…'}
+                    </div>
                   </div>
                 </div>
-              </motion.section>
+              </div>
+            </motion.section>
 
-              <motion.section variants={rise} custom={8}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2 text-center">Top Agent</h4>
+            {/* Top Agent (matches reference layout) */}
+            <motion.section variants={rise} custom={8}
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              <div>
+                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Top Agent</h4>
                 {topAgent ? (
-                  <div className="flex flex-col items-center gap-1">
-                    {topAgentIcon ? <img src={topAgentIcon} alt={topAgent.agent} className="w-14 h-14 rounded-xl object-cover" /> : null}
-                    <span className="font-display font-extrabold text-base text-m3-on-surface">{topAgent.agent}</span>
-                    <span className="text-[10px] text-m3-outline">{topAgent.hours > 0 ? `${topAgent.hours}h, ` : ''}{topAgent.matches} matches</span>
-                    <div className="grid grid-cols-4 gap-2 mt-1 w-full text-center">
-                      <div>
-                        <div className="text-[9px] text-m3-outline">Win %</div>
-                        <div className="text-[12px] font-mono font-bold text-m3-on-surface">{topAgent.winPct.toFixed(1)}</div>
+                  <div className="flex items-center gap-3">
+                    {topAgentIcon ? (
+                      <img
+                        src={topAgentIcon}
+                        alt={topAgent.agent}
+                        className="w-12 h-12 rounded-lg object-cover bg-emerald-500/10 border border-m3-outline-subtle shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-m3-surface-container-high shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-display font-extrabold text-lg text-m3-on-surface leading-tight truncate">
+                        {topAgent.agent}
                       </div>
-                      <div>
-                        <div className="text-[9px] text-m3-outline">K/D</div>
-                        <div className="text-[12px] font-mono font-bold text-m3-on-surface">{topAgent.kd.toFixed(2)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-m3-outline">ADR</div>
-                        <div className="text-[12px] font-mono font-bold text-m3-on-surface">{Math.round(topAgent.adr)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-m3-outline">ACS</div>
-                        <div className="text-[12px] font-mono font-bold text-m3-on-surface">{Math.round(topAgent.acs)}</div>
+                      <div className="text-xs text-m3-outline mt-0.5 truncate">
+                        {topAgent.hours > 0 ? `${topAgent.hours} hrs, ` : ''}{topAgent.matches} Matches
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-[11px] text-m3-outline text-center">…</div>
+                  <div className="text-xs text-m3-outline">No matches recorded</div>
                 )}
-              </motion.section>
-
-              <motion.section variants={rise} custom={9}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface">Accuracy</h4>
-                  <span className="text-[9px] text-m3-outline">Act-wide</span>
+              </div>
+              {topAgent && (
+                <div className="grid grid-cols-4 gap-2 pt-3 mt-3 border-t border-m3-outline-subtle/50">
+                  <div>
+                    <div className="text-[11px] font-semibold text-m3-outline">Win %</div>
+                    <div className="font-display font-bold text-base sm:text-lg text-m3-on-surface tabular-nums mt-0.5">
+                      {topAgent.winPct.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-m3-outline">K/D</div>
+                    <div className="font-display font-bold text-base sm:text-lg text-m3-on-surface tabular-nums mt-0.5">
+                      {topAgent.kd.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-m3-outline">ADR</div>
+                    <div className="font-display font-bold text-base sm:text-lg text-m3-on-surface tabular-nums mt-0.5">
+                      {Math.round(topAgent.adr)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-m3-outline">ACS</div>
+                    <div className="font-display font-bold text-base sm:text-lg text-m3-on-surface tabular-nums mt-0.5">
+                      {Math.round(topAgent.acs)}
+                    </div>
+                  </div>
                 </div>
-                {S && hitTotal > 0 ? (
-                  <div className="flex gap-2.5 items-start">
-                    <BodyFigure head={S.hsPct} body={bodyPct} legs={legPct} />
-                    <div className="flex-1 flex flex-col gap-1.5 text-[11px] min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-m3-outline w-8">Head</span>
-                      <span className="font-mono font-bold text-m3-primary">{S.hsPct.toFixed(2)}%</span>
-                      <span className="font-mono text-m3-outline tabular-nums ml-auto">{S.headHits.toLocaleString()} hits</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-m3-outline w-8">Body</span>
-                      <span className="font-mono font-bold text-m3-on-surface">{bodyPct.toFixed(2)}%</span>
-                      <span className="font-mono text-m3-outline tabular-nums ml-auto">{S.bodyHits.toLocaleString()} hits</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-m3-outline w-8">Legs</span>
-                      <span className="font-mono font-bold text-m3-on-surface">{legPct.toFixed(2)}%</span>
-                      <span className="font-mono text-m3-outline tabular-nums ml-auto">{S.legHits.toLocaleString()} hits</span>
-                    </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2.5 text-[10px] text-m3-outline flex items-start gap-1.5">
-                    <Lock className="w-3 h-3 shrink-0 mt-px" />
-                    <span>Hit data loading…</span>
-                  </div>
-                )}
-              </motion.section>
-            </div>
+              )}
+            </motion.section>
 
-            {/* Previous acts + Tracker score, half and half */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 shrink-0">
+            {/* Accuracy */}
+            <motion.section variants={rise} custom={9}
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-display font-bold text-sm text-m3-on-surface">Accuracy</h4>
+                <span className="text-xs text-m3-outline font-medium">Act-wide</span>
+              </div>
+              {S && hitTotal > 0 ? (
+                <div className="flex gap-4 items-center flex-1 py-1">
+                  <BodyFigure head={S.hsPct} body={bodyPct} legs={legPct} />
+                  <div className="flex-1 flex flex-col justify-around h-full gap-2 text-[12px] min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-m3-outline font-medium w-10">Head</span>
+                      <span className="font-mono font-bold text-base text-m3-primary">{S.hsPct.toFixed(2)}%</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.headHits.toLocaleString()} hits</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-m3-outline font-medium w-10">Body</span>
+                      <span className="font-mono font-bold text-base text-m3-on-surface">{bodyPct.toFixed(2)}%</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.bodyHits.toLocaleString()} hits</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-m3-outline font-medium w-10">Legs</span>
+                      <span className="font-mono font-bold text-base text-m3-on-surface">{legPct.toFixed(2)}%</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.legHits.toLocaleString()} hits</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-3 text-xs text-m3-outline flex items-start gap-2">
+                  <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Hit data loading…</span>
+                </div>
+              )}
+            </motion.section>
+          </div>
+
+          {/* Lower Row: Previous Acts & Tracker Score sharing 50/50 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
+            {/* Previous Acts */}
             {prevActs.length > 0 && (
               <motion.section variants={rise} custom={10}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-primary mb-2.5">Previous acts</h4>
-                <div className="flex flex-col gap-2">
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Previous Acts</h4>
+                <div className="flex flex-col gap-2.5">
                   {prevActs.map((s) => {
                     const prev = trnPrev[s.id.toLowerCase()];
                     return (
-                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2 flex items-center gap-2.5">
+                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2.5 flex items-center gap-3">
                         {tierIcons[s.tier] ? (
                           <img src={tierIcons[s.tier]} alt={tierName(s.tier)} className="w-10 h-10 object-contain shrink-0" />
                         ) : null}
                         <div className="flex-1 min-w-0">
-                          <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-m3-outline">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-m3-outline">
                             {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
                           </div>
                           <div className="font-display font-extrabold text-sm text-m3-on-surface">{tierName(s.tier)}</div>
-                          <div className="font-mono text-[10px] text-m3-outline tabular-nums">
+                          <div className="font-mono text-[11px] text-m3-outline tabular-nums">
                             {prev ? `K/D ${prev.kd.toFixed(2)} • ${prev.matches} games` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
                           </div>
                         </div>
@@ -386,22 +410,26 @@ export const Overview: React.FC = () => {
                 </div>
               </motion.section>
             )}
+
+            {/* Tracker Score */}
             {trn && (
               <motion.section variants={rise} custom={11}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 overflow-hidden relative"
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 overflow-hidden relative flex flex-col justify-between"
                 style={{
                   borderColor: `${scoreTier(trn.trnScore).color}55`,
                   background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}26 0%, transparent 55%)`,
                 }}>
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2.5">Tracker score</h4>
-                <div className="flex items-center gap-2.5">
-                  <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={56} />
-                  <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</div>
-                  <div className="text-[9px] text-m3-outline leading-snug ml-auto max-w-36">
-                    Performance rating relative to others players in your skill range.
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-display font-bold text-sm text-m3-on-surface">Tracker Score</h4>
+                  <div className="text-[10px] text-m3-outline leading-tight text-right max-w-[200px]">
+                    Personal performance rating relative to your skill range.
                   </div>
                 </div>
-                <div className="grid grid-cols-4 mt-2.5 border-t border-m3-outline-subtle/60 pt-2.5">
+                <div className="flex items-center gap-3 my-2">
+                  <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={58} />
+                  <div className="font-display font-black text-3xl text-m3-on-surface tabular-nums leading-none">{trn.trnScore}</div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 mt-2 pt-2.5 border-t border-m3-outline-subtle/60">
                   {[
                     { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
                     { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
@@ -413,12 +441,12 @@ export const Overview: React.FC = () => {
                       { S: '#40c4ff', A: '#3ddc84', B: '#e8b73a', C: '#9fb2c8', D: '#c98a94' } as Record<string, string>
                     )[g];
                     return (
-                      <div key={s.label} className={`text-center px-1 py-1.5 rounded-lg ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}
-                      style={{ background: `linear-gradient(0deg, ${gc}2e 0%, transparent 100%)` }}>
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline truncate">{s.label}</div>
-                        <div className="text-[15px] font-mono font-bold text-m3-on-surface">{s.v}</div>
-                        <div className="text-[9px] font-mono font-bold truncate" style={{ color: gc }}>
-                          {s.p > 0 ? `${g} - ${pctLabel(s.p)}` : ''}
+                      <div key={s.label} className={`text-center px-1 py-2 rounded-xl ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}
+                        style={{ background: `linear-gradient(0deg, ${gc}2e 0%, transparent 100%)` }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline truncate">{s.label}</div>
+                        <div className="text-[15px] font-mono font-bold text-m3-on-surface mt-0.5">{s.v}</div>
+                        <div className="text-[10px] font-mono font-bold truncate mt-0.5" style={{ color: gc }}>
+                          {s.p > 0 ? `${g} • ${pctLabel(s.p)}` : ''}
                         </div>
                       </div>
                     );
@@ -426,18 +454,9 @@ export const Overview: React.FC = () => {
                 </div>
               </motion.section>
             )}
-            </div>
-
-            {/* Recent form removed — trend lives in Match History. */}
-            </>
-            ) : (
-          !isLoading && (
-            <div className="p-4 rounded-xl bg-m3-surface-container-high/40 border border-m3-outline-subtle text-center text-[11px] text-m3-on-surface-variant shrink-0">
-              Open the Riot Client and this tab fills itself — rank, season stats, recent form. No keys, no signup.
-            </div>
-          )
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </motion.div>
   );
 };
