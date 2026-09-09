@@ -154,9 +154,9 @@ export const Overview: React.FC = () => {
     .slice(0, 3);
 
   const topAgent = agents[0] ?? null;
-  const topAgentIcon = topAgent
-    ? Object.values(agentInfo).find((a) => a.name.toLowerCase() === topAgent.agent.toLowerCase())?.icon ?? ''
-    : '';
+  const topAgentMeta = topAgent
+    ? Object.values(agentInfo).find((a) => a.name.toLowerCase() === topAgent.agent.toLowerCase())
+    : null;
   const hitTotal = (S?.headHits ?? 0) + (S?.bodyHits ?? 0) + (S?.legHits ?? 0);
   const bodyPct = hitTotal > 0 ? ((S?.bodyHits ?? 0) / hitTotal) * 100 : 0;
   const legPct = hitTotal > 0 ? ((S?.legHits ?? 0) / hitTotal) * 100 : 0;
@@ -288,12 +288,22 @@ export const Overview: React.FC = () => {
             <motion.section variants={rise} custom={8}
               className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
               <div>
-                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Top Agent</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-display font-bold text-sm text-m3-on-surface">Top Agent</h4>
+                  {topAgentMeta?.role ? (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-medium text-m3-outline">
+                      {topAgentMeta.roleIcon && (
+                        <img src={topAgentMeta.roleIcon} alt="" className="w-3 h-3 object-contain opacity-80" />
+                      )}
+                      <span>{topAgentMeta.role}</span>
+                    </div>
+                  ) : null}
+                </div>
                 {topAgent ? (
                   <div className="flex items-center gap-3">
-                    {topAgentIcon ? (
+                    {topAgentMeta?.icon ? (
                       <img
-                        src={topAgentIcon}
+                        src={topAgentMeta.icon}
                         alt={topAgent.agent}
                         className="w-12 h-12 rounded-lg object-cover bg-emerald-500/10 border border-m3-outline-subtle shrink-0"
                       />
@@ -386,22 +396,32 @@ export const Overview: React.FC = () => {
             {prevActs.length > 0 && (
               <motion.section variants={rise} custom={10}
                 className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
-                <h4 className="font-display font-bold text-sm text-m3-on-surface mb-3">Previous Acts</h4>
-                <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-display font-bold text-sm text-m3-on-surface">Previous Acts</h4>
+                  <span className="text-[10px] text-m3-outline uppercase tracking-wider font-semibold">Competitive History</span>
+                </div>
+                <div className="flex flex-col gap-2.5 flex-1 justify-around">
                   {prevActs.map((s) => {
                     const prev = trnPrev[s.id.toLowerCase()];
                     return (
-                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/60 border border-m3-outline-subtle/60 p-2.5 flex items-center gap-3">
+                      <div key={s.id} className="rounded-xl bg-m3-surface-container-low/70 border border-m3-outline-subtle/60 p-2.5 flex items-center gap-3">
                         {tierIcons[s.tier] ? (
                           <img src={tierIcons[s.tier]} alt={tierName(s.tier)} className="w-10 h-10 object-contain shrink-0" />
                         ) : null}
                         <div className="flex-1 min-w-0">
-                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-m3-outline">
-                            {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-m3-outline truncate">
+                              {shortAct(seasonNames[s.id.toLowerCase()] ?? 'Past act')}
+                            </span>
+                            {prev ? (
+                              <span className="font-mono text-[11px] font-bold text-m3-primary tabular-nums">
+                                K/D {prev.kd.toFixed(2)}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="font-display font-extrabold text-sm text-m3-on-surface">{tierName(s.tier)}</div>
                           <div className="font-mono text-[11px] text-m3-outline tabular-nums">
-                            {prev ? `K/D ${prev.kd.toFixed(2)} • ${prev.matches} games` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
+                            {prev ? `${prev.matches} matches played` : `${s.wins}W–${Math.max(0, s.games - s.wins)}L • ${s.games} games`}
                           </div>
                         </div>
                       </div>

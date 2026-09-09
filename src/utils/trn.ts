@@ -69,12 +69,26 @@ export interface TrnActStats {
   avatarUrl: string;
 }
 
+// In-memory cache for root profiles (10 min TTL)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const profileCache = new Map<string, { at: number; data: any }>();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getRootProfile(name: string, tag: string): Promise<any> {
+  const key = `${name.toLowerCase()}#${tag.toLowerCase()}`;
+  const hit = profileCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const j: any = await trnGet(riotId(name, tag));
+  profileCache.set(key, { at: Date.now(), data: j });
+  return j;
+}
+
 /** Current-season overview segment straight from TRN (act-wide, ties included). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function pickSeasonSegment(j: any, seasonId: string): any | null {
   const segs = Array.isArray(j?.data?.segments) ? j.data.segments : [];
   if (seasonId) {
-    // Strict: a wrong act's numbers are worse than none (caller falls back).
     const sid = seasonId.toLowerCase();
     return (
       segs.find(
@@ -99,11 +113,7 @@ function stat(seg: any, key: string): number {
 /** Raw season segment for any playlist/season (drives stats + agents parsing). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchSeasonSeg(name: string, tag: string, playlist: string, seasonId: string): Promise<any> {
-  if (playlist === 'competitive' && !seasonId) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const j: any = await trnGet(riotId(name, tag));
-    return pickSeasonSegment(j, '');
-  }
+  const sid = seasonId.toLowerCase();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const j: any = await trnGet(
     `${riotId(name, tag)}/segments/season?playlist=${encodeURIComponent(playlist)}${seasonId ? `&seasonId=${encodeURIComponent(seasonId)}` : ''}&source=web`
@@ -112,7 +122,7 @@ async function fetchSeasonSeg(name: string, tag: string, playlist: string, seaso
   const hit = seasonId
     ? segs.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (s: any) => s?.type === 'season' && String(s?.attributes?.seasonId ?? '').toLowerCase() === seasonId.toLowerCase()
+        (s: any) => s?.type === 'season' && String(s?.attributes?.seasonId ?? '').toLowerCase() === sid
       )
     : segs.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,22 +141,21 @@ export async function fetchTrnActStats(
 ): Promise<{ stats: TrnActStats; defaultSeason: string; countryCode: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let seg: any = null;
-  let avatarUrl = '';
-  let defaultSeason = '';
-  let countryCode = '';
-  if (playlist === 'competitive' && !seasonId) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const j: any = await trnGet(riotId(name, tag));
-    seg = pickSeasonSegment(j, '');
-    avatarUrl = String(j?.data?.platformInfo?.avatarUrl ?? '');
-    defaultSeason = String(j?.data?.metadata?.defaultSeason ?? '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    countryCode = String((j as any)?.data?.userInfo?.countryCode ?? '');
-  } else {
+  // Always fetch/pull root profile so avatarUrl and countryCode are never missing
+  const root = await getRootProfile(name, tag).catch(() => null);
+  const avatarUrl = String(root?.data?.platformInfo?.avatarUrl ?? '');
+  const defaultSeason = String(root?.data?.metadata?.defaultSeason ?? '');
+  const countryCode = String(root?.data?.userInfo?.countryCode ?? '');
+
+  if (playlist === 'competitive') {
+    seg = pickSeasonSegment(root, seasonId);
+  }
+  if (!seg) {
     const r = await fetchSeasonSeg(name, tag, playlist, seasonId);
     seg = r.seg;
   }
   if (!seg) throw new Error('TRN no season segment.');
+
   const kills = stat(seg, 'kills');
   const deaths = stat(seg, 'deaths');
   return {
