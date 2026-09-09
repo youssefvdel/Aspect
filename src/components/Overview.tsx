@@ -392,33 +392,27 @@ export const Overview: React.FC = () => {
                 <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-m3-on-surface mb-2.5">Tracker score</h4>
                 <div className="flex items-center gap-2.5">
                   <ScoreBadge tier={scoreTier(trn.trnScore).tier} size={56} />
-                  <div>
-                    <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums leading-none">{trn.trnScore}</div>
-                    <div className="font-display font-extrabold text-sm tabular-nums leading-tight"
-                      style={{ color: scoreTier(trn.trnScore).color }}>
-                      {scoreTier(trn.trnScore).tier}
-                    </div>
-                  </div>
-                  <div className="text-[9px] text-m3-outline leading-snug ml-auto max-w-32">
-                    Performance rating relative to your skill range.
+                  <div className="font-display font-black text-2xl text-m3-on-surface tabular-nums">{trn.trnScore}</div>
+                  <div className="text-[9px] text-m3-outline leading-snug ml-auto max-w-36">
+                    Performance rating relative to others players in your skill range.
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mt-2.5">
+                <div className="grid grid-cols-4 mt-2.5 border-t border-m3-outline-subtle/60 pt-2.5">
                   {[
                     { label: 'Round Win %', v: trn.roundWinPct.toFixed(1) + '%', p: trn.roundWinPctile },
                     { label: 'KAST', v: trn.kast.toFixed(1) + '%', p: trn.kastPctile },
                     { label: 'ACS', v: trn.acs.toFixed(1), p: trn.acsPctile },
-                    { label: 'DDΔ/R', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.ddPctile },
-                  ].map((s) => {
+                    { label: 'DDΔ/Round', v: String(Math.round(trn.damageDelta / Math.max(1, trn.rounds))), p: trn.ddPctile },
+                  ].map((s, i) => {
                     const g = gradeFor(s.p);
                     const gc = (
                       { S: '#40c4ff', A: '#3ddc84', B: '#e8b73a', C: '#9fb2c8', D: '#c98a94' } as Record<string, string>
                     )[g];
                     return (
-                      <div key={s.label}>
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">{s.label}</div>
-                        <div className="text-[13px] font-mono font-bold text-m3-on-surface">{s.v}</div>
-                        <div className="text-[9px] font-mono font-bold" style={{ color: gc }}>
+                      <div key={s.label} className={`text-center px-1 ${i > 0 ? 'border-l border-m3-outline-subtle/60' : ''}`}>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-m3-outline truncate">{s.label}</div>
+                        <div className="text-[15px] font-mono font-bold text-m3-on-surface">{s.v}</div>
+                        <div className="text-[9px] font-mono font-bold truncate" style={{ color: gc }}>
                           {s.p > 0 ? `${g} - ${pctLabel(s.p)}` : ''}
                         </div>
                       </div>
