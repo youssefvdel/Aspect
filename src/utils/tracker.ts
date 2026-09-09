@@ -319,7 +319,6 @@ export async function detectRegion(): Promise<string> {
   return 'eu';
 }
 
-/** Queue label + total match count (history entries are ID-only). */
 export async function fetchHistoryMeta(
   region: string,
   start: number,

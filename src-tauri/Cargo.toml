@@ -36,4 +36,5 @@ windows = { version = "0.58", features = [
 ] }
 tauri-plugin-mcp-bridge = "0.13.0"
 ini-preserve = "0.1.3"
+wreq = "0.16.1"
 
