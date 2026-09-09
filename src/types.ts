@@ -106,10 +106,12 @@ export interface TrackerProfile {
   region: string;
   puuid: string;
   rank: string;
+  tier: number;
   rr: number;
   peak: string;
   wins: number;
   games: number;
+  currentSeasonId: string;
   seasons: { id: string; games: number; wins: number; tier: number }[];
 }
 

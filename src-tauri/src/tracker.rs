@@ -82,7 +82,8 @@ pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
     Ok(LocalRiotAccount {
         game_name: game_name.to_string(),
         tagline: v
-            .get("tagline")
+            .get("tag_line")
+            .or_else(|| v.get("tagline"))
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string(),

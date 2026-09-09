@@ -135,17 +135,19 @@ async function riotGet(host: string, path: string): Promise<any> {
   }
 }
 
-let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string> } | null = null;
+let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string> } | null = null;
 
-/** Map/agent/season display names via public valorant-api.com, cached 30 days. */
-export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string> }> {
+const GAME_DATA_KEY = 'aspect_game_data_v2';
+
+/** Static Riot metadata via public valorant-api.com, cached 30 days. */
+export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string> }> {
   if (gameDataMem) return gameDataMem;
   try {
-    const raw = localStorage.getItem('aspect_game_data');
+    const raw = localStorage.getItem(GAME_DATA_KEY);
     if (raw) {
       const { savedAt, data } = JSON.parse(raw);
-      if (Date.now() - savedAt < 30 * 24 * 3600 * 1000 && data?.agents) {
-        gameDataMem = { agents: data.agents, maps: data.maps ?? {}, seasons: data.seasons ?? {} };
+      if (Date.now() - savedAt < 30 * 24 * 3600 * 1000 && data?.agents && data?.tierIcons) {
+        gameDataMem = { agents: data.agents, maps: data.maps ?? {}, seasons: data.seasons ?? {}, seasonOrder: data.seasonOrder ?? [], tierIcons: data.tierIcons };
         return gameDataMem;
       }
     }
@@ -153,12 +155,15 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
   const agents: Record<string, string> = {};
   const maps: Record<string, string> = {};
   const seasons: Record<string, string> = {};
+  let seasonOrder: string[] = [];
+  const tierIcons: Record<number, string> = {};
   try {
-    const [aj, mj, cs, sn] = await Promise.all([
+    const [aj, mj, cs, sn, ct] = await Promise.all([
       fetch('https://valorant-api.com/v1/agents?isPlayableCharacter=true').then((r) => r.json()),
       fetch('https://valorant-api.com/v1/maps').then((r) => r.json()),
       fetch('https://valorant-api.com/v1/seasons/competitive').then((r) => r.json()),
       fetch('https://valorant-api.com/v1/seasons').then((r) => r.json()),
+      fetch('https://valorant-api.com/v1/competitivetiers').then((r) => r.json()),
     ]);
     for (const a of aj?.data ?? []) {
       if (a?.uuid && a?.displayName) agents[String(a.uuid).toLowerCase()] = a.displayName;
@@ -174,7 +179,8 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
     for (const s of sn?.data ?? []) {
       if (s?.uuid && s?.displayName) names[String(s.uuid).toLowerCase()] = s.displayName;
     }
-    for (const c of cs?.data ?? []) {
+    const compList = Array.isArray(cs?.data) ? cs.data : [];
+    for (const c of compList) {
       const cuuid = String(c?.uuid ?? '').toLowerCase();
       const suuid = String(c?.seasonUuid ?? '').toLowerCase();
       if (!cuuid) continue;
@@ -182,9 +188,21 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
       const ep = /Episode(V\d+)/i.exec(String(c?.assetPath ?? ''))?.[1] ?? '';
       seasons[cuuid] = [ep, act].filter(Boolean).join(' · ') || 'Season';
     }
-    localStorage.setItem('aspect_game_data', JSON.stringify({ savedAt: Date.now(), data: { agents, maps, seasons } }));
+    seasonOrder = compList
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .slice().sort((a: any, b: any) => String(b?.endTime ?? '').localeCompare(String(a?.endTime ?? '')))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => String(c?.uuid ?? '').toLowerCase()).filter(Boolean);
+    // newest tier set wins; tier id matches Riot's numbering 0–27.
+    const sets = Array.isArray(ct?.data) ? ct.data : [];
+    const tiers = sets.length > 0 ? sets[sets.length - 1]?.tiers ?? [] : [];
+    for (const t of tiers) {
+      const id = Number(t?.tier);
+      if (Number.isInteger(id) && t?.largeIcon) tierIcons[id] = String(t.largeIcon);
+    }
+    localStorage.setItem(GAME_DATA_KEY, JSON.stringify({ savedAt: Date.now(), data: { agents, maps, seasons, seasonOrder, tierIcons } }));
   } catch {}
-  gameDataMem = { agents, maps, seasons };
+  gameDataMem = { agents, maps, seasons, seasonOrder, tierIcons };
   return gameDataMem;
 }
 
@@ -197,6 +215,7 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
   const ent = await getEntitlements();
   const j = await riotGet(shardFor(region), `/mmr/v1/players/${ent.puuid}`);
   const latest = j?.LatestCompetitiveUpdate ?? {};
+  const currentSeasonId = String(latest?.SeasonID ?? '').toLowerCase();
   const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
   let wins = 0;
   let games = 0;
@@ -215,16 +234,27 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
     peakTier = Math.max(peakTier, t);
   }
   const tierId = Number(latest?.TierAfterUpdate ?? 0);
+  // Wins/games belong to the CURRENT act (Riot tells us which). Fall back to busiest.
+  if (currentSeasonId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cur = (Object.entries(seasons) as [string, any][]).find(([id]) => String(id).toLowerCase() === currentSeasonId)?.[1];
+    if (cur && Number(cur?.NumberOfGames ?? 0) > 0) {
+      games = Number(cur.NumberOfGames);
+      wins = Number(cur?.NumberOfWins ?? 0);
+    }
+  }
   return {
     name,
     tag,
     region,
     puuid: ent.puuid,
     rank: tierName(tierId),
+    tier: tierId,
     rr: Number(latest?.RankedRatingAfterUpdate ?? 0),
     peak: peakTier > 0 ? tierName(peakTier) : '—',
     wins,
     games,
+    currentSeasonId,
     seasons: per.filter((s) => s.games > 0).sort((a, b) => b.games - a.games),
   };
 }

@@ -16,6 +16,8 @@ export interface TrackerData {
   queueById: Record<string, string>;
   mapById: Record<string, string>;
   seasonNames: Record<string, string>;
+  seasonOrder: string[];
+  tierIcons: Record<number, string>;
   isLoading: boolean;
   banner: string | null;
   setBanner: (m: string | null) => void;
@@ -29,6 +31,8 @@ export function useTrackerData(): TrackerData {
   const [queueById, setQueueById] = useState<Record<string, string>>({});
   const [mapById, setMapById] = useState<Record<string, string>>({});
   const [seasonNames, setSeasonNames] = useState<Record<string, string>>({});
+  const [seasonOrder, setSeasonOrder] = useState<string[]>([]);
+  const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const autoTried = useRef(false);
@@ -60,6 +64,8 @@ export function useTrackerData(): TrackerData {
       setMapById(mm);
       setQueueById(meta.queueById);
       setSeasonNames(gd.seasons);
+      setSeasonOrder(gd.seasonOrder);
+      setTierIcons(gd.tierIcons);
     } catch (e) {
       setBanner(String(e instanceof Error ? e.message : e));
     } finally {
@@ -73,5 +79,5 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  return { profile, games, queueById, mapById, seasonNames, isLoading, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, isLoading, banner, setBanner, refresh };
 }
