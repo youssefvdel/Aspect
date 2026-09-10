@@ -307,6 +307,11 @@ export const OverlayView: React.FC = () => {
   // Sync edit mode and config changes from main app
   useEffect(() => {
     getOverlayEditMode().then(setIsEditMode).catch(() => {});
+    // Fresh mounts (HMR reload, navigation, first show) start from a blank
+    // surface with nothing dirtying transparent regions — repaint now and
+    // once more after first paint settles, or stale white survives.
+    forceRepaint();
+    const mountRepaint = setTimeout(forceRepaint, 600);
     const unlistenEdit = listen<boolean>('overlay-edit-mode-changed', (event) => {
       setIsEditMode(event.payload);
       forceRepaint();
@@ -319,6 +324,7 @@ export const OverlayView: React.FC = () => {
       setTimeout(forceRepaint, 350);
     });
     return () => {
+      clearTimeout(mountRepaint);
       unlistenEdit.then((fn) => fn()).catch(() => {});
       unlistenCfg.then((fn) => fn()).catch(() => {});
       unlistenDisp.then((fn) => fn()).catch(() => {});
