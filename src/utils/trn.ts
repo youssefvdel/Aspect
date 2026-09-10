@@ -12,15 +12,102 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/* ------------------------------------------------------------------ *
+ * tracker.gg request gate
+ *
+ * tracker.gg has no API key and sits behind Cloudflare. Bursty traffic earns
+ * HTTP 429 (Cloudflare Error 1015, "you are being rate limited") and, if we
+ * keep firing, 403 bot-blocks. Recon easily bursts: a refresh pulls the
+ * profile, act stats, agents, maps and three previous acts; the live-match
+ * poll fires a call per lobby player; and TrackerAgents/TrackerMaps fan out
+ * with Promise.all over several acts at once. Caches were in-memory only, so
+ * every reload re-fetched everything.
+ *
+ * Every request funnels through trnGet, so the gate lives there: requests are
+ * serialised with a minimum gap, and a 429/403 puts us in exponential
+ * cooldown so the limit is not extended by continued hammering.
+ * ------------------------------------------------------------------ */
+const TRN_MIN_GAP_MS = 750;
+/** Cool-off after a rate-limit response: 1m, 2m, 4m, 8m, capped at 16m. */
+const TRN_COOLDOWN_BASE_MS = 60 * 1000;
+const TRN_COOLDOWN_MAX_MS = 16 * 60 * 1000;
+
+let trnNextSlot = 0;
+let trnCooldownUntil = 0;
+let trnCooldownStep = 0;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** ms left before tracker.gg will be tried again; 0 when ready. */
+export function trnCooldownRemainingMs(): number {
+  return Math.max(0, trnCooldownUntil - Date.now());
+}
+
 async function trnGet(path: string): Promise<unknown> {
   if (!isTauri()) throw new Error('TRN needs the desktop app.');
-  const raw = await invoke<string>('trn_get', { path });
+
+  const cooling = trnCooldownRemainingMs();
+  if (cooling > 0) {
+    // Fail fast: during cooldown we must not touch the network at all.
+    throw new Error(`TRN_RATE_LIMITED ${Math.ceil(cooling / 1000)}s`);
+  }
+
+  // Serialise: claim the next slot, then wait for it. Concurrent callers queue
+  // up behind each other instead of bursting.
+  const slot = Math.max(Date.now(), trnNextSlot);
+  trnNextSlot = slot + TRN_MIN_GAP_MS;
+  const wait = slot - Date.now();
+  if (wait > 0) await sleep(wait);
+
+  let raw: string;
+  try {
+    raw = await invoke<string>('trn_get', { path });
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes('429') || msg.includes('403') || msg.includes('1015')) {
+      trnCooldownStep = Math.min(trnCooldownStep + 1, 4);
+      trnCooldownUntil = Date.now() + Math.min(TRN_COOLDOWN_MAX_MS, TRN_COOLDOWN_BASE_MS * 2 ** (trnCooldownStep - 1));
+    }
+    throw new Error(msg);
+  }
+  // A clean response means we are welcome again.
+  trnCooldownStep = 0;
+  trnCooldownUntil = 0;
+
   try {
     return JSON.parse(raw);
   } catch {
     throw new Error('TRN bad JSON.');
   }
 }
+
+/* ---------- persistent caches -------------------------------------- *
+ * TRN act/agent/map data only changes when a match ends, so it is worth
+ * surviving a reload. Persisting also means a restart no longer re-fetches
+ * everything and re-trips the rate limit. */
+
+const TRN_CACHE_PREFIX = 'recon_trn_cache_v1';
+
+function readPersisted<T>(key: string, ttlMs: number): T | null {
+  try {
+    const raw = localStorage.getItem(`${TRN_CACHE_PREFIX}:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at: number; data: T };
+    if (!parsed?.at || Date.now() - parsed.at > ttlMs) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writePersisted<T>(key: string, data: T): void {
+  try {
+    localStorage.setItem(`${TRN_CACHE_PREFIX}:${key}`, JSON.stringify({ at: Date.now(), data }));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 
 const riotId = (name: string, tag: string): string =>
   `/api/v2/valorant/standard/profile/riot/${encodeURIComponent(name)}%23${encodeURIComponent(tag)}`;
@@ -74,13 +161,22 @@ export interface TrnActStats {
 const profileCache = new Map<string, { at: number; data: any }>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* Root profiles barely change; 6h keeps restarts from re-fetching everything. */
+const PROFILE_TTL_MS = 6 * 60 * 60 * 1000;
+
 async function getRootProfile(name: string, tag: string): Promise<any> {
   const key = `${name.toLowerCase()}#${tag.toLowerCase()}`;
   const hit = profileCache.get(key);
-  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+  if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.data;
+  const persisted = readPersisted<any>(`profile:${key}`, PROFILE_TTL_MS);
+  if (persisted) {
+    profileCache.set(key, { at: Date.now(), data: persisted });
+    return persisted;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const j: any = await trnGet(riotId(name, tag));
   profileCache.set(key, { at: Date.now(), data: j });
+  writePersisted(`profile:${key}`, j);
   return j;
 }
 
@@ -116,11 +212,20 @@ const seasonSegCache = new Map<string, { at: number; data: any }>();
 
 /** Raw season segment for any playlist/season (drives stats + agents parsing). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/** Season segments change only when a match ends — cache them hard. */
+const SEASON_SEG_TTL_MS = 6 * 60 * 60 * 1000;
+
 async function fetchSeasonSeg(name: string, tag: string, playlist: string, seasonId: string): Promise<any> {
   const sid = seasonId.toLowerCase();
   const cacheKey = `${name.toLowerCase()}#${tag.toLowerCase()}_${playlist}_${sid}`;
   const hit = seasonSegCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+  if (hit && Date.now() - hit.at < SEASON_SEG_TTL_MS) return hit.data;
+  // Survive reloads: a restart must not re-request every act we already hold.
+  const persisted = readPersisted<any>(`season:${cacheKey}`, SEASON_SEG_TTL_MS);
+  if (persisted) {
+    seasonSegCache.set(cacheKey, { at: Date.now(), data: persisted });
+    return persisted;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const j: any = await trnGet(
@@ -139,6 +244,7 @@ async function fetchSeasonSeg(name: string, tag: string, playlist: string, seaso
   if (!targetSeg) throw new Error('TRN no season segment.');
   const result = { seg: targetSeg, data: j?.data };
   seasonSegCache.set(cacheKey, { at: Date.now(), data: result });
+  writePersisted(`season:${cacheKey}`, result);
   return result;
 }
 

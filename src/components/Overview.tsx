@@ -3,7 +3,13 @@ import { motion } from 'framer-motion';
 import { AlertTriangle, Check, Gamepad2, Lock, RefreshCw } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
-import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
+import {
+  fetchTrnActStats,
+  fetchTrnAgents,
+  trnCooldownRemainingMs,
+  type TrnActStats,
+  type TrnAgentStat,
+} from '../utils/trn';
 import killsIcon from '../assets/icons/kills.png';
 import firstbloodsIcon from '../assets/icons/firstbloods.png';
 import acesIcon from '../assets/icons/aces.png';
@@ -148,8 +154,13 @@ export const Overview: React.FC = () => {
     ]).then(([st, ag]) => {
       if (!live) return;
       if (!st) {
-        // Say so. Do NOT fall back to the live act's numbers.
-        setSelError('tracker.gg did not return stats for this act (rate-limited or unavailable).');
+        // Say so, with the real reason. Do NOT fall back to the live act's numbers.
+        const cooling = trnCooldownRemainingMs();
+        setSelError(
+          cooling > 0
+            ? `tracker.gg rate-limited us — retrying in ${Math.ceil(cooling / 60000)} min.`
+            : 'tracker.gg did not return stats for this act.'
+        );
         setSelLoading(false);
         return;
       }
