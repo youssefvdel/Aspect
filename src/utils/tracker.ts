@@ -259,6 +259,26 @@ async function resolveVersion(): Promise<string> {
   return '';
 }
 
+/* Global gate for Riot's local API: one choke point so every caller
+   (match details, MMR, history, 24h tracker) shares a single concurrency cap.
+   Bursting spawns one curl process per call, which tanks the machine. */
+const RIOT_CONCURRENCY = 6;
+let riotActive = 0;
+const riotQueue: Array<() => void> = [];
+async function withRiotSlot<R>(fn: () => Promise<R>): Promise<R> {
+  if (riotActive >= RIOT_CONCURRENCY) {
+    await new Promise<void>((resolve) => riotQueue.push(resolve));
+  }
+  riotActive++;
+  try {
+    return await fn();
+  } finally {
+    riotActive--;
+    const next = riotQueue.shift();
+    if (next) next();
+  }
+}
+
 /** Authed Riot GET from Rust (browser origins are blocked). Refetches entitlements once on expiry. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function riotGet(host: string, path: string): Promise<any> {
@@ -274,11 +294,11 @@ async function riotGet(host: string, path: string): Promise<any> {
     });
   };
   try {
-    return JSON.parse(await call(await getEntitlements()));
+    return JSON.parse(await withRiotSlot(async () => call(await getEntitlements())));
   } catch (e) {
     if (String(e).includes('RIOT_EXPIRED')) {
       clearEntitlements();
-      return JSON.parse(await call(await getEntitlements()));
+      return JSON.parse(await withRiotSlot(async () => call(await getEntitlements())));
     }
     throw e;
   }
@@ -1071,24 +1091,6 @@ function persistResultTable(): void {
   }, 1500);
 }
 
-/** Global gate: Riot's local API dislikes bursts, and match-details is heavy. */
-const DETAIL_CONCURRENCY = 6;
-let detailActive = 0;
-const detailQueue: Array<() => void> = [];
-async function withDetailSlot<R>(fn: () => Promise<R>): Promise<R> {
-  if (detailActive >= DETAIL_CONCURRENCY) {
-    await new Promise<void>((resolve) => detailQueue.push(resolve));
-  }
-  detailActive++;
-  try {
-    return await fn();
-  } finally {
-    detailActive--;
-    const next = detailQueue.shift();
-    if (next) next();
-  }
-}
-
 /** Compact W/L lookup for one match+player. Returns 1 win, 0 loss, null unknown. */
 async function fetchLiteMatchResult(
   region: string,
@@ -1098,36 +1100,32 @@ async function fetchLiteMatchResult(
   const table = loadResultTable();
   const known = table[matchId]?.[puuid];
   if (known !== undefined) return known;
-  return withDetailSlot(async () => {
-    // Re-check inside the slot: another caller may have filled it while we queued.
-    const fresh = loadResultTable()[matchId]?.[puuid];
-    if (fresh !== undefined) return fresh;
-    try {
-      const j = await riotGet(shardFor(region), `/match-details/v1/matches/${matchId}`);
-      const scores: Record<string, number> = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const t of (Array.isArray(j?.teams) ? j.teams : []) as any[]) {
-        scores[normTeam(t?.teamId)] = Number(t?.roundsWon ?? 0);
-      }
-      const row: Record<string, 1 | 0> = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const p of (Array.isArray(j?.players) ? j.players : []) as any[]) {
-        const sub = String(p?.subject ?? '');
-        if (!sub) continue;
-        const tm = normTeam(p?.teamId);
-        const opp = Object.keys(scores).find((k) => k !== tm);
-        const mine = scores[tm] ?? 0;
-        const theirs = opp ? scores[opp] ?? 0 : 0;
-        row[sub] = mine > theirs ? 1 : 0;
-      }
-      if (Object.keys(row).length === 0) return null;
-      loadResultTable()[matchId] = row;
-      persistResultTable();
-      return row[puuid] ?? null;
-    } catch {
-      return null;
+  try {
+    // riotGet itself is globally gated, so no extra slot here.
+    const j = await riotGet(shardFor(region), `/match-details/v1/matches/${matchId}`);
+    const scores: Record<string, number> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const t of (Array.isArray(j?.teams) ? j.teams : []) as any[]) {
+      scores[normTeam(t?.teamId)] = Number(t?.roundsWon ?? 0);
     }
-  });
+    const row: Record<string, 1 | 0> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const p of (Array.isArray(j?.players) ? j.players : []) as any[]) {
+      const sub = String(p?.subject ?? '');
+      if (!sub) continue;
+      const tm = normTeam(p?.teamId);
+      const opp = Object.keys(scores).find((k) => k !== tm);
+      const mine = scores[tm] ?? 0;
+      const theirs = opp ? scores[opp] ?? 0 : 0;
+      row[sub] = mine > theirs ? 1 : 0;
+    }
+    if (Object.keys(row).length === 0) return null;
+    loadResultTable()[matchId] = row;
+    persistResultTable();
+    return row[puuid] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Run an async mapper over items with a hard concurrency cap. */

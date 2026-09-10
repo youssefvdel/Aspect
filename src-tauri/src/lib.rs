@@ -588,13 +588,19 @@ pub fn trim_working_set() {
 }
 
 #[tauri::command]
-fn check_app_updates() -> Result<updater::UpdateInfo, String> {
-    updater::check_for_updates()
+async fn check_app_updates() -> Result<updater::UpdateInfo, String> {
+    // Network call — never on the main thread, or every check freezes the UI.
+    tauri::async_runtime::spawn_blocking(updater::check_for_updates)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
-fn install_app_update(download_url: String) -> Result<String, String> {
-    updater::download_and_install_update(&download_url)
+async fn install_app_update(download_url: String) -> Result<String, String> {
+    // Downloads + swaps the binary: must stay off the UI thread.
+    tauri::async_runtime::spawn_blocking(move || updater::download_and_install_update(&download_url))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]

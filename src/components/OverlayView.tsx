@@ -515,6 +515,7 @@ export const OverlayView: React.FC = () => {
   // (agent select lasts ~60s+, so a 13s worst-case detect delay is fine).
   const phaseRef = useRef<string>('idle');
   const idleSkips = useRef(0);
+  const ticking = useRef(false);
   useEffect(() => {
     gameData()
       .then((d) => {
@@ -526,16 +527,22 @@ export const OverlayView: React.FC = () => {
 
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      // A slow Riot round-trip must not let setInterval stack overlapping polls.
+      if (ticking.current) return;
       if (phaseRef.current === 'idle') {
         idleSkips.current = (idleSkips.current + 1) % 3;
         if (idleSkips.current !== 0) return;
       }
+      ticking.current = true;
       fetchLiveMatchState()
         .then((s) => {
           phaseRef.current = s.phase;
           setMatchState(s);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          ticking.current = false;
+        });
     };
 
     const onVis = () => {

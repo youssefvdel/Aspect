@@ -260,8 +260,34 @@ fn trn_get_blocking(path: String) -> Result<String, String> {
 
 /// Generic authed GET against Riot's servers. Tokens stay in arguments;
 /// the raw body returns so the frontend parses defensively.
+///
+/// Async + spawn_blocking: a synchronous command runs on Tauri's main thread,
+/// so every curl would stall the webview. The 24h tracker fires dozens of these
+/// per lobby — on the main thread that froze the whole UI.
 #[tauri::command]
-pub fn riot_direct_get(
+pub async fn riot_direct_get(
+    host: String,
+    path: String,
+    access_token: String,
+    entitlements: String,
+    client_platform: String,
+    client_version: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        riot_direct_get_blocking(
+            host,
+            path,
+            access_token,
+            entitlements,
+            client_platform,
+            client_version,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
+}
+
+fn riot_direct_get_blocking(
     host: String,
     path: String,
     access_token: String,
@@ -283,7 +309,7 @@ pub fn riot_direct_get(
             "--connect-timeout",
             "2",
             "--max-time",
-            "4",
+            "6",
             "-H",
             &format!("Authorization: Bearer {}", access_token),
             "-H",
