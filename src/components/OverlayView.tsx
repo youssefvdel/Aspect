@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Trophy, EyeOff, Swords, Clock, Zap, AlertTriangle } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Trophy, EyeOff, Swords, Clock, AlertTriangle } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
-import { computeMapAgentStats, BLITZ_MAP_META, type AgentStatSummary } from '../utils/mapMeta';
+import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -431,11 +431,13 @@ export const OverlayView: React.FC = () => {
   // 2. Check if user has an agent on this map with >= 50% win rate
   const hasWinningAgentOnMap = mapAgentStats.some((s) => s.matches >= 2 && s.winPct >= 50);
 
-  // 3. Authoritative Blitz.gg meta picks for this map
-  const blitzMetaPicks = BLITZ_MAP_META[normActiveMap] || BLITZ_MAP_META.ascent;
+  // 3. Rank-tuned map meta picks
+  const userTier = profile?.tier || 22;
+  const rankTierLabel = getRankTierLabel(userTier);
+  const metaPicks = getMapMetaPicks(normActiveMap, userTier);
 
-  // Decide whether to show Blitz recommendations or personal stats
-  const showBlitzMeta = viewMode === 'blitz' || (viewMode === 'auto' && !hasWinningAgentOnMap);
+  // Decide whether to show meta recommendations or personal stats
+  const showMetaPicks = viewMode === 'blitz' || (viewMode === 'auto' && !hasWinningAgentOnMap);
 
   const topAgentsList: AgentStatSummary[] =
     mapAgentStats.length > 0
@@ -1309,37 +1311,30 @@ export const OverlayView: React.FC = () => {
             {/* Header with Map name & Mode toggle */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
-                {showBlitzMeta ? (
-                  <Zap className="w-3.5 h-3.5 text-m3-mint" />
-                ) : (
-                  <Trophy className="w-3.5 h-3.5 text-m3-gold" />
-                )}
+                <Trophy className="w-3.5 h-3.5 text-m3-gold shrink-0" />
                 <span className="font-display font-black text-white text-xs tracking-wider uppercase truncate">
-                  {activeMapName} • {showBlitzMeta ? 'Blitz Meta' : 'Your Top Picks'}
+                  {activeMapName} • {showMetaPicks ? 'Recommended' : 'Your Top Picks'}
                 </span>
               </div>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => setViewMode(showBlitzMeta ? 'personal' : 'blitz')}
+                  onClick={() => setViewMode(showMetaPicks ? 'personal' : 'blitz')}
                   className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-[9px] font-mono font-bold uppercase shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
-                  title="Toggle between your map stats and Blitz.gg recommended tier list"
+                  title="Toggle between your map stats and rank recommended picks"
                 >
-                  {showBlitzMeta ? (
+                  {showMetaPicks ? (
                     <span>Your Stats ({mapAgentStats.length})</span>
                   ) : (
-                    <>
-                      <Zap className="w-2.5 h-2.5 text-m3-mint" />
-                      <span>Blitz Meta</span>
-                    </>
+                    <span>Meta ({rankTierLabel})</span>
                   )}
                 </button>
               </div>
             </div>
 
             {/* If user struggles on this map (<50% win rate), show tactical alert */}
-            {!hasWinningAgentOnMap && !showBlitzMeta && (
+            {!hasWinningAgentOnMap && !showMetaPicks && (
               <div className="px-2.5 py-1 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-between text-[10px] font-mono text-amber-200">
                 <div className="flex items-center gap-1.5">
                   <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
@@ -1351,20 +1346,20 @@ export const OverlayView: React.FC = () => {
                   onClick={() => setViewMode('blitz')}
                   className="text-[9px] underline text-amber-300 hover:text-white cursor-pointer font-bold"
                 >
-                  See Blitz Picks
+                  See Recommended
                 </button>
               </div>
             )}
 
             {/* Table / Rows */}
-            {showBlitzMeta ? (
-              /* BLITZ.GG RECOMMENDED S-TIER PICKS FOR THIS MAP */
+            {showMetaPicks ? (
+              /* RECOMMENDED PICKS FOR THIS MAP AND RANK (NO TIPS) */
               <div className="flex flex-col gap-1.5">
-                <div className="px-1 text-[9px] font-mono text-zinc-400 flex items-center justify-between">
-                  <span>Blitz.gg S-Tier Recommendations</span>
-                  <span className="text-m3-mint font-bold">Diamond+ Meta</span>
+                <div className="px-1 text-[9px] font-mono text-zinc-400 flex items-center justify-between border-b border-white/5 pb-1">
+                  <span>Rank-Tuned Meta ({rankTierLabel})</span>
+                  <span className="text-m3-mint font-bold">Tier &amp; Win%</span>
                 </div>
-                {blitzMetaPicks.map((b) => {
+                {metaPicks.map((b) => {
                   const norm = b.agent.toLowerCase();
                   const meta = Object.values(agentMap).find((a) => a.name.toLowerCase() === norm);
                   const icon =
@@ -1376,43 +1371,43 @@ export const OverlayView: React.FC = () => {
                   return (
                     <div
                       key={b.agent}
-                      className="flex flex-col gap-1 px-2.5 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
+                      className="grid grid-cols-[1fr_56px_50px_46px] items-center px-2.5 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {icon ? (
-                            <img
-                              src={icon}
-                              alt=""
-                              draggable={false}
-                              onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = 'none';
-                              }}
-                              className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
-                            />
-                          ) : (
-                            <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
-                              {b.agent.slice(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="flex flex-col min-w-0 leading-tight">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[11px] text-white">{b.agent}</span>
-                              <span className="px-1 py-px rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[7px] font-mono font-bold uppercase">
-                                {b.tier} Tier
-                              </span>
-                            </div>
-                            <span className="text-[8px] font-mono text-zinc-400">{b.role}</span>
+                      <div className="flex items-center gap-2 min-w-0 pr-1">
+                        {icon ? (
+                          <img
+                            src={icon}
+                            alt=""
+                            draggable={false}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                            {b.agent.slice(0, 2).toUpperCase()}
                           </div>
-                        </div>
-                        <div className="flex flex-col items-end leading-none font-mono">
-                          <span className="text-[10px] font-bold text-m3-mint">{b.winRate}% WR</span>
-                          <span className="text-[8px] text-zinc-400 mt-0.5">{b.pickRate}% Pick</span>
+                        )}
+                        <div className="flex flex-col min-w-0 leading-tight">
+                          <span className="font-bold text-[11px] text-white truncate">{b.agent}</span>
+                          <span className="text-[8px] font-mono text-zinc-400 truncate">{b.role}</span>
                         </div>
                       </div>
-                      <span className="text-[9px] font-mono text-zinc-300 leading-tight border-t border-white/5 pt-1 truncate" title={b.reason}>
-                        💡 {b.reason}
-                      </span>
+
+                      <div className="text-center">
+                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[8px] font-mono font-bold uppercase">
+                          {b.tier} Tier
+                        </span>
+                      </div>
+
+                      <div className="text-right font-mono text-[10px] font-bold text-m3-mint" title="Lobby Win Rate">
+                        {b.winRate}%
+                      </div>
+
+                      <div className="text-right font-mono text-[9px] text-zinc-400 font-medium" title="Pick Rate">
+                        {b.pickRate}%
+                      </div>
                     </div>
                   );
                 })}

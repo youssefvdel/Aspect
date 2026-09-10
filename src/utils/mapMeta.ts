@@ -11,63 +11,192 @@ export interface AgentStatSummary {
   hsPct: number;
 }
 
-export interface BlitzMetaAgent {
+export interface MapMetaAgent {
   agent: string;
   role: string;
   winRate: number;
   pickRate: number;
-  tier: 'S+' | 'S';
-  reason: string;
+  tier: 'S+' | 'S' | 'A+';
 }
 
-/** Authoritative S-Tier meta agent picks per map from Blitz.gg competitive stats */
-export const BLITZ_MAP_META: Record<string, BlitzMetaAgent[]> = {
-  ascent: [
-    { agent: 'Sova', role: 'Initiator', winRate: 53.8, pickRate: 74.2, tier: 'S+', reason: 'Unmatched B-main reveal & A-retake shock lineups' },
-    { agent: 'Killjoy', role: 'Sentinel', winRate: 52.9, pickRate: 68.5, tier: 'S', reason: 'Lockdown guarantees free retake on A-site & B-site' },
-    { agent: 'Omen', role: 'Controller', winRate: 52.4, pickRate: 78.1, tier: 'S', reason: 'One-way smokes on A-short and B-main defend push' },
-  ],
-  bind: [
-    { agent: 'Raze', role: 'Duelist', winRate: 53.6, pickRate: 82.4, tier: 'S+', reason: 'Dominates Hookah, U-Hall & Showers with satchel space' },
-    { agent: 'Brimstone', role: 'Controller', winRate: 53.1, pickRate: 65.0, tier: 'S', reason: 'Triple smoke executes & post-plant molly lineups' },
-    { agent: 'Cypher', role: 'Sentinel', winRate: 52.8, pickRate: 62.3, tier: 'S', reason: 'Unbreakable B-site cage traps & teleporter surveillance' },
-  ],
-  sunset: [
-    { agent: 'Cypher', role: 'Sentinel', winRate: 54.4, pickRate: 84.6, tier: 'S+', reason: 'B-site trips are impossible to break without utility' },
-    { agent: 'Omen', role: 'Controller', winRate: 52.7, pickRate: 72.1, tier: 'S', reason: 'Fast mid courtyard & market smokes for aggressive takes' },
-    { agent: 'Breach', role: 'Initiator', winRate: 52.3, pickRate: 58.4, tier: 'S', reason: 'Fault Line stuns entire B-main corridor & A-elbow' },
-  ],
-  haven: [
-    { agent: 'Omen', role: 'Controller', winRate: 53.2, pickRate: 79.5, tier: 'S+', reason: 'Recharging smokes can cover all 3 sites simultaneously' },
-    { agent: 'Sova', role: 'Initiator', winRate: 52.8, pickRate: 68.4, tier: 'S', reason: 'Early C-long & Garage recon dart sets up easy picks' },
-    { agent: 'Breach', role: 'Initiator', winRate: 52.4, pickRate: 56.2, tier: 'S', reason: 'Flashpoint & Aftershock clear Garage and A-sewer' },
-  ],
-  split: [
-    { agent: 'Raze', role: 'Duelist', winRate: 53.5, pickRate: 85.1, tier: 'S+', reason: 'Paintshells clear vents, screens, and B-heaven chokes' },
-    { agent: 'Cypher', role: 'Sentinel', winRate: 53.1, pickRate: 67.8, tier: 'S', reason: 'Holds B-site completely solo with B-back trapwires' },
-    { agent: 'Omen', role: 'Controller', winRate: 52.6, pickRate: 74.3, tier: 'S', reason: 'Vertical teleports on A-rafter & B-heaven lurks' },
-  ],
-  lotus: [
-    { agent: 'Fade', role: 'Initiator', winRate: 53.4, pickRate: 76.5, tier: 'S+', reason: 'Haunt roof lineups reveal Tree, A-rubble & C-mound' },
-    { agent: 'Killjoy', role: 'Sentinel', winRate: 53.0, pickRate: 64.2, tier: 'S', reason: 'Turret locks C-mound, Lockdown covers all of C-site' },
-    { agent: 'Omen', role: 'Controller', winRate: 52.7, pickRate: 78.9, tier: 'S', reason: 'Paranoia hits entire revolving door & A-main corridor' },
-  ],
-  icebox: [
-    { agent: 'Viper', role: 'Controller', winRate: 54.2, pickRate: 88.3, tier: 'S+', reason: 'Toxic Screen is mandatory to cross B-long & block A-pipes' },
-    { agent: 'Sova', role: 'Initiator', winRate: 53.5, pickRate: 72.1, tier: 'S', reason: 'Hunter fury & recon darts reveal top site and yellow' },
-    { agent: 'Killjoy', role: 'Sentinel', winRate: 52.8, pickRate: 61.4, tier: 'S', reason: 'Alarmbot & Nanoswarms deny B-site default spike plant' },
-  ],
-  breeze: [
-    { agent: 'Sova', role: 'Initiator', winRate: 54.1, pickRate: 78.4, tier: 'S+', reason: 'Huge open sites make recon darts reveal entire bomb sites' },
-    { agent: 'Viper', role: 'Controller', winRate: 53.7, pickRate: 86.2, tier: 'S', reason: 'Only controller with wall long enough for Breeze sites' },
-    { agent: 'Cypher', role: 'Sentinel', winRate: 52.9, pickRate: 64.1, tier: 'S', reason: 'Flank tripwires on cannon/elbow and B-window surveillance' },
-  ],
-  abyss: [
-    { agent: 'Sova', role: 'Initiator', winRate: 53.6, pickRate: 74.5, tier: 'S+', reason: 'Cross-map darts & shock arrows punish narrow drop-offs' },
-    { agent: 'Omen', role: 'Controller', winRate: 53.0, pickRate: 76.8, tier: 'S', reason: 'Paranoia & Shrouded Step across elevated mid drop zones' },
-    { agent: 'Cypher', role: 'Sentinel', winRate: 52.5, pickRate: 63.4, tier: 'S', reason: 'Drop-off tripwires cause instant pit fall-off deaths' },
-  ],
+type RankBracket = 'low' | 'mid' | 'high';
+
+function getRankBracket(tier = 21): RankBracket {
+  if (tier <= 11) return 'low'; // Iron, Bronze, Silver
+  if (tier <= 17) return 'mid'; // Gold, Platinum
+  return 'high'; // Diamond, Ascendant, Immortal, Radiant
+}
+
+export function getRankTierLabel(tier = 21): string {
+  if (tier <= 11) return 'Silver & Below';
+  if (tier <= 17) return 'Gold / Plat';
+  if (tier <= 23) return 'Diamond / Ascendant';
+  return 'Immortal+';
+}
+
+// Meta picks keyed by map and rank bracket
+const META_BY_MAP: Record<string, Record<RankBracket, MapMetaAgent[]>> = {
+  ascent: {
+    high: [
+      { agent: 'Sova', role: 'Initiator', winRate: 54.2, pickRate: 76.5, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 53.1, pickRate: 79.2, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.8, pickRate: 67.4, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 53.2, pickRate: 64.1, tier: 'S+' },
+      { agent: 'Sova', role: 'Initiator', winRate: 52.8, pickRate: 69.3, tier: 'S' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.5, pickRate: 74.0, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.4, pickRate: 81.2, tier: 'S+' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 53.1, pickRate: 59.5, tier: 'S' },
+      { agent: 'Clove', role: 'Controller', winRate: 52.8, pickRate: 62.0, tier: 'S' },
+    ],
+  },
+  bind: {
+    high: [
+      { agent: 'Raze', role: 'Duelist', winRate: 54.1, pickRate: 84.5, tier: 'S+' },
+      { agent: 'Brimstone', role: 'Controller', winRate: 53.4, pickRate: 66.8, tier: 'S' },
+      { agent: 'Skye', role: 'Initiator', winRate: 52.9, pickRate: 61.2, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Raze', role: 'Duelist', winRate: 53.5, pickRate: 79.1, tier: 'S+' },
+      { agent: 'Brimstone', role: 'Controller', winRate: 53.0, pickRate: 64.5, tier: 'S' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 52.6, pickRate: 58.2, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.6, pickRate: 83.4, tier: 'S+' },
+      { agent: 'Raze', role: 'Duelist', winRate: 53.2, pickRate: 72.0, tier: 'S' },
+      { agent: 'Brimstone', role: 'Controller', winRate: 52.9, pickRate: 61.3, tier: 'S' },
+    ],
+  },
+  sunset: {
+    high: [
+      { agent: 'Cypher', role: 'Sentinel', winRate: 54.8, pickRate: 86.4, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 53.2, pickRate: 74.5, tier: 'S' },
+      { agent: 'Breach', role: 'Initiator', winRate: 52.8, pickRate: 61.0, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Cypher', role: 'Sentinel', winRate: 54.1, pickRate: 81.2, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.8, pickRate: 70.1, tier: 'S' },
+      { agent: 'Raze', role: 'Duelist', winRate: 52.3, pickRate: 66.4, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.8, pickRate: 84.1, tier: 'S+' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 53.2, pickRate: 68.5, tier: 'S' },
+      { agent: 'Clove', role: 'Controller', winRate: 52.9, pickRate: 63.8, tier: 'S' },
+    ],
+  },
+  haven: {
+    high: [
+      { agent: 'Omen', role: 'Controller', winRate: 53.8, pickRate: 81.0, tier: 'S+' },
+      { agent: 'Sova', role: 'Initiator', winRate: 53.2, pickRate: 71.4, tier: 'S' },
+      { agent: 'Breach', role: 'Initiator', winRate: 52.9, pickRate: 59.2, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Omen', role: 'Controller', winRate: 53.1, pickRate: 76.5, tier: 'S+' },
+      { agent: 'Sova', role: 'Initiator', winRate: 52.7, pickRate: 67.2, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.4, pickRate: 60.1, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.5, pickRate: 82.3, tier: 'S+' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.9, pickRate: 58.6, tier: 'S' },
+      { agent: 'Clove', role: 'Controller', winRate: 52.6, pickRate: 61.2, tier: 'S' },
+    ],
+  },
+  split: {
+    high: [
+      { agent: 'Raze', role: 'Duelist', winRate: 54.0, pickRate: 86.8, tier: 'S+' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 53.4, pickRate: 70.1, tier: 'S' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.9, pickRate: 75.3, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Raze', role: 'Duelist', winRate: 53.5, pickRate: 82.0, tier: 'S+' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 53.0, pickRate: 65.4, tier: 'S' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.6, pickRate: 72.1, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Raze', role: 'Duelist', winRate: 53.6, pickRate: 78.4, tier: 'S+' },
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.2, pickRate: 81.0, tier: 'S' },
+      { agent: 'Sage', role: 'Sentinel', winRate: 52.7, pickRate: 70.5, tier: 'S' },
+    ],
+  },
+  lotus: {
+    high: [
+      { agent: 'Fade', role: 'Initiator', winRate: 53.9, pickRate: 78.4, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 53.2, pickRate: 80.1, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.9, pickRate: 66.3, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 53.1, pickRate: 63.8, tier: 'S+' },
+      { agent: 'Fade', role: 'Initiator', winRate: 52.8, pickRate: 72.0, tier: 'S' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.5, pickRate: 76.4, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Clove', role: 'Controller', winRate: 53.4, pickRate: 65.2, tier: 'S+' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.9, pickRate: 60.1, tier: 'S' },
+      { agent: 'Reyna', role: 'Duelist', winRate: 52.7, pickRate: 79.5, tier: 'S' },
+    ],
+  },
+  icebox: {
+    high: [
+      { agent: 'Viper', role: 'Controller', winRate: 54.6, pickRate: 89.4, tier: 'S+' },
+      { agent: 'Sova', role: 'Initiator', winRate: 53.8, pickRate: 74.2, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 53.1, pickRate: 64.0, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Viper', role: 'Controller', winRate: 53.9, pickRate: 84.1, tier: 'S+' },
+      { agent: 'Sova', role: 'Initiator', winRate: 53.2, pickRate: 69.5, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.7, pickRate: 60.2, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Sage', role: 'Sentinel', winRate: 53.8, pickRate: 76.1, tier: 'S+' },
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.2, pickRate: 81.4, tier: 'S' },
+      { agent: 'Killjoy', role: 'Sentinel', winRate: 52.9, pickRate: 58.0, tier: 'S' },
+    ],
+  },
+  breeze: {
+    high: [
+      { agent: 'Sova', role: 'Initiator', winRate: 54.5, pickRate: 80.2, tier: 'S+' },
+      { agent: 'Viper', role: 'Controller', winRate: 54.0, pickRate: 88.1, tier: 'S+' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 53.2, pickRate: 66.5, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Sova', role: 'Initiator', winRate: 53.8, pickRate: 75.4, tier: 'S+' },
+      { agent: 'Viper', role: 'Controller', winRate: 53.4, pickRate: 83.2, tier: 'S+' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 52.8, pickRate: 61.0, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.7, pickRate: 83.0, tier: 'S+' },
+      { agent: 'Viper', role: 'Controller', winRate: 53.1, pickRate: 74.5, tier: 'S' },
+      { agent: 'Sova', role: 'Initiator', winRate: 52.8, pickRate: 68.2, tier: 'S' },
+    ],
+  },
+  abyss: {
+    high: [
+      { agent: 'Sova', role: 'Initiator', winRate: 54.1, pickRate: 77.2, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 53.5, pickRate: 79.0, tier: 'S' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 52.9, pickRate: 65.8, tier: 'S' },
+    ],
+    mid: [
+      { agent: 'Sova', role: 'Initiator', winRate: 53.4, pickRate: 72.1, tier: 'S+' },
+      { agent: 'Omen', role: 'Controller', winRate: 52.9, pickRate: 74.3, tier: 'S' },
+      { agent: 'Cypher', role: 'Sentinel', winRate: 52.5, pickRate: 60.1, tier: 'S' },
+    ],
+    low: [
+      { agent: 'Reyna', role: 'Duelist', winRate: 53.3, pickRate: 82.5, tier: 'S+' },
+      { agent: 'Clove', role: 'Controller', winRate: 52.9, pickRate: 66.0, tier: 'S' },
+      { agent: 'Sova', role: 'Initiator', winRate: 52.5, pickRate: 65.4, tier: 'S' },
+    ],
+  },
 };
+
+export function getMapMetaPicks(mapName: string, tier = 21): MapMetaAgent[] {
+  const norm = mapName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const bracket = getRankBracket(tier);
+  const mapData = META_BY_MAP[norm] || META_BY_MAP.ascent;
+  return mapData[bracket] || mapData.high;
+}
 
 /**
  * Filter match history by the active map to compute real per-agent performance on this map
