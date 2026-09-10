@@ -1,18 +1,11 @@
 import type { LiveMatchPlayer, LiveMatchState } from '../types';
 
 /**
- * Dev-dashboard helpers. Everything here is gated on IS_DEV, which is true
- * only under `vite dev` — release builds always take the inert path, so the
- * simulators can never fire in production (even with crafted localStorage).
+ * Dev-dashboard flag. Direct static access is REQUIRED — Vite replaces
+ * `import.meta.env.DEV` at compile time; any indirection (aliases, casts
+ * through another variable) survives to runtime where `.env` is undefined.
  */
-export const IS_DEV: boolean = (() => {
-  try {
-    const m = import.meta as unknown as { env?: { DEV?: boolean } };
-    return m.env?.DEV === true;
-  } catch {
-    return false;
-  }
-})();
+export const IS_DEV: boolean = import.meta.env.DEV === true;
 
 export type DevMockPhase = 'off' | 'pregame' | 'coregame' | 'deathmatch';
 export const DEV_MOCK_KEY = 'aspect_dev_mock_match';
