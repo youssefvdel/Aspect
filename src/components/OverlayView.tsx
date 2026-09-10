@@ -631,13 +631,37 @@ export const OverlayView: React.FC = () => {
     window.addEventListener('pointerup', onPointerUp, { passive: false });
   };
 
-  const isLive = matchState && matchState.phase !== 'idle';
   // Phase-split visibility: agent select gets its own big centered panel;
   // the in-match scoreboard renders ONLY while Tab is physically held.
   const isPregame = matchState?.phase === 'pregame';
   const isCoregame = matchState?.phase === 'coregame';
   const showScorePanel = isEditMode || (isCoregame && tabHeld);
   const showPregamePanel = isEditMode || isPregame;
+
+  // Single source of truth for players:
+  // If a live match is detected, always display real players.
+  // Only fall back to PREVIEW_PLAYERS when no game is running (idle).
+  const hasLivePlayers = !!(
+    matchState &&
+    matchState.phase !== 'idle' &&
+    (matchState.blueTeam.length > 0 || matchState.redTeam.length > 0)
+  );
+
+  const yourTeam = hasLivePlayers
+    ? matchState.blueTeam.some((p) => p.isMe)
+      ? matchState.blueTeam
+      : matchState.redTeam.some((p) => p.isMe)
+      ? matchState.redTeam
+      : matchState.blueTeam.length > 0
+      ? matchState.blueTeam
+      : matchState.redTeam
+    : PREVIEW_PLAYERS;
+
+  const enemyTeam = hasLivePlayers
+    ? yourTeam === matchState.blueTeam
+      ? matchState.redTeam
+      : matchState.blueTeam
+    : PREVIEW_OPPONENTS;
   // Scoreboard mounts/unmounts on every Tab press and panels flip on phase
   // changes — repaint after each transition so DWM never keeps a stale
   // white region from the mount/unmount repaint storm.
@@ -1024,68 +1048,37 @@ export const OverlayView: React.FC = () => {
 
             {/* Vertical Compact Teams / Player Stack */}
             <div className="flex flex-col gap-2">
-              {!isLive && isEditMode ? (
-                /* Edit Mode Sample Preview */
+              {matchState?.isDeathmatch ? (
+                /* FFA / Deathmatch — Single unified leaderboard, NOT grouped by teams or groups */
                 <VerticalSquadColumn
-                  title="Team Preview"
-                  tagColor="text-m3-primary"
-                  players={PREVIEW_PLAYERS}
+                  title="Deathmatch"
+                  tagColor="text-m3-gold"
+                  players={matchState.blueTeam}
                   tierIcons={tierIcons}
                 />
-              ) : matchState?.isDeathmatch ? (
-                /* FFA / Deathmatch */
-                <>
-                  <VerticalSquadColumn
-                    title="Deathmatch"
-                    tagColor="text-m3-gold"
-                    players={matchState.blueTeam}
-                    tierIcons={tierIcons}
-                  />
-                  {matchState.redTeam.length > 0 && (
-                    <VerticalSquadColumn
-                      title="Group 2"
-                      tagColor="text-m3-gold"
-                      players={matchState.redTeam}
-                      tierIcons={tierIcons}
-                    />
-                  )}
-                </>
               ) : (
-                /* Standard Competitive / 5v5 Stack */
+                /* Standard Match Stack — Your Team vs Enemy Team */
                 <>
                   <VerticalSquadColumn
-                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) || isEditMode ? '(Your Team)' : ''}`}
-                    tagColor="text-m3-coral"
-                    players={
-                      isEditMode && (!matchState?.blueTeam || matchState.blueTeam.length < 5)
-                        ? PREVIEW_PLAYERS
-                        : matchState?.blueTeam?.length
-                        ? matchState.blueTeam
-                        : PREVIEW_PLAYERS
-                    }
+                    title="Your Team"
+                    tagColor="text-m3-primary"
+                    players={yourTeam}
                     tierIcons={tierIcons}
                   />
-                  {matchState?.phase === 'coregame' ? (
+                  {enemyTeam.length > 0 ? (
                     <VerticalSquadColumn
-                      title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
-                      tagColor="text-m3-mint"
-                      players={matchState.redTeam}
+                      title="Enemy Team"
+                      tagColor="text-rose-400"
+                      players={enemyTeam}
                       tierIcons={tierIcons}
                     />
-                  ) : !isLive && isEditMode ? (
-                    <VerticalSquadColumn
-                      title="Defenders"
-                      tagColor="text-m3-mint"
-                      players={PREVIEW_OPPONENTS}
-                      tierIcons={tierIcons}
-                    />
-                  ) : (
+                  ) : matchState?.phase === 'coregame' ? (
                     <div className="rounded-xl bg-black/20 border border-white/5 p-2 flex items-center justify-center gap-2 text-center">
                       <LockIcon className="w-3.5 h-3.5 text-zinc-400" />
                       <span className="text-[10px] font-semibold text-zinc-300">Enemy Team Hidden</span>
                       <span className="text-[9px] text-zinc-500">• Visible on match start</span>
                     </div>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>
@@ -1184,15 +1177,9 @@ export const OverlayView: React.FC = () => {
             </div>
 
             <PregameTeamColumn
-              title="Your Squad"
+              title="Your Team"
               tagColor="text-m3-primary"
-              players={
-                isEditMode && (!matchState?.blueTeam || matchState.blueTeam.length < 5)
-                  ? PREVIEW_PLAYERS
-                  : matchState?.blueTeam?.length
-                  ? matchState.blueTeam
-                  : PREVIEW_PLAYERS
-              }
+              players={yourTeam}
               tierIcons={tierIcons}
             />
           </div>

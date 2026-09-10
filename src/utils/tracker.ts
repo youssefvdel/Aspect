@@ -1050,7 +1050,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     } else if (phase === 'pregame') {
       if (Array.isArray(matchData.Teams)) {
         for (const t of matchData.Teams) {
-          const tId = t.TeamID === 'Red' ? 'Red' : 'Blue';
+          const tId = (t.TeamID === 'Red' || t.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
           for (const p of t.Players || []) {
             rawPlayers.push({
               puuid: p.Subject,
@@ -1063,17 +1063,36 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           }
         }
       }
-      // Pregame AllyTeam fallback
-      if (rawPlayers.length === 0 && Array.isArray(matchData.AllyTeam?.Players)) {
+      // Pregame AllyTeam
+      if (Array.isArray(matchData.AllyTeam?.Players)) {
+        const allyTeamId = (matchData.AllyTeam.TeamID === 'Red' || matchData.AllyTeam.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
         for (const p of matchData.AllyTeam.Players) {
-          rawPlayers.push({
-            puuid: p.Subject,
-            team: 'Blue',
-            characterId: p.CharacterID || '',
-            accountLevel: p.PlayerIdentity?.AccountLevel || 0,
-            cardId: p.PlayerIdentity?.PlayerCardID || '',
-            selectionState: p.CharacterSelectionState || '',
-          });
+          if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
+            rawPlayers.push({
+              puuid: p.Subject,
+              team: allyTeamId,
+              characterId: p.CharacterID || '',
+              accountLevel: p.PlayerIdentity?.AccountLevel || 0,
+              cardId: p.PlayerIdentity?.PlayerCardID || '',
+              selectionState: p.CharacterSelectionState || '',
+            });
+          }
+        }
+      }
+      // Pregame EnemyTeam (populated in custom games!)
+      if (Array.isArray(matchData.EnemyTeam?.Players)) {
+        const enemyTeamId = (matchData.EnemyTeam.TeamID === 'Red' || matchData.EnemyTeam.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
+        for (const p of matchData.EnemyTeam.Players) {
+          if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
+            rawPlayers.push({
+              puuid: p.Subject,
+              team: enemyTeamId,
+              characterId: p.CharacterID || '',
+              accountLevel: p.PlayerIdentity?.AccountLevel || 0,
+              cardId: p.PlayerIdentity?.PlayerCardID || '',
+              selectionState: p.CharacterSelectionState || '',
+            });
+          }
         }
       }
     }
@@ -1151,9 +1170,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const blueTeam: LiveMatchPlayer[] = [];
     const redTeam: LiveMatchPlayer[] = [];
 
-    // For FFA / Deathmatch where everyone is on team 'Blue', split into 2 equal columns
-    const shouldSplitFFA = isDeathmatch || (rawPlayers.length > 5 && rawPlayers.every((p) => p.team === 'Blue'));
-
+    // In Deathmatch / FFA, keep all players in one unified list (blueTeam) without grouping into teams
     rawPlayers.forEach((p, idx) => {
       const resolved = nameMap[p.puuid];
       const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);
@@ -1191,7 +1208,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           .catch(() => {});
       }
 
-      const targetTeam = shouldSplitFFA ? (idx % 2 === 0 ? 'Blue' : 'Red') : p.team;
+      const targetTeam = isDeathmatch ? 'Blue' : p.team;
 
       const playerObj: LiveMatchPlayer = {
         puuid: p.puuid,
