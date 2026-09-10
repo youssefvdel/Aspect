@@ -10,6 +10,7 @@ import {
   getOverlayEditMode,
   isOverlayVisible,
   isTabDown,
+  setOverlayWindowed,
   fetchWindows,
   fetchValorantConfigs,
 } from '../utils/ipc';
@@ -46,6 +47,7 @@ export const DevDashboard: React.FC = () => {
   });
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<{ t: string; name: string; payload: string }[]>([]);
+  const [windowed, setWindowed] = useState(false);
 
   const pickPhase = (p: DevMockPhase) => {
     try {
@@ -178,6 +180,27 @@ export const DevDashboard: React.FC = () => {
             Riot closed: {noClient ? 'ON (empty states)' : 'OFF'}
           </button>
         </div>
+      </section>
+
+      {/* Overlay as window (debug the white bar off-fullscreen) */}
+      <section className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 shrink-0">
+        <h4 className="font-display font-bold text-sm text-m3-on-surface mb-1">Overlay as window</h4>
+        <p className="text-[11px] text-m3-outline mb-2.5">
+          Drops the overlay out of fullscreen click-through into a framed 1280×800 window you can move, resize, and dock DevTools against. Toggle back to restore fullscreen HUD.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !windowed;
+            setWindowed(next);
+            void setOverlayWindowed(next).catch(() => setWindowed(!next));
+          }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer transition-colors ${
+            windowed ? 'bg-m3-primary/20 border-m3-primary text-m3-primary' : 'bg-m3-surface-container-low border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+          }`}
+        >
+          Windowed overlay: {windowed ? 'ON' : 'OFF'}
+        </button>
       </section>
 
       {/* IPC smoke tests */}

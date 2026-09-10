@@ -349,6 +349,42 @@ fn is_tab_down() -> Result<bool, String> {
     }
 }
 
+/// Dev debugging aid: drop the overlay out of fullscreen click-through into
+/// a normal framed window (and back), so its surface can be inspected,
+/// moved, and DevTools-docked like any app window.
+#[tauri::command]
+fn set_overlay_windowed(app: tauri::AppHandle, windowed: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        if windowed {
+            let _ = window.set_fullscreen(false);
+            let _ = window.set_decorations(true);
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_size(tauri::LogicalSize::new(1280.0, 800.0));
+            let _ = window.center();
+            #[cfg(windows)]
+            {
+                if let Ok(hwnd) = window.hwnd() {
+                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, false);
+                }
+            }
+        } else {
+            let _ = window.set_decorations(false);
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_fullscreen(true);
+            #[cfg(windows)]
+            {
+                if let Ok(hwnd) = window.hwnd() {
+                    let clickthrough = !OVERLAY_EDIT_MODE.load(Ordering::Relaxed);
+                    let _ = window_manager::setup_overlay_window(hwnd.0 as isize, clickthrough);
+                }
+            }
+        }
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
 #[tauri::command]
 fn get_valorant_configs() -> Result<Vec<game_config::ConfigFileInfo>, String> {
     Ok(game_config::find_valorant_configs())
@@ -866,6 +902,7 @@ pub fn run() {
             get_overlay_edit_mode,
             is_overlay_visible,
             is_tab_down,
+            set_overlay_windowed,
             get_valorant_configs,
             update_valorant_config,
             update_valorant_config_custom,

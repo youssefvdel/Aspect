@@ -271,6 +271,11 @@ export async function isTabDown(): Promise<boolean> {
   }
 }
 
+export async function setOverlayWindowed(windowed: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('set_overlay_windowed', { windowed });
+}
+
 export async function fetchValorantConfigs(): Promise<ConfigFileInfo[]> {
   if (!isTauri()) return mockConfigs;
   return await invoke<ConfigFileInfo[]>('get_valorant_configs');
