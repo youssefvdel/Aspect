@@ -13,6 +13,40 @@ import {
 } from '../utils/tracker';
 import { fetchTrnActStats, fetchTrnAgents, fetchTrnMaps, type TrnActStats, type TrnAgentStat, type TrnMapStat } from '../utils/trn';
 
+/* Stale-while-revalidate: the last successful snapshot paints instantly on
+   launch, then the live fetch silently replaces it. Without this the tab
+   shows empty skeletons for the full 3-8s Riot round-trip every start. */
+const SNAPSHOT_KEY = 'recon_tracker_snapshot_v1';
+const SNAPSHOT_TTL = 24 * 3600 * 1000;
+
+type Snapshot = {
+  savedAt: number;
+  profile: TrackerProfile | null;
+  games: TrackerMmrPoint[];
+  agg: AggStats | null;
+  mapById: Record<string, string>;
+  queueById: Record<string, string>;
+  trn: TrnActStats | null;
+  trnAgents: TrnAgentStat[];
+  trnMaps: TrnMapStat[];
+  trnPrev: Record<string, { kd: number; matches: number }>;
+  detailsById: Record<string, TrackerMatchDetail>;
+  detailsReady: number;
+};
+
+function readSnapshot(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Snapshot;
+    if (!s?.savedAt || !s?.profile) return null;
+    if (Date.now() - s.savedAt > SNAPSHOT_TTL) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
 export interface TrackerData {
   profile: TrackerProfile | null;
   games: TrackerMmrPoint[];
@@ -33,6 +67,8 @@ export interface TrackerData {
   detailsTotal: number;
   isLoading: boolean;
   ready: boolean;
+  /** A cached snapshot is on screen; live data is still refetching. */
+  hasCached: boolean;
   clientClosed: boolean;
   banner: string | null;
   setBanner: (m: string | null) => void;
@@ -64,6 +100,32 @@ export function useTrackerData(): TrackerData {
   const [clientClosed, setClientClosed] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const autoTried = useRef(false);
+  const hydrated = useRef(false);
+  // True when a cached snapshot is on screen — lets the shell skip the
+  // skeleton spinner while the live refresh runs behind it.
+  const [hasCached, setHasCached] = useState(false);
+
+  // Paint the last snapshot before any network call so the tab is never blank.
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+    const s = readSnapshot();
+    if (!s) return;
+    setProfile(s.profile);
+    setGames(s.games ?? []);
+    setAgg(s.agg ?? null);
+    setMapById(s.mapById ?? {});
+    setQueueById(s.queueById ?? {});
+    setTrn(s.trn ?? null);
+    setTrnAgents(s.trnAgents ?? []);
+    setTrnMaps(s.trnMaps ?? []);
+    setTrnPrev(s.trnPrev ?? {});
+    setDetailsById(s.detailsById ?? {});
+    setDetailsReady(s.detailsReady ?? 0);
+    setTrnDone(true);
+    setDetailsDone(true);
+    setHasCached(true);
+  }, []);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -178,7 +240,31 @@ export function useTrackerData(): TrackerData {
     refresh();
   }, [refresh]);
 
-  const ready = !isLoading && profile !== null && trnDone && detailsDone;
+  // Persist the freshest complete snapshot so the next launch paints instantly.
+  useEffect(() => {
+    if (!profile) return;
+    try {
+      const snap: Snapshot = {
+        savedAt: Date.now(),
+        profile,
+        games,
+        agg,
+        mapById,
+        queueById,
+        trn,
+        trnAgents,
+        trnMaps,
+        trnPrev,
+        detailsById,
+        detailsReady,
+      };
+      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
+    } catch {
+      /* Quota or private mode — cache is a nicety, never a hard dependency. */
+    }
+  }, [profile, games, agg, mapById, queueById, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady]);
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, clientClosed, banner, setBanner, refresh };
+  const ready = (!isLoading || hasCached) && profile !== null && trnDone && detailsDone;
+
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, hasCached, clientClosed, banner, setBanner, refresh };
 }

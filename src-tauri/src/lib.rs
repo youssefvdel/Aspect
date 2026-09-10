@@ -65,8 +65,10 @@ fn build_display_info() -> DisplayInfo {
 }
 
 #[tauri::command]
-fn get_display_info() -> Result<DisplayInfo, String> {
-    Ok(build_display_info())
+async fn get_display_info() -> Result<DisplayInfo, String> {
+    tauri::async_runtime::spawn_blocking(build_display_info)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))
 }
 
 #[tauri::command]
@@ -147,13 +149,17 @@ fn save_shortcut_binding(
 }
 
 #[tauri::command]
-fn get_gpu_info() -> Result<gpu::GpuInfo, String> {
-    Ok(gpu::detect_gpu())
+async fn get_gpu_info() -> Result<gpu::GpuInfo, String> {
+    tauri::async_runtime::spawn_blocking(gpu::detect_gpu)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))
 }
 
 #[tauri::command]
-fn get_gpu_settings() -> Result<gpu::GpuSettingsReport, String> {
-    Ok(gpu::get_gpu_settings_report())
+async fn get_gpu_settings() -> Result<gpu::GpuSettingsReport, String> {
+    tauri::async_runtime::spawn_blocking(gpu::get_gpu_settings_report)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))
 }
 
 #[tauri::command]
@@ -396,8 +402,10 @@ fn set_overlay_windowed(app: tauri::AppHandle, windowed: bool) -> Result<(), Str
 }
 
 #[tauri::command]
-fn get_valorant_configs() -> Result<Vec<game_config::ConfigFileInfo>, String> {
-    Ok(game_config::find_valorant_configs())
+async fn get_valorant_configs() -> Result<Vec<game_config::ConfigFileInfo>, String> {
+    tauri::async_runtime::spawn_blocking(game_config::find_valorant_configs)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))
 }
 
 #[tauri::command]
@@ -632,8 +640,10 @@ fn trim_memory() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_all_monitors() -> Result<Vec<display::MonitorDevice>, String> {
-    Ok(display::get_all_monitors())
+async fn get_all_monitors() -> Result<Vec<display::MonitorDevice>, String> {
+    tauri::async_runtime::spawn_blocking(display::get_all_monitors)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))
 }
 
 #[tauri::command]

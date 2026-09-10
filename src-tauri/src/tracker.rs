@@ -74,8 +74,7 @@ fn local_get(port: &str, password: &str, path: &str) -> Result<serde_json::Value
 
 /// Reads the logged-in Riot account from the local Riot Client lockfile —
 /// the same technique desktop trackers use.
-#[tauri::command]
-pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
+fn detect_local_account_blocking() -> Result<LocalRiotAccount, String> {
     let (port, password) = lockfile_auth()?;
     let v = local_get(&port, &password, "/player-account/aliases/v1/active")?;
     let game_name = v
@@ -98,9 +97,16 @@ pub fn detect_local_account() -> Result<LocalRiotAccount, String> {
     })
 }
 
-/// Entitlements triple for direct Riot calls (refetch when Riot 401s).
+/// Async so the spawn_blocking curl never freezes the UI thread.
 #[tauri::command]
-pub fn local_entitlements() -> Result<LocalEntitlements, String> {
+pub async fn detect_local_account() -> Result<LocalRiotAccount, String> {
+    tauri::async_runtime::spawn_blocking(detect_local_account_blocking)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
+/// Entitlements triple for direct Riot calls (refetch when Riot 401s).
+fn local_entitlements_blocking() -> Result<LocalEntitlements, String> {
     let (port, password) = lockfile_auth()?;
     let v = local_get(&port, &password, "/entitlements/v1/token")?;
     Ok(LocalEntitlements {
@@ -122,10 +128,16 @@ pub fn local_entitlements() -> Result<LocalEntitlements, String> {
     })
 }
 
+#[tauri::command]
+pub async fn local_entitlements() -> Result<LocalEntitlements, String> {
+    tauri::async_runtime::spawn_blocking(local_entitlements_blocking)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
 /// Client version for the X-Riot-ClientVersion header, read from the
 /// latest game log (e.g. "CI server version: release-13.05-shipping-11-…").
-#[tauri::command]
-pub fn local_client_version() -> Result<String, String> {
+fn local_client_version_blocking() -> Result<String, String> {
     let log_path = std::env::var("LOCALAPPDATA")
         .map(|la| {
             std::path::PathBuf::from(la)
@@ -149,13 +161,26 @@ pub fn local_client_version() -> Result<String, String> {
     Err("Client version not found in logs.".to_string())
 }
 
+#[tauri::command]
+pub async fn local_client_version() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(local_client_version_blocking)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
 /// Chrome-impersonated GET for tracker.gg's Cloudflare wall, via the bundled
 /// trnfetch sidecar (Go + uTLS Chrome fingerprint — pure-Rust TLS spoofing has
 /// no Windows-ready crate; BoringSSL won't compile under MSVC toolchains).
 /// Read-only profile/segment calls, no key, no browser session. If TRN ever
 /// gates them, callers fall back to Riot-direct data.
 #[tauri::command]
-pub fn trn_get(path: String) -> Result<String, String> {
+pub async fn trn_get(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || trn_get_blocking(path))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
+fn trn_get_blocking(path: String) -> Result<String, String> {
     if path.contains([' ', '\n', '\r']) || !path.starts_with("/api/") {
         return Err("Invalid path.".to_string());
     }
@@ -257,11 +282,7 @@ pub fn riot_direct_get(
 }
 
 /// Resolve PUUIDs to real GameNames and TagLines via Riot's name-service endpoint.
-#[tauri::command]
-pub fn riot_resolve_names(
-    shard: String,
-    puuids: Vec<String>,
-) -> Result<String, String> {
+fn riot_resolve_names_blocking(shard: String, puuids: Vec<String>) -> Result<String, String> {
     if puuids.is_empty() {
         return Ok("[]".to_string());
     }
@@ -276,7 +297,8 @@ pub fn riot_resolve_names(
         .and_then(|s| s.as_str())
         .ok_or_else(|| "No entitlement token".to_string())?;
 
-    let client_version = local_client_version().unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
+    let client_version = local_client_version_blocking()
+        .unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
     let clean_shard = shard.trim_start_matches("pd.").trim_end_matches(".a.pvp.net");
     let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", clean_shard);
     let body = serde_json::to_string(&puuids).map_err(|e| e.to_string())?;
@@ -310,4 +332,11 @@ pub fn riot_resolve_names(
         return Err(format!("Name service error: {}", res));
     }
     Ok(res)
+}
+
+#[tauri::command]
+pub async fn riot_resolve_names(shard: String, puuids: Vec<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || riot_resolve_names_blocking(shard, puuids))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
 }

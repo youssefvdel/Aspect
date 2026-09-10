@@ -44,8 +44,12 @@ export const TrackerMini: React.FC = () => {
 
   useEffect(() => {
     let live = true;
-    (async () => {
-      try {
+    // Deferred 900ms: the first paint + telemetry IPC must win the main
+    // thread. This card fires 6+ sequential Riot/TRN HTTP calls (curl
+    // sidecars); starting them at mount made the app feel frozen.
+    const kickoff = setTimeout(() => {
+      (async () => {
+        try {
         const region = await detectRegion();
         const acc = await detectLocalAccount().catch(() => null);
         const name = acc?.game_name ?? '';
@@ -89,9 +93,11 @@ export const TrackerMini: React.FC = () => {
       } finally {
         if (live) setLoading(false);
       }
-    })();
+      })();
+    }, 900);
     return () => {
       live = false;
+      clearTimeout(kickoff);
     };
   }, []);
 
