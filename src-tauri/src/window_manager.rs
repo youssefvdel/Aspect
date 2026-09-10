@@ -8,11 +8,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics,
     GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
-    IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP,
-    HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
-    WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
-    WS_SYSMENU, WS_THICKFRAME,
+    IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_SHOW, WINDOW_STYLE,
+    WS_BORDER, WS_CAPTION, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
+    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
 #[link(name = "comctl32")]
@@ -782,13 +782,12 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             as i32 as isize;
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
-        // TRANSPARENT off (receive mouse) + NOACTIVATE on (never steal focus)
+        // In Edit Mode: TRANSPARENT off (receive mouse) + NOACTIVATE off (allow active interaction)
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
-            | 0x00000080  // WS_EX_TOOLWINDOW
-            | 0x08000000; // WS_EX_NOACTIVATE
-        ex_style &= !0x00000020;
+            | 0x00000080; // WS_EX_TOOLWINDOW
+        ex_style &= !(0x00000020 | 0x08000000);
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
         strip_all_dwm_borders(hwnd);
@@ -804,8 +803,11 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             y,
             width,
             height,
-            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
         );
+
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = SetForegroundWindow(hwnd);
 
         restore_blur_behind(hwnd);
         redraw_all(hwnd);

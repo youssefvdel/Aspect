@@ -25,7 +25,8 @@
       {
         "label": "overlay",
         "title": "",
-        "fullscreen": true,
+        "url": "index.html#overlay",
+        "fullscreen": false,
         "resizable": false,
         "decorations": false,
         "transparent": true,
