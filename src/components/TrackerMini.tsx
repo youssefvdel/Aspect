@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { detectLocalAccount, detectRegion, fetchCardArt, fetchIdentityDirect, fetchMmrDirect, gameData } from '../utils/tracker';
+import { detectLocalAccount, detectRegion, fetchCardArt, fetchIdentityDirect, fetchMmrDirect, gameData, isRiotClientRunning, readCachedAccount, readCachedTrackerSnapshot } from '../utils/tracker';
 import { fetchTrnActStats } from '../utils/trn';
 
 interface Mini {
@@ -39,8 +39,27 @@ const TrackerMiniSkeleton: React.FC = () => (
 
 /** Compact TRN-style player profile card docked in the app sidebar. */
 export const TrackerMini: React.FC = () => {
-  const [mini, setMini] = useState<Mini | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [mini, setMini] = useState<Mini | null>(() => {
+    // Cached identity + rank paint instantly; the live fetch replaces it.
+    const acc = readCachedAccount();
+    const snap = readCachedTrackerSnapshot();
+    if (!acc && !snap?.profile) return null;
+    const p = snap?.profile;
+    return {
+      name: acc?.game_name ?? p?.name ?? '',
+      tag: acc?.tagline ?? p?.tag ?? '',
+      rank: p?.rank ?? '',
+      rr: p?.rr ?? 0,
+      peak: p?.peak ?? '',
+      icon: '',
+      peakIcon: '',
+      avatarUrl: '',
+      bannerUrl: '',
+      countryCode: '',
+      level: 0,
+    };
+  });
+  const [loading, setLoading] = useState(() => !readCachedAccount());
 
   useEffect(() => {
     let live = true;
@@ -50,6 +69,11 @@ export const TrackerMini: React.FC = () => {
     const kickoff = setTimeout(() => {
       (async () => {
         try {
+        const running = await isRiotClientRunning();
+        if (!running) {
+          if (live) setLoading(false);
+          return;
+        }
         const region = await detectRegion();
         const acc = await detectLocalAccount().catch(() => null);
         const name = acc?.game_name ?? '';
@@ -89,7 +113,9 @@ export const TrackerMini: React.FC = () => {
           level: ident?.level ?? 0,
         });
       } catch {
-        /* No local client running — card stays hidden. */
+        // Client closed / Riot unreachable. Keep the cached identity on screen
+        // (it was correct a moment ago) — hide only if there is nothing cached.
+        if (live) setMini((m) => m ?? null);
       } finally {
         if (live) setLoading(false);
       }

@@ -100,7 +100,7 @@ const PLAYLISTS = [
 ];
 
 export const Overview: React.FC = () => {
-  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, ready, clientClosed, banner, setBanner, refresh } =
+  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, clientClosed, banner, setBanner, refresh } =
     useTrackerData();
 
   const [playlist, setPlaylist] = useState('competitive');
@@ -175,7 +175,7 @@ export const Overview: React.FC = () => {
   const bodyPct = hitTotal > 0 ? ((S?.bodyHits ?? 0) / hitTotal) * 100 : 0;
   const legPct = hitTotal > 0 ? ((S?.legHits ?? 0) / hitTotal) * 100 : 0;
 
-  if (!ready) {
+  if (!profile) {
     if (clientClosed) {
       return (
         <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8 flex items-center justify-center">
@@ -208,6 +208,17 @@ export const Overview: React.FC = () => {
 
   return (
     <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+      {clientClosed && (
+        <div className="p-2.5 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant text-xs font-medium flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-2">
+            <Gamepad2 className="w-3.5 h-3.5 text-m3-outline shrink-0" />
+            <span>Viewing offline cached stats • Riot Client is closed</span>
+          </div>
+          <button onClick={refresh} disabled={isLoading} className="text-m3-primary hover:underline text-xs ml-3 cursor-pointer font-bold shrink-0">
+            Check Connection
+          </button>
+        </div>
+      )}
       {banner && (
         <div className="p-2.5 rounded-xl bg-m3-primary-container/40 border border-m3-primary/40 text-m3-on-primary-container text-xs font-semibold flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">

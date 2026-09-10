@@ -332,7 +332,7 @@ const MatchRow: React.FC<{
 };
 
 export const MatchHistory: React.FC = () => {
-  const { profile, games, queueById, mapById, detailsById, agentInfo, tierIcons, isLoading, ready, banner, setBanner } =
+  const { profile, games, queueById, mapById, detailsById, agentInfo, tierIcons, isLoading, banner, setBanner } =
     useTrackerData();
   const [agentFilter, setAgentFilter] = useState('All');
   const [mapFilter, setMapFilter] = useState('All');
@@ -533,7 +533,7 @@ export const MatchHistory: React.FC = () => {
     });
   };
 
-  if (!ready) {
+  if (!profile && games.length === 0) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
         <HistorySkeletons />

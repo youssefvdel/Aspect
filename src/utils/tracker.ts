@@ -11,8 +11,39 @@ import { getDevMockMatch, isDevNoClient } from './devTools';
    - history: { Total, History: [{ MatchID, GameStartTime, QueueID }] }
    - match-details/v1/matches/{id}: { matchInfo, players[] (subject/teamId/characterId/stats/roundDamage), teams[], roundResults[] } */
 
+/** Fast check (<0.1ms) if the local Riot Client lockfile exists. */
+export async function isRiotClientRunning(): Promise<boolean> {
+  if (isDevNoClient()) return false;
+  if (!isTauri()) return false;
+  try {
+    return await invoke<boolean>('is_riot_client_running');
+  } catch {
+    return false;
+  }
+}
+
+/** Get the currently logged-in account, or the cached account if Riot Client is closed.
+    Never throws — returns null if there has never been any logged-in user. */
+export async function getEffectiveAccount(): Promise<LocalRiotAccount | null> {
+  const running = await isRiotClientRunning();
+  if (!running) {
+    return readCachedAccount();
+  }
+  try {
+    return await detectLocalAccount();
+  } catch {
+    return readCachedAccount();
+  }
+}
+
 /** Logged-in Riot account from the local client. Throws when the client is closed. */
 export async function detectLocalAccount(): Promise<LocalRiotAccount> {
+  const live = await detectLocalAccountLive();
+  writeCachedAccount(live);
+  return live;
+}
+
+async function detectLocalAccountLive(): Promise<LocalRiotAccount> {
   if (isDevNoClient()) throw new Error('Auto-detect failed — is the Riot Client open?');
   if (!isTauri()) throw new Error('Auto-detect needs the desktop app.');
   try {
@@ -29,6 +60,80 @@ export async function detectLocalAccount(): Promise<LocalRiotAccount> {
     throw new Error(typeof e === 'string' ? e : 'Auto-detect failed — is the Riot Client open?');
   }
 }
+
+/* ---- Account identity cache ------------------------------------------------
+   The logged-in user almost never changes between launches, so the last known
+   account paints the sidebar + tracker instantly and the live read only
+   corrects it. Everything is keyed by PUUID: when the user switches accounts
+   the PUUID differs, so the stale snapshot is dropped instead of showing the
+   previous player's rank and matches under the new name. */
+
+const ACCOUNT_KEY = 'recon_account_v1';
+
+export function readCachedAccount(): LocalRiotAccount | null {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) return null;
+    const a = JSON.parse(raw) as LocalRiotAccount;
+    return a?.game_name ? a : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedAccount(acc: LocalRiotAccount): void {
+  try {
+    localStorage.setItem(ACCOUNT_KEY, JSON.stringify(acc));
+  } catch {
+    /* cache is best-effort only */
+  }
+}
+
+/** True when the live account is a different player than the cached one. */
+export function accountSwitched(cached: LocalRiotAccount | null, live: LocalRiotAccount): boolean {
+  if (!cached) return false;
+  const a = (cached.puuid || '').toLowerCase();
+  const b = (live.puuid || '').toLowerCase();
+  if (a && b) return a !== b;
+  // No PUUID available: fall back to name#tag comparison.
+  return `${cached.game_name}#${cached.tagline}`.toLowerCase() !==
+    `${live.game_name}#${live.tagline}`.toLowerCase();
+}
+
+/** Drop the snapshot for a specific account (used when the user switches). */
+export function clearAccountSnapshot(puuid: string): void {
+  try {
+    const k = `recon_tracker_snapshot_v1:${(puuid || 'anon').toLowerCase()}`;
+    localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Shape shared with useTrackerData's snapshot store. Only the fields the
+    sidebar card needs are declared — extra keys are ignored. */
+export interface CachedTrackerSnapshot {
+  savedAt: number;
+  puuid: string;
+  profile: TrackerProfile | null;
+}
+
+/** Last persisted tracker snapshot for the cached account, if still fresh. */
+export function readCachedTrackerSnapshot(): CachedTrackerSnapshot | null {
+  try {
+    const acc = readCachedAccount();
+    if (!acc?.puuid) return null;
+    const raw = localStorage.getItem(`recon_tracker_snapshot_v1:${acc.puuid.toLowerCase()}`);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as CachedTrackerSnapshot;
+    if (!s?.savedAt || !s?.profile) return null;
+    if (Date.now() - s.savedAt > 24 * 3600 * 1000) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
 
 /** Tier id → name fallback when only the number arrives. */
 export const tierName = (id: number): string => {

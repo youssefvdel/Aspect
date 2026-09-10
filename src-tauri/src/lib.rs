@@ -1001,6 +1001,7 @@ pub fn run() {
             get_valorant_config_raw,
             get_valorant_config_sections,
             set_valorant_config_value,
+            tracker::is_riot_client_running,
             tracker::detect_local_account,
             tracker::local_entitlements,
             tracker::local_client_version,

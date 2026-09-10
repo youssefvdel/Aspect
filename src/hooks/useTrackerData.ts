@@ -1,26 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { TrackerMatchDetail, TrackerMmrPoint, TrackerProfile } from '../types';
 import {
   aggregateDetails,
+  clearAccountSnapshot,
   detectLocalAccount,
   detectRegion,
   fetchCompetitiveUpdates,
   fetchHistoryMeta,
   fetchMmrDirect,
   gameData,
+  isRiotClientRunning,
+  readCachedAccount,
   shortMapName,
   type AggStats,
 } from '../utils/tracker';
 import { fetchTrnActStats, fetchTrnAgents, fetchTrnMaps, type TrnActStats, type TrnAgentStat, type TrnMapStat } from '../utils/trn';
 
-/* Stale-while-revalidate: the last successful snapshot paints instantly on
-   launch, then the live fetch silently replaces it. Without this the tab
-   shows empty skeletons for the full 3-8s Riot round-trip every start. */
-const SNAPSHOT_KEY = 'recon_tracker_snapshot_v1';
+/* Stale-while-revalidate singleton store:
+   Cached data is loaded into memory on script load and shared across all
+   tabs (Overview, Matches, Agents, Maps). Navigating between tabs is 100%
+   instant (0ms) without any skeletons or reloading. */
+
+const SNAPSHOT_PREFIX = 'recon_tracker_snapshot_v1';
+const LEGACY_SNAPSHOT_KEY = 'recon_tracker_snapshot_v1';
 const SNAPSHOT_TTL = 24 * 3600 * 1000;
+
+const snapshotKey = (puuid: string): string =>
+  `${SNAPSHOT_PREFIX}:${(puuid || 'anon').toLowerCase()}`;
 
 type Snapshot = {
   savedAt: number;
+  puuid: string;
   profile: TrackerProfile | null;
   games: TrackerMmrPoint[];
   agg: AggStats | null;
@@ -34,16 +44,37 @@ type Snapshot = {
   detailsReady: number;
 };
 
-function readSnapshot(): Snapshot | null {
+function parseSnapshot(raw: string | null): Snapshot | null {
+  if (!raw) return null;
+  const s = JSON.parse(raw) as Snapshot;
+  if (!s?.savedAt || !s?.profile) return null;
+  if (Date.now() - s.savedAt > SNAPSHOT_TTL) return null;
+  return s;
+}
+
+function readSnapshot(puuid?: string): Snapshot | null {
   try {
-    const raw = localStorage.getItem(SNAPSHOT_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as Snapshot;
-    if (!s?.savedAt || !s?.profile) return null;
-    if (Date.now() - s.savedAt > SNAPSHOT_TTL) return null;
-    return s;
+    if (puuid) return parseSnapshot(localStorage.getItem(snapshotKey(puuid)));
+    const acc = readCachedAccount();
+    if (acc?.puuid) {
+      const owned = parseSnapshot(localStorage.getItem(snapshotKey(acc.puuid)));
+      if (owned) return owned;
+    }
+    return parseSnapshot(localStorage.getItem(LEGACY_SNAPSHOT_KEY));
   } catch {
     return null;
+  }
+}
+
+function writeSnapshot(s: Snapshot): void {
+  try {
+    localStorage.setItem(snapshotKey(s.puuid), JSON.stringify(s));
+    if (!localStorage.getItem(`${LEGACY_SNAPSHOT_KEY}:migrated`)) {
+      localStorage.removeItem(LEGACY_SNAPSHOT_KEY);
+      localStorage.setItem(`${LEGACY_SNAPSHOT_KEY}:migrated`, '1');
+    }
+  } catch {
+    /* Quota or private mode */
   }
 }
 
@@ -67,7 +98,6 @@ export interface TrackerData {
   detailsTotal: number;
   isLoading: boolean;
   ready: boolean;
-  /** A cached snapshot is on screen; live data is still refetching. */
   hasCached: boolean;
   clientClosed: boolean;
   banner: string | null;
@@ -75,196 +105,284 @@ export interface TrackerData {
   refresh: () => Promise<void>;
 }
 
-/** Single shared loader for Overview + Match History. Auto-loads once on mount. */
-export function useTrackerData(): TrackerData {
-  const [profile, setProfile] = useState<TrackerProfile | null>(null);
-  const [games, setGames] = useState<TrackerMmrPoint[]>([]);
-  const [queueById, setQueueById] = useState<Record<string, string>>({});
-  const [mapById, setMapById] = useState<Record<string, string>>({});
-  const [seasonNames, setSeasonNames] = useState<Record<string, string>>({});
-  const [seasonOrder, setSeasonOrder] = useState<string[]>([]);
-  const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
-  const [agentInfo, setAgentInfo] = useState<Record<string, { name: string; icon: string; role: string; roleIcon: string }>>({});
-  const [weapons, setWeapons] = useState<Record<string, string>>({});
-  const [agg, setAgg] = useState<AggStats | null>(null);
-  const [trn, setTrn] = useState<TrnActStats | null>(null);
-  const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
-  const [trnMaps, setTrnMaps] = useState<TrnMapStat[]>([]);
-  const [trnPrev, setTrnPrev] = useState<Record<string, { kd: number; matches: number }>>({});
-  const [trnDone, setTrnDone] = useState(false);
-  const [detailsDone, setDetailsDone] = useState(false);
-  const [detailsById, setDetailsById] = useState<Record<string, TrackerMatchDetail>>({});
-  const [detailsReady, setDetailsReady] = useState(0);
-  const [detailsTotal, setDetailsTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [clientClosed, setClientClosed] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
-  const autoTried = useRef(false);
-  const hydrated = useRef(false);
-  // True when a cached snapshot is on screen — lets the shell skip the
-  // skeleton spinner while the live refresh runs behind it.
-  const [hasCached, setHasCached] = useState(false);
+// Global module state
+let store: TrackerData;
+const listeners = new Set<() => void>();
 
-  // Paint the last snapshot before any network call so the tab is never blank.
-  useEffect(() => {
-    if (hydrated.current) return;
-    hydrated.current = true;
-    const s = readSnapshot();
-    if (!s) return;
-    setProfile(s.profile);
-    setGames(s.games ?? []);
-    setAgg(s.agg ?? null);
-    setMapById(s.mapById ?? {});
-    setQueueById(s.queueById ?? {});
-    setTrn(s.trn ?? null);
-    setTrnAgents(s.trnAgents ?? []);
-    setTrnMaps(s.trnMaps ?? []);
-    setTrnPrev(s.trnPrev ?? {});
-    setDetailsById(s.detailsById ?? {});
-    setDetailsReady(s.detailsReady ?? 0);
-    setTrnDone(true);
-    setDetailsDone(true);
-    setHasCached(true);
-  }, []);
+function emitStore() {
+  for (const listener of listeners) {
+    listener();
+  }
+}
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setBanner(null);
-    setTrnDone(false);
-    setDetailsDone(false);
-    // Fail fast with a clear state when Riot isn't running — no infinite skeletons.
+function updateStore(partial: Partial<TrackerData>) {
+  store = { ...store, ...partial };
+  emitStore();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot() {
+  return store;
+}
+
+function initStore(): TrackerData {
+  const cachedAcc = readCachedAccount();
+  const snap = readSnapshot(cachedAcc?.puuid);
+  const hasData = Boolean(snap?.profile);
+
+  return {
+    profile: snap?.profile ?? null,
+    games: snap?.games ?? [],
+    queueById: snap?.queueById ?? {},
+    mapById: snap?.mapById ?? {},
+    seasonNames: {},
+    seasonOrder: [],
+    tierIcons: {},
+    agentInfo: {},
+    weapons: {},
+    agg: snap?.agg ?? null,
+    trn: snap?.trn ?? null,
+    trnAgents: snap?.trnAgents ?? [],
+    trnMaps: snap?.trnMaps ?? [],
+    trnPrev: snap?.trnPrev ?? {},
+    detailsById: snap?.detailsById ?? {},
+    detailsReady: snap?.detailsReady ?? 0,
+    detailsTotal: snap?.games?.length ?? 0,
+    isLoading: false,
+    ready: hasData,
+    hasCached: hasData,
+    clientClosed: false,
+    banner: null,
+    setBanner: (m: string | null) => updateStore({ banner: m }),
+    refresh: triggerGlobalRefresh,
+  };
+}
+
+store = initStore();
+
+let refreshPromise: Promise<void> | null = null;
+let hasAutoRefreshed = false;
+
+export async function triggerGlobalRefresh(): Promise<void> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
     try {
-      await detectLocalAccount();
-      setClientClosed(false);
-    } catch {
-      setClientClosed(true);
-      setBanner('Riot Client is closed — open Riot Client or Valorant, then hit Refresh.');
-      setTrnDone(true);
-      setDetailsDone(true);
-      setIsLoading(false);
-      return;
-    }
-    try {
-      const region = await detectRegion();
-      let accName = '';
-      let accTag = '';
-      try {
-        const acc = await detectLocalAccount();
-        accName = acc.game_name;
-        accTag = acc.tagline;
-      } catch {}
-      const [prof, comp] = await Promise.all([
-        fetchMmrDirect(region, accName, accTag),
-        fetchCompetitiveUpdates(region, 20),
-      ]);
-      setProfile({ ...prof, name: accName, tag: accTag });
-      setGames(comp);
-      const [gd, meta] = await Promise.all([
-        gameData(),
-        fetchHistoryMeta(region, 0, 20).catch(() => ({ total: 0, queueById: {} as Record<string, string> })),
-      ]);
-      const mm: Record<string, string> = {};
-      for (const g of comp) mm[g.matchId] = shortMapName(g.mapId, gd.maps);
-      setMapById(mm);
-      setQueueById(meta.queueById);
-      setSeasonNames(gd.seasons);
-      setSeasonOrder(gd.seasonOrder);
-      setTierIcons(gd.tierIcons);
-      setAgentInfo(gd.agentInfo);
-      setWeapons(gd.weapons);
-      // TRN enrichment (act-wide incl. ties + HS%): best effort, Riot-direct
-      // stays the fallback so the tab never depends on it.
-      if (accName) {
-        fetchTrnActStats(accName, accTag, prof.currentSeasonId)
-          .then(({ stats }) => setTrn(stats))
-          .catch(() => setTrn(null))
-          .finally(() => setTrnDone(true));
-        if (prof.currentSeasonId) {
-          fetchTrnAgents(accName, accTag, prof.currentSeasonId)
-            .then(setTrnAgents)
-            .catch(() => setTrnAgents([]));
-          fetchTrnMaps(accName, accTag, prof.currentSeasonId)
-            .then(setTrnMaps)
-            .catch(() => setTrnMaps([]));
-        }
-      } else {
-        setTrnDone(true);
-      }
-        // Previous-act K/D + match counts (max 3, best effort).
-        {
-          const played = new Set(prof.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
-          const order = gd.seasonOrder.length > 0 ? gd.seasonOrder : [...played];
-          const prev = order
-            .filter((id) => id !== prof.currentSeasonId.toLowerCase() && played.has(id))
-            .slice(0, 3);
-          Promise.all(
-            prev.map((sid) =>
-              fetchTrnActStats(accName, accTag, sid)
-                .then(({ stats }) => ({ sid, kd: stats.kd, matches: stats.wins + stats.losses + stats.ties }))
-                .catch(() => null)
-            )
-          ).then((res) => {
-            const m: Record<string, { kd: number; matches: number }> = {};
-            for (const r of res) if (r) m[r.sid] = { kd: r.kd, matches: r.matches };
-            setTrnPrev(m);
-          });
-        }
-      const puuid = prof.puuid;
-      const ids = comp.map((g) => g.matchId).filter(Boolean);
-      setDetailsTotal(ids.length);
-      setDetailsReady(0);
-      if (puuid && ids.length > 0) {
-        aggregateDetails(region, ids, puuid)
-          .then(({ agg: a, byId }) => {
-            setAgg(a);
-            setDetailsById(byId);
-            setDetailsReady(Object.keys(byId).length);
-          })
-          .catch(() => {})
-          .finally(() => setDetailsDone(true));
-      } else {
-        setDetailsDone(true);
-      }
-    } catch (e) {
-      setBanner(String(e instanceof Error ? e.message : e));
-      setTrnDone(true);
-      setDetailsDone(true);
+      await runRefresh();
     } finally {
-      setIsLoading(false);
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+async function runRefresh(): Promise<void> {
+  // 1. Fast <0.1ms lockfile check: is Riot Client actually running?
+  const running = await isRiotClientRunning();
+  if (!running) {
+    // If we have cached data, keep showing it peacefully without wiping anything!
+    const hasData = Boolean(store.profile);
+    updateStore({
+      clientClosed: true,
+      isLoading: false,
+      ready: hasData,
+      hasCached: hasData,
+      banner: hasData ? null : 'Riot Client is closed — launch Riot Client or Valorant to track stats.',
+    });
+    return;
+  }
+
+  // Riot Client is running — proceed with background refresh
+  updateStore({
+    isLoading: true,
+    clientClosed: false,
+  });
+
+  try {
+    const liveAcc = await detectLocalAccount();
+    const prevPuuid = store.profile?.puuid ?? readCachedAccount()?.puuid;
+
+    // Account switched: different PUUID!
+    if (prevPuuid && liveAcc.puuid && prevPuuid.toLowerCase() !== liveAcc.puuid.toLowerCase()) {
+      clearAccountSnapshot(prevPuuid);
+      const newSnap = readSnapshot(liveAcc.puuid);
+      if (newSnap?.profile) {
+        updateStore({
+          profile: newSnap.profile,
+          games: newSnap.games ?? [],
+          agg: newSnap.agg ?? null,
+          mapById: newSnap.mapById ?? {},
+          queueById: newSnap.queueById ?? {},
+          trn: newSnap.trn ?? null,
+          trnAgents: newSnap.trnAgents ?? [],
+          trnMaps: newSnap.trnMaps ?? [],
+          trnPrev: newSnap.trnPrev ?? {},
+          detailsById: newSnap.detailsById ?? {},
+          detailsReady: newSnap.detailsReady ?? 0,
+          detailsTotal: newSnap.games?.length ?? 0,
+          ready: true,
+          hasCached: true,
+        });
+      } else {
+        updateStore({
+          profile: null,
+          games: [],
+          agg: null,
+          mapById: {},
+          queueById: {},
+          trn: null,
+          trnAgents: [],
+          trnMaps: [],
+          trnPrev: {},
+          detailsById: {},
+          detailsReady: 0,
+          detailsTotal: 0,
+          ready: false,
+          hasCached: false,
+        });
+      }
+    }
+
+    const region = await detectRegion();
+    const accName = liveAcc.game_name;
+    const accTag = liveAcc.tagline;
+
+    const [prof, comp, gd, meta] = await Promise.all([
+      fetchMmrDirect(region, accName, accTag),
+      fetchCompetitiveUpdates(region, 20),
+      gameData(),
+      fetchHistoryMeta(region, 0, 20).catch(() => ({ total: 0, queueById: {} as Record<string, string> })),
+    ]);
+
+    const mm: Record<string, string> = {};
+    for (const g of comp) mm[g.matchId] = shortMapName(g.mapId, gd.maps);
+
+    const fullProfile = { ...prof, name: accName, tag: accTag };
+
+    updateStore({
+      profile: fullProfile,
+      games: comp,
+      mapById: mm,
+      queueById: meta.queueById,
+      seasonNames: gd.seasons,
+      seasonOrder: gd.seasonOrder,
+      tierIcons: gd.tierIcons,
+      agentInfo: gd.agentInfo,
+      weapons: gd.weapons,
+      ready: true,
+      hasCached: true,
+      clientClosed: false,
+      banner: null,
+    });
+
+    // Write latest snapshot
+    writeSnapshot({
+      savedAt: Date.now(),
+      puuid: prof.puuid || liveAcc.puuid,
+      profile: fullProfile,
+      games: comp,
+      agg: store.agg,
+      mapById: mm,
+      queueById: meta.queueById,
+      trn: store.trn,
+      trnAgents: store.trnAgents,
+      trnMaps: store.trnMaps,
+      trnPrev: store.trnPrev,
+      detailsById: store.detailsById,
+      detailsReady: store.detailsReady,
+    });
+
+    // Background TRN enrichment (best-effort)
+    if (accName) {
+      fetchTrnActStats(accName, accTag, prof.currentSeasonId)
+        .then(({ stats }) => updateStore({ trn: stats }))
+        .catch(() => {});
+      if (prof.currentSeasonId) {
+        fetchTrnAgents(accName, accTag, prof.currentSeasonId)
+          .then((agents) => updateStore({ trnAgents: agents }))
+          .catch(() => {});
+        fetchTrnMaps(accName, accTag, prof.currentSeasonId)
+          .then((maps) => updateStore({ trnMaps: maps }))
+          .catch(() => {});
+      }
+    }
+
+    // Previous act K/D
+    {
+      const played = new Set(prof.seasons.filter((s) => s.games > 0).map((s) => s.id.toLowerCase()));
+      const order = gd.seasonOrder.length > 0 ? gd.seasonOrder : [...played];
+      const prev = order
+        .filter((id) => id !== prof.currentSeasonId.toLowerCase() && played.has(id))
+        .slice(0, 3);
+      Promise.all(
+        prev.map((sid) =>
+          fetchTrnActStats(accName, accTag, sid)
+            .then(({ stats }) => ({ sid, kd: stats.kd, matches: stats.wins + stats.losses + stats.ties }))
+            .catch(() => null)
+        )
+      ).then((res) => {
+        const m: Record<string, { kd: number; matches: number }> = {};
+        for (const r of res) if (r) m[r.sid] = { kd: r.kd, matches: r.matches };
+        updateStore({ trnPrev: m });
+      });
+    }
+
+    // Match details
+    const puuid = prof.puuid;
+    const ids = comp.map((g) => g.matchId).filter(Boolean);
+    updateStore({ detailsTotal: ids.length });
+    if (puuid && ids.length > 0) {
+      aggregateDetails(region, ids, puuid)
+        .then(({ agg: a, byId }) => {
+          updateStore({
+            agg: a,
+            detailsById: byId,
+            detailsReady: Object.keys(byId).length,
+          });
+          writeSnapshot({
+            savedAt: Date.now(),
+            puuid: prof.puuid || liveAcc.puuid,
+            profile: fullProfile,
+            games: comp,
+            agg: a,
+            mapById: mm,
+            queueById: meta.queueById,
+            trn: store.trn,
+            trnAgents: store.trnAgents,
+            trnMaps: store.trnMaps,
+            trnPrev: store.trnPrev,
+            detailsById: byId,
+            detailsReady: Object.keys(byId).length,
+          });
+        })
+        .catch(() => {});
+    }
+  } catch (e) {
+    // If live fetch fails, we keep the cached profile/games intact!
+    updateStore({
+      banner: String(e instanceof Error ? e.message : e),
+    });
+  } finally {
+    updateStore({ isLoading: false });
+  }
+}
+
+/** Single shared tracker hook. Returns synchronous state from module store. */
+export function useTrackerData(): TrackerData {
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  useEffect(() => {
+    // Auto-refresh once per session on mount, but never on every tab switch!
+    if (!hasAutoRefreshed) {
+      hasAutoRefreshed = true;
+      triggerGlobalRefresh();
     }
   }, []);
 
-  useEffect(() => {
-    if (autoTried.current) return;
-    autoTried.current = true;
-    refresh();
-  }, [refresh]);
-
-  // Persist the freshest complete snapshot so the next launch paints instantly.
-  useEffect(() => {
-    if (!profile) return;
-    try {
-      const snap: Snapshot = {
-        savedAt: Date.now(),
-        profile,
-        games,
-        agg,
-        mapById,
-        queueById,
-        trn,
-        trnAgents,
-        trnMaps,
-        trnPrev,
-        detailsById,
-        detailsReady,
-      };
-      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
-    } catch {
-      /* Quota or private mode — cache is a nicety, never a hard dependency. */
-    }
-  }, [profile, games, agg, mapById, queueById, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady]);
-
-  const ready = (!isLoading || hasCached) && profile !== null && trnDone && detailsDone;
-
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, hasCached, clientClosed, banner, setBanner, refresh };
+  return state;
 }

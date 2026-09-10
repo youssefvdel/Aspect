@@ -15,6 +15,18 @@ pub struct LocalEntitlements {
     pub puuid: String,
 }
 
+/// Check if the local Riot Client lockfile exists (instant <0.1ms filesystem check).
+#[tauri::command]
+pub fn is_riot_client_running() -> bool {
+    let Ok(la) = std::env::var("LOCALAPPDATA") else { return false; };
+    let lockfile = std::path::PathBuf::from(la)
+        .join("Riot Games")
+        .join("Riot Client")
+        .join("Config")
+        .join("lockfile");
+    lockfile.exists()
+}
+
 /// name:pid:port:password:protocol. Stale lockfile (dead client) surfaces
 /// as a connect failure downstream with a clear message.
 fn lockfile_auth() -> Result<(String, String), String> {
@@ -81,6 +93,25 @@ fn detect_local_account_blocking() -> Result<LocalRiotAccount, String> {
         .get("game_name")
         .and_then(|s| s.as_str())
         .ok_or("No active session — log into the Riot Client first.".to_string())?;
+    // This endpoint carries the name but NOT the PUUID — pull that from the
+    // entitlements token (subject) and fall back to the ID token claim, so the
+    // identity cache always knows which account it belongs to.
+    let puuid = v
+        .get("puuid")
+        .and_then(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            local_get(&port, &password, "/entitlements/v1/token")
+                .ok()
+                .and_then(|e| {
+                    e.get("subject")
+                        .and_then(|s| s.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                })
+        })
+        .unwrap_or_default();
     Ok(LocalRiotAccount {
         game_name: game_name.to_string(),
         tagline: v
@@ -89,11 +120,7 @@ fn detect_local_account_blocking() -> Result<LocalRiotAccount, String> {
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string(),
-        puuid: v
-            .get("puuid")
-            .and_then(|s| s.as_str())
-            .unwrap_or("")
-            .to_string(),
+        puuid,
     })
 }
 
