@@ -272,6 +272,8 @@ export interface LiveMatchPlayer {
   recentWon?: number;
   recentLost?: number;
   streak?: number;
+  partyId?: string;
+  partyIndex?: number; // 0 = solo, 1 = party 1, 2 = party 2...
 }
 
 export interface LiveMatchState {

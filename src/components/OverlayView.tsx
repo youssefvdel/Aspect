@@ -53,6 +53,33 @@ function formatKd(kd?: number | string): { text: string; color: string } {
   return { text, color };
 }
 
+const PARTY_STYLES: Record<number, { border: string; bg: string; dot: string; text: string; badge: string; name: string }> = {
+  1: {
+    border: 'border-l-[3px] border-l-cyan-400',
+    bg: 'bg-cyan-500/10',
+    dot: 'bg-cyan-400',
+    text: 'text-cyan-300',
+    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40',
+    name: 'Party 1',
+  },
+  2: {
+    border: 'border-l-[3px] border-l-amber-400',
+    bg: 'bg-amber-500/10',
+    dot: 'bg-amber-400',
+    text: 'text-amber-300',
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-400/40',
+    name: 'Party 2',
+  },
+  3: {
+    border: 'border-l-[3px] border-l-fuchsia-400',
+    bg: 'bg-fuchsia-500/10',
+    dot: 'bg-fuchsia-400',
+    text: 'text-fuchsia-300',
+    badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40',
+    name: 'Party 3',
+  },
+};
+
 const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
   {
     puuid: 'p1',
@@ -80,6 +107,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     recentLost: 1,
     streak: 2,
     selectionState: 'locked',
+    partyIndex: 1,
   },
   {
     puuid: 'p2',
@@ -107,6 +135,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     recentLost: 2,
     streak: 1,
     selectionState: 'locked',
+    partyIndex: 1,
   },
   {
     puuid: 'p3',
@@ -134,6 +163,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     recentLost: 3,
     streak: 0,
     selectionState: 'selected',
+    partyIndex: 0,
   },
   {
     puuid: 'p4',
@@ -161,6 +191,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     recentLost: 1,
     streak: 3,
     selectionState: 'locked',
+    partyIndex: 2,
   },
   {
     puuid: 'p5',
@@ -188,6 +219,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     recentLost: 2,
     streak: 1,
     selectionState: 'selected',
+    partyIndex: 2,
   },
 ];
 
@@ -1048,12 +1080,15 @@ const PregameTeamColumn: React.FC<{
           const kd = formatKd(p.kd);
           const locked = (p.selectionState || '').toLowerCase().includes('lock');
           const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
+          const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
 
           return (
             <div
               key={p.puuid}
               className={`grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
-                p.isMe
+                party
+                  ? `${party.border} ${party.bg} border-white/5`
+                  : p.isMe
                   ? 'bg-purple-500/15 border-purple-400/30 text-white shadow-xs'
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
@@ -1085,6 +1120,14 @@ const PregameTeamColumn: React.FC<{
                     {p.isMe && (
                       <span className="px-1 py-px rounded bg-purple-500/80 text-[7px] font-black text-white uppercase shrink-0">
                         You
+                      </span>
+                    )}
+                    {party && (
+                      <span
+                        className={`px-1 py-px rounded text-[7px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
+                        title={party.name}
+                      >
+                        {party.name}
                       </span>
                     )}
                   </div>
@@ -1195,12 +1238,15 @@ const VerticalSquadColumn: React.FC<{
       const icon = tierIcons[p.tier];
       const peakIcon = tierIcons[p.peakTier];
       const kd = formatKd(p.kd);
+      const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
 
       return (
         <div
           key={p.puuid}
           className={`flex items-center gap-2 px-2 py-1 rounded-xl border text-xs transition-colors ${
-            p.isMe
+            party
+              ? `${party.border} ${party.bg} border-white/5`
+              : p.isMe
               ? 'bg-purple-950/30 border-purple-500/40 text-white shadow-xs'
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
@@ -1230,6 +1276,14 @@ const VerticalSquadColumn: React.FC<{
             {p.isMe && (
               <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
                 You
+              </span>
+            )}
+            {party && (
+              <span
+                className={`px-1 py-px rounded text-[7px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
+                title={party.name}
+              >
+                {party.name}
               </span>
             )}
           </div>
