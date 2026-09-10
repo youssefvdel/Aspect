@@ -439,7 +439,7 @@ export const OverlayView: React.FC = () => {
     } catch {}
   };
 
-  const { detailsById, mapById, profile, trnAgents } = useTrackerData();
+  const { detailsById, mapById, profile, trnAgents, trnMaps } = useTrackerData();
 
   const activeMapName =
     matchState?.mapName && matchState.mapName !== 'No Match Active' && matchState.mapName !== 'Live Match Status'
@@ -448,13 +448,40 @@ export const OverlayView: React.FC = () => {
 
   const normActiveMap = activeMapName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // 1. Compute user's real stats on this specific active map
-  const mapAgentStats = computeMapAgentStats(
+  // Local match details cover only the last ~20 games, so a per-map slice is
+  // 1-2 games — useless on its own. Keep it purely to enrich K/D and HS% on the
+  // agents we also see in TRN.
+  const localMapStats = computeMapAgentStats(
     activeMapName,
     detailsById || {},
     mapById || {},
     profile?.puuid
   );
+
+  // AUTHORITATIVE source for "my agents on this map": TRN's act-wide per-map
+  // segment, which carries the real match count + win rate per agent.
+  const trnMap = (trnMaps ?? []).find((m) => {
+    const n = m.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return n === normActiveMap || n.includes(normActiveMap) || normActiveMap.includes(n);
+  });
+
+  const mapScopedStats: AgentStatSummary[] = (trnMap?.topAgents ?? [])
+    .filter((a) => a.matches > 0)
+    .map((a) => {
+      const local = localMapStats.find((s) => s.agent.toLowerCase() === a.name.toLowerCase());
+      const wins = Math.round((a.winPct / 100) * a.matches);
+      return {
+        agent: a.name,
+        role: local?.role,
+        matches: a.matches,
+        wins,
+        losses: Math.max(0, a.matches - wins),
+        winPct: Number(a.winPct.toFixed(1)),
+        kd: local?.kd ?? 0,
+        hsPct: local?.hsPct ?? 0,
+      };
+    })
+    .sort((a, b) => b.matches - a.matches || b.winPct - a.winPct);
 
   // 2. The player's REAL agent pool across every map (act-wide), so we never
   //    pretend they have no history just because this map is new to them.
@@ -472,29 +499,26 @@ export const OverlayView: React.FC = () => {
     }))
     .sort((a, b) => b.matches - a.matches || b.winPct - a.winPct);
 
-  // Scope of the personal view. A map record of one game per agent is noise —
-  // it used to fire the "<50% win rate on this map" warning off a single loss
-  // and call a 1-game agent the "best pick". An agent's map record only counts
-  // once it has a real sample.
-  const MAP_AGENT_MIN = 2;
-  const trustedMapStats = mapAgentStats.filter((s) => s.matches >= MAP_AGENT_MIN);
-  const mapGames = mapAgentStats.reduce((n, s) => n + s.matches, 0);
-  const hasMapHistory = trustedMapStats.length > 0;
-  const personalStats: AgentStatSummary[] = hasMapHistory ? trustedMapStats : overallAgentStats;
+  // Scope of the personal view: this map's real record, else their whole pool.
+  const mapGames = trnMap?.matchesPlayed ?? localMapStats.reduce((n, s) => n + s.matches, 0);
+  const hasMapHistory = mapScopedStats.length > 0;
+  const personalStats: AgentStatSummary[] = hasMapHistory ? mapScopedStats : overallAgentStats;
   const personalScope: 'map' | 'all' | 'preview' =
     hasMapHistory ? 'map' : overallAgentStats.length > 0 ? 'all' : 'preview';
   const thinMapSample = !hasMapHistory && mapGames > 0;
 
-  // 3. Check if user has an agent on this map with >= 50% win rate
-  const hasWinningAgentOnMap = mapAgentStats.some((s) => s.matches >= 2 && s.winPct >= 50);
+  // 3. Does the player have an agent they actually win with here?
+  const hasWinningAgentOnMap = mapScopedStats.some((s) => s.matches >= 2 && s.winPct >= 50);
 
   // 4. Rank-tuned map meta picks
   const userTier = profile?.tier || 22;
   const rankTierLabel = getRankTierLabel(userTier);
   const metaPicks = getMapMetaPicks(normActiveMap, userTier);
 
-  // Decide whether to show meta recommendations or personal stats
-  const showMetaPicks = viewMode === 'blitz' || (viewMode === 'auto' && !hasWinningAgentOnMap);
+  // The player's own agents are the point of this widget, so they are the
+  // default view. Meta only takes over when the player explicitly asks, or when
+  // there is no personal data at all to show.
+  const showMetaPicks = viewMode === 'blitz' || (viewMode === 'auto' && personalStats.length === 0);
 
   // Never fabricate: the preview list only appears when there is no account data
   // at all (dev mock / signed-out), never as a stand-in for missing map games.
@@ -1540,7 +1564,6 @@ export const OverlayView: React.FC = () => {
                       : stat.kd >= 1.0
                       ? 'text-m3-mint font-semibold'
                       : 'text-rose-400 font-medium';
-
                   return (
                     <div
                       key={stat.agent}
@@ -1585,18 +1608,77 @@ export const OverlayView: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* K/D */}
-                      <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio">
-                        <span className={kdColor}>{kd}</span>
+                      {/* K/D — TRN's map segment has no K/D, so only local games can fill it */}
+                      <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio (last-20 local games)">
+                        {stat.kd > 0 ? (
+                          <span className={kdColor}>{kd}</span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
                       </div>
 
                       {/* HS% */}
                       <div className="text-right font-mono text-[10px] text-amber-200/90 font-medium" title="Headshot %">
-                        {stat.hsPct.toFixed(0)}%
+                        {stat.hsPct > 0 ? `${stat.hsPct.toFixed(0)}%` : <span className="text-zinc-600">—</span>}
                       </div>
                     </div>
                   );
                 })}
+
+                {/* No winning agent here → suggest the rank meta WITHOUT hiding
+                    the player's own list. */}
+                {!hasWinningAgentOnMap && personalScope !== 'preview' && (
+                  <div className="mt-1 pt-1.5 border-t border-white/10 flex flex-col gap-1">
+                    <div className="px-1 flex items-center justify-between text-[9px] font-mono">
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        {personalScope === 'map' ? 'No agent above 50% here' : `No ${activeMapName} record yet`} — suggested
+                      </span>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => setViewMode('blitz')}
+                        className="text-zinc-400 hover:text-white underline font-bold cursor-pointer shrink-0"
+                      >
+                        All
+                      </button>
+                    </div>
+                    {metaPicks.slice(0, 3).map((b) => {
+                      const meta = Object.values(agentMap).find(
+                        (a) => a.name.toLowerCase() === b.agent.toLowerCase()
+                      );
+                      return (
+                        <div
+                          key={b.agent}
+                          className="grid grid-cols-[1fr_52px_44px] items-center px-2 py-1 rounded-lg border border-amber-400/15 bg-amber-400/[0.04]"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {meta?.icon ? (
+                              <img
+                                src={meta.icon}
+                                alt=""
+                                draggable={false}
+                                className="w-6 h-6 rounded-md object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-md bg-zinc-800 shrink-0 border border-white/10" />
+                            )}
+                            <span className="font-bold text-[10px] text-white truncate">{b.agent}</span>
+                            <span className="px-1 py-px rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[7px] font-mono font-bold uppercase shrink-0">
+                              {b.tier}
+                            </span>
+                          </div>
+                          <span className="text-right font-mono text-[10px] font-bold text-m3-mint" title="Win rate">
+                            {b.winRate}%
+                          </span>
+                          <span className="text-right font-mono text-[9px] text-zinc-400" title="Pick rate">
+                            {b.pickRate}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
