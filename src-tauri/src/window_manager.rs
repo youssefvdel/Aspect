@@ -717,11 +717,11 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             as i32 as isize;
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
-        // 2. Configure extended styles
+        // 2. Configure extended styles (preserve Tao DirectComposition surface)
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
-            | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080; // WS_EX_TOOLWINDOW
+        ex_style &= !0x00080000; // DO NOT set WS_EX_LAYERED (breaks DirectComposition)
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
@@ -775,11 +775,11 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             as i32 as isize;
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
-        // In Edit Mode: TRANSPARENT off (receive mouse) + NOACTIVATE off (allow active interaction)
+        // In Edit Mode: preserve Tao DirectComposition surface, allow full user interaction
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
-            | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080; // WS_EX_TOOLWINDOW
+        ex_style &= !0x00080000; // DO NOT set WS_EX_LAYERED (breaks DirectComposition)
         ex_style &= !(0x00000020 | 0x08000000);
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
@@ -841,9 +841,9 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
-            | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080; // WS_EX_TOOLWINDOW
+        ex_style &= !0x00080000;
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
