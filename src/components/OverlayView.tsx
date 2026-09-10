@@ -59,7 +59,9 @@ export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
 
 export function getDefaultOverlayConfig(): OverlayConfig {
   return {
-    showLobby: true,
+    // Match Status (the in-match scoreboard) is OFF by default — it is the
+    // noisiest widget and belongs on screen only when the player asks for it.
+    showLobby: false,
     showPregame: true,
     showTopAgents: true,
     positions: getDefaultOverlayPositions(),
@@ -359,12 +361,23 @@ export const OverlayView: React.FC = () => {
       const saved = localStorage.getItem('aspect_overlay_cfg_v4') || localStorage.getItem('aspect_overlay_cfg_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
+        const merged: OverlayConfig = {
           ...DEFAULT_OVERLAY_CONFIG,
           ...parsed,
           positions: { ...DEFAULT_OVERLAY_CONFIG.positions, ...(parsed.positions || {}) },
           scales: { ...DEFAULT_OVERLAY_CONFIG.scales, ...(parsed.scales || {}) },
         };
+        // One-time migration: Match Status becomes opt-in. Applied once so that
+        // a player who deliberately re-adds it from the dock keeps it.
+        const MIGRATION_KEY = 'aspect_overlay_matchstatus_default_off';
+        if (!localStorage.getItem(MIGRATION_KEY)) {
+          localStorage.setItem(MIGRATION_KEY, '1');
+          merged.showLobby = false;
+          try {
+            localStorage.setItem('aspect_overlay_cfg_v4', JSON.stringify(merged));
+          } catch {}
+        }
+        return merged;
       }
     } catch {}
     return DEFAULT_OVERLAY_CONFIG;
