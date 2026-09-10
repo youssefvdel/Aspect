@@ -378,25 +378,66 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
 export const shortMapName = (mapId: string, maps: Record<string, string>): string =>
   maps[mapId.toLowerCase()] ?? (mapId.split('/').pop() || '?');
 
+/** True all-time peak tier for one season row (end tier, act rank, or highest won tier). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function seasonPeakTier(s: any): number {
+  const endTier = Number(s?.CompetitiveTier ?? 0);
+  const actRank = Number(s?.Rank ?? 0);
+  let winTier = 0;
+  if (s?.WinsByTier && typeof s.WinsByTier === 'object') {
+    for (const tk of Object.keys(s.WinsByTier)) {
+      const num = Number(tk);
+      if (!isNaN(num) && Number(s.WinsByTier[tk]) > 0) {
+        winTier = Math.max(winTier, num);
+      }
+    }
+  }
+  return Math.max(endTier, actRank, winTier);
+}
+
+/**
+ * True all-time peak tier PLUS the act it was reached in.
+ * Riot keys SeasonalInfoBySeasonID by season uuid, so the winning key is the act id.
+ * Pass `orderNewestFirst` (newest→oldest) so ties resolve to the MOST RECENT act
+ * rather than to arbitrary object insertion order.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractPeakInfo(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  seasonsObj: Record<string, any>,
+  orderNewestFirst: string[] = []
+): { tier: number; seasonId: string } {
+  const keys = Object.keys(seasonsObj || {});
+  if (keys.length === 0) return { tier: 0, seasonId: '' };
+
+  // Oldest → newest, so a strict `>` lets the newest act win every tie.
+  const rank = new Map<string, number>();
+  orderNewestFirst.forEach((id, i) => rank.set(String(id).toLowerCase(), orderNewestFirst.length - i));
+  const ordered = keys.slice().sort((a, b) => {
+    const ra = rank.get(a.toLowerCase());
+    const rb = rank.get(b.toLowerCase());
+    if (ra != null && rb != null) return ra - rb;
+    if (ra != null) return -1;
+    if (rb != null) return 1;
+    return 0;
+  });
+
+  let tier = 0;
+  let seasonId = '';
+  for (const id of ordered) {
+    const t = seasonPeakTier(seasonsObj[id]);
+    if (t > tier) {
+      tier = t;
+      seasonId = id;
+    }
+  }
+  return { tier, seasonId };
+}
+
 /** Calculate the true all-time peak tier from Riot's SeasonalInfoBySeasonID payload */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function extractPeakTier(seasonsObj: Record<string, any>): number {
-  let peak = 0;
-  for (const s of Object.values(seasonsObj || {})) {
-    const endTier = Number(s?.CompetitiveTier ?? 0);
-    const actRank = Number(s?.Rank ?? 0);
-    let winTier = 0;
-    if (s?.WinsByTier && typeof s.WinsByTier === 'object') {
-      for (const tk of Object.keys(s.WinsByTier)) {
-        const num = Number(tk);
-        if (!isNaN(num) && Number(s.WinsByTier[tk]) > 0) {
-          winTier = Math.max(winTier, num);
-        }
-      }
-    }
-    peak = Math.max(peak, endTier, actRank, winTier);
-  }
-  return peak;
+  return extractPeakInfo(seasonsObj).tier;
 }
 
 /** Rank + RR + peak + per-season peaks straight from Riot. */
@@ -982,6 +1023,7 @@ const liveMmrCache = new Map<
     tier: number;
     rr: number;
     peakTier: number;
+    peakSeasonId?: string;
     actWins?: number;
     actGames?: number;
     leaderboardRank?: number;
@@ -1361,6 +1403,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         tier: number;
         rr: number;
         peakTier: number;
+        peakSeasonId?: string;
         actWins?: number;
         actGames?: number;
         leaderboardRank?: number;
@@ -1398,11 +1441,13 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                 cur?.RankedRating != null
                   ? Number(cur.RankedRating)
                   : Number(latest?.RankedRatingAfterUpdate ?? 0);
-              const peak = Math.max(tierId, extractPeakTier(seasons));
+              const peakInfo = extractPeakInfo(seasons, data.seasonOrder || []);
+              const peak = Math.max(tierId, peakInfo.tier);
               const val = {
                 tier: tierId,
                 rr,
                 peakTier: peak,
+                peakSeasonId: peak === tierId && tierId > 0 ? curSeasonId : peakInfo.seasonId,
                 actWins: Number(cur?.NumberOfWins ?? 0),
                 actGames: Number(cur?.NumberOfGames ?? 0),
                 leaderboardRank: Number(cur?.LeaderboardRank ?? 0),
@@ -1529,6 +1574,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         rr: mmr.rr,
         peakTier: mmr.peakTier,
         peakRank: mmr.peakTier > 0 ? tierName(mmr.peakTier) : '—',
+        peakSeasonId: mmr.peakSeasonId,
         actWins: mmr.actWins,
         actGames: mmr.actGames,
         leaderboardRank: mmr.leaderboardRank,

@@ -69,6 +69,10 @@ const mk = (
     rr: 40 + i,
     peakTier: tier + 3,
     peakRank: rank,
+    // Real season uuid so the "peak reached in" act label renders in previews.
+    peakSeasonId: '8102cd81-43a0-d0d7-bd59-47b8fe9bed1b',
+    actWins: 12 + i,
+    actGames: 20 + i,
     accountLevel: 100 + i,
     cardId: '',
     isMe: false,
@@ -76,6 +80,10 @@ const mk = (
     region: 'EU',
     country: 'DE',
     kd: 1.1,
+    recentWon: 3 + (i % 4),
+    recentLost: i % 3,
+    streak: 2,
+    streakIsWin: true,
     ...extra,
   };
 };

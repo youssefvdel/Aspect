@@ -72,7 +72,7 @@ function getFlagUrl(code?: string): string | null {
 }
 
 /** Full MMR picture for a lobby player, surfaced on hover. */
-function rankTooltip(p: LiveMatchPlayer): string {
+function rankTooltip(p: LiveMatchPlayer, actLabel?: string): string {
   const bits: string[] = [];
   bits.push(p.tier > 0 ? `${p.rank}` : 'Unranked');
   if (p.rr > 0) bits.push(`${p.rr} RR`);
@@ -80,9 +80,18 @@ function rankTooltip(p: LiveMatchPlayer): string {
     bits.push(`${p.actWins ?? 0}W-${Math.max(0, p.actGames - (p.actWins ?? 0))}L this act`);
   }
   if (p.leaderboardRank && p.leaderboardRank > 0) bits.push(`#${p.leaderboardRank} Leaderboard`);
-  if (p.peakTier > 0) bits.push(`Peak ${p.peakRank}`);
+  if (p.peakTier > 0) bits.push(`Peak ${p.peakRank}${actLabel ? ` (${actLabel})` : ''}`);
   if (p.isRankHidden) bits.push('Act rank hidden (unmasked)');
   return bits.join(' • ');
+}
+
+/** "V25 · ACT III" → "V25·III" — fits under a 16px emblem. */
+function shortAct(label?: string): string {
+  if (!label) return '';
+  return label
+    .replace(/ACT\s*/i, '')
+    .replace(/\s*·\s*/g, '·')
+    .trim();
 }
 
 
@@ -188,6 +197,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     rr: 64,
     peakTier: 24,
     peakRank: 'Ascendant 1',
+    peakSeasonId: '8102cd81-43a0-d0d7-bd59-47b8fe9bed1b',
     accountLevel: 142,
     cardId: '',
     isMe: true,
@@ -390,6 +400,7 @@ export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [agentMap, setAgentMap] = useState<Record<string, { name: string; icon: string; role: string }>>({});
+  const [seasonNames, setSeasonNames] = useState<Record<string, string>>({});
   const [viewMode, setViewMode] = useState<'auto' | 'personal' | 'blitz'>('auto');
 
   // Edit mode state (synced with main app)
@@ -509,6 +520,7 @@ export const OverlayView: React.FC = () => {
       .then((d) => {
         setTierIcons(d.tierIcons);
         setAgentMap(d.agentInfo || {});
+        setSeasonNames(d.seasons || {});
       })
       .catch(() => {});
 
@@ -1254,6 +1266,7 @@ export const OverlayView: React.FC = () => {
               tagColor="text-m3-primary"
               players={yourTeam}
               tierIcons={tierIcons}
+              seasons={seasonNames}
             />
           </div>
         </div>
@@ -1527,13 +1540,14 @@ const PregameTeamColumn: React.FC<{
   tagColor: string;
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
-}> = ({ players, tierIcons }) => {
+  seasons?: Record<string, string>;
+}> = ({ players, tierIcons, seasons }) => {
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
       {/* Table Column Headers: Agent, Player, Rank (Icon), Peak (Icon), K/D, Win%, HS%, Recent */}
       <div className="grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
         <span>Player</span>
-        <span className="text-center">Rank·RR</span>
+        <span className="text-center">Rank</span>
         <span className="text-center">Peak</span>
         <span className="text-right">K/D</span>
         <span className="text-right">Win%</span>
@@ -1644,26 +1658,38 @@ const PregameTeamColumn: React.FC<{
               </div>
 
               {/* Current Rank emblem + live RR */}
-              <div className="flex flex-col items-center justify-center leading-none" title={rankTooltip(p)}>
+              <div
+                className="flex flex-col items-center justify-center leading-none"
+                title={rankTooltip(p, seasons?.[p.peakSeasonId?.toLowerCase() ?? ''])}
+              >
                 {icon ? (
                   <img src={icon} alt="" draggable={false} className="w-5 h-5 object-contain shrink-0" />
                 ) : (
                   <span className="text-[10px] font-mono text-zinc-500">—</span>
                 )}
                 {p.rr > 0 && (
-                  <span className="text-[8px] font-mono font-bold text-m3-primary mt-0.5">
-                    {p.rr}
-                    <span className="text-[6px] text-zinc-500 ml-px">RR</span>
-                  </span>
+                  <span className="text-[8px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
                 )}
               </div>
 
-              {/* Peak Rank (Icon only) */}
-              <div className="flex items-center justify-center" title={`Peak: ${p.peakRank}`}>
+              {/* Peak Rank emblem + the act it was reached in */}
+              <div
+                className="flex flex-col items-center justify-center leading-none"
+                title={`Peak: ${p.peakRank}${
+                  seasons?.[p.peakSeasonId?.toLowerCase() ?? '']
+                    ? ` — ${seasons[p.peakSeasonId!.toLowerCase()]}`
+                    : ''
+                }`}
+              >
                 {peakIcon ? (
                   <img src={peakIcon} alt="" draggable={false} className="w-4 h-4 object-contain opacity-75 shrink-0" />
                 ) : (
                   <span className="text-[10px] font-mono text-zinc-500">—</span>
+                )}
+                {p.peakSeasonId && seasons?.[p.peakSeasonId.toLowerCase()] && (
+                  <span className="text-[7px] font-mono font-bold text-zinc-400 mt-0.5 tracking-tight">
+                    {shortAct(seasons[p.peakSeasonId.toLowerCase()])}
+                  </span>
                 )}
               </div>
 
@@ -1706,7 +1732,7 @@ const PregameTeamColumn: React.FC<{
                       <span className="text-zinc-600"> - </span>
                       <span className={p.recentLost ? 'text-rose-400' : 'text-zinc-500'}>{p.recentLost ?? 0}L</span>
                     </span>
-                    {p.streak && p.streak > 1 ? (
+                    {p.streak && p.streak > 1 && p.streakIsWin !== undefined ? (
                       <span
                         className={`text-[8px] font-bold mt-0.5 ${
                           p.streakIsWin ? 'text-m3-mint' : 'text-rose-400'

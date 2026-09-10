@@ -260,6 +260,7 @@ export interface LiveMatchPlayer {
   rr: number;
   peakTier: number;
   peakRank: string;
+  peakSeasonId?: string;
   actWins?: number;
   actGames?: number;
   leaderboardRank?: number;
