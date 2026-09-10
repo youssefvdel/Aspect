@@ -132,3 +132,41 @@ not as settled.
 2. **Overwolf build** — ship a second target on the Overwolf platform. Needs
    Overwolf app approval; no Riot approval, as Overwolf holds that.
 3. **Riot production key + app review** — slow, gated, and still no live endpoint.
+
+#### Overwolf as a "sidecar" — evaluated, and the RAM cost is real
+An Overwolf app is **not a standalone binary we can spawn next to Tauri**. It is an
+HTML/JS app hosted by the Overwolf client, and per Overwolf's own SDK docs "each app is
+hosted separately in its own web browser, and each web browser runs as a separate
+process". So the user runs the whole Overwolf client regardless — there is no thin
+sidecar shape.
+
+Gating (all from Overwolf's docs):
+- **Developer whitelisting is mandatory.** "Only whitelisted Overwolf developer accounts
+  can load or install apps that are not available on the Overwolf store" — so even
+  local testing needs an approved app proposal first (~4 business days for feedback).
+- Release needs an OPK package plus a QA review cycle.
+- Public apps must show at least one desktop window; **headless/background-only apps are
+  explicitly not approvable**. A pure data-relay app is therefore a non-starter.
+- Relaying GEP data out to a non-Overwolf surface is a ToS grey area on top of that.
+
+Memory, measured/gathered rather than guessed:
+| Component | RAM |
+| --- | --- |
+| Overwolf client alone | ~150-300 MB (its own support docs: 8 GB min / 16 GB recommended system) |
+| + a single GEP app | ~500-700 MB combined |
+| Recon today (Tauri + WebView2 children) | ~374 MB for 14 processes on this box; `recon.exe` itself is only 12.6 MB |
+| Screen OCR | ~0 marginal (an on-demand capture in the existing process) |
+
+So Overwolf would roughly add the cost of a second full Chromium runtime, permanently
+resident, and hand a third party control of the live-data tap — for data we would still
+have to proxy back into our own UI.
+
+**What GEP would actually give us** (the upside, for completeness): `match_info.score`
+and `round_number`, a `scoreboard` info item with per-player kills/deaths/assists/money/
+alive, `round_report` with the local player's damage + headshots/bodyshots/legshots, and
+a `kill_feed` event. That is the full live picture — round score, whole-lobby KDA, live
+HS%.
+
+**Decision:** OCR is the better fit for a standalone Tauri app. Overwolf only becomes
+worth it if we deliberately ship a *separate Overwolf product* and accept the RAM tax,
+the approval process, and the relay grey area — not as a sidecar to this app.
