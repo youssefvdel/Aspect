@@ -2,6 +2,7 @@ use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW,
     GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible,
@@ -428,6 +429,13 @@ pub fn align_overlay_to_valorant(hwnd_val: isize) -> Result<(), String> {
         }
         Ok(())
     }
+}
+
+/// OS-level Tab key state for the in-match scoreboard peek.
+/// Reads the physical key, not the focused window — the click-through overlay
+/// never receives keyboard focus, so JS key listeners can't fire in-game.
+pub fn is_tab_down() -> bool {
+    unsafe { (GetAsyncKeyState(0x09) as u16 & 0x8000) != 0 }
 }
 
 pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {

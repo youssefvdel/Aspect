@@ -232,13 +232,15 @@ fn restore_window_framed(hwnd: isize) -> Result<String, String> {
 #[tauri::command]
 fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
+        // Show FIRST, strip Win32 chrome SECOND — Tauri's show() re-applies
+        // default styles and wipes WS_EX_TRANSPARENT if we strip beforehand.
+        window.show().map_err(|e| e.to_string())?;
         #[cfg(windows)]
         {
             if let Ok(hwnd) = window.hwnd() {
                 let _ = window_manager::setup_overlay_window(hwnd.0 as isize, true);
             }
         }
-        window.show().map_err(|e| e.to_string())?;
         Ok(())
     } else {
         Err("Overlay window not found".to_string())
@@ -312,6 +314,18 @@ fn is_overlay_visible(app: tauri::AppHandle) -> Result<bool, String> {
         Ok(window.is_visible().unwrap_or(false))
     } else {
         Ok(false)
+    }
+}
+
+#[tauri::command]
+fn is_tab_down() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        return Ok(window_manager::is_tab_down());
+    }
+    #[cfg(not(windows))]
+    {
+        return Ok(false);
     }
 }
 
@@ -835,6 +849,7 @@ pub fn run() {
             set_overlay_edit_mode,
             get_overlay_edit_mode,
             is_overlay_visible,
+            is_tab_down,
             get_valorant_configs,
             update_valorant_config,
             update_valorant_config_custom,

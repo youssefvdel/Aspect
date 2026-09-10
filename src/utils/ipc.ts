@@ -260,6 +260,15 @@ export async function isOverlayVisible(): Promise<boolean> {
   return await invoke<boolean>('is_overlay_visible');
 }
 
+export async function isTabDown(): Promise<boolean> {
+  if (!isTauri()) return false;
+  try {
+    return await invoke<boolean>('is_tab_down');
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchValorantConfigs(): Promise<ConfigFileInfo[]> {
   if (!isTauri()) return mockConfigs;
   return await invoke<ConfigFileInfo[]>('get_valorant_configs');

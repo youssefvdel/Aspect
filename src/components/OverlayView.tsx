@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
 import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
-import { getOverlayEditMode, fetchDisplayInfo } from '../utils/ipc';
+import { getOverlayEditMode, fetchDisplayInfo, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 export interface WidgetPos {
@@ -166,6 +166,11 @@ export const OverlayView: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [, setActiveDragKey] = useState<string | null>(null);
 
+  // Tab-held peek state: in-match scoreboard shows ONLY while Tab is physically held.
+  // The click-through overlay never gets keyboard focus, so this is fed by the
+  // OS-level GetAsyncKeyState probe — never by JS key listeners.
+  const [tabHeld, setTabHeld] = useState<boolean>(false);
+
   // Widget config + positions (persisted)
   const [config, setConfig] = useState<OverlayConfig>(() => {
     try {
@@ -251,6 +256,30 @@ export const OverlayView: React.FC = () => {
       }
     };
   }, []);
+
+  // Tab-peek probe: polls the OS-level Tab state ONLY during a live match
+  // (coregame) and only when NOT editing. One cheap IPC per 150ms, zero curl,
+  // zero timers when hidden / idle / pregame / edit mode.
+  useEffect(() => {
+    const inCoregame = matchState?.phase === 'coregame' && !isEditMode;
+    if (!inCoregame) {
+      setTabHeld(false);
+      return;
+    }
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const down = await isTabDown();
+        if (!cancelled) setTabHeld((prev) => (prev === down ? prev : down));
+      } catch {}
+    };
+    void probe();
+    const id = setInterval(probe, 150);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [matchState?.phase, isEditMode]);
 
   // Smooth GPU-composited drag handler
   const startDrag = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
@@ -388,6 +417,11 @@ export const OverlayView: React.FC = () => {
   };
 
   const isLive = matchState && matchState.phase !== 'idle';
+  // Phase-split visibility: agent select shows team panels outright;
+  // in-match scoreboard renders ONLY while Tab is physically held.
+  const isPregame = matchState?.phase === 'pregame';
+  const isCoregame = matchState?.phase === 'coregame';
+  const showMatchPanel = isEditMode || isPregame || (isCoregame && tabHeld);
   const myPlayer = matchState
     ? [...matchState.blueTeam, ...matchState.redTeam].find((p) => p.isMe)
     : null;
@@ -586,9 +620,9 @@ export const OverlayView: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* WIDGET 4: Vertical Compact In-Game Status Overlay (Left-Mid) */}
+      {/* WIDGET 4: Match Panel — agent select always on, in-match Tab-peek only */}
       {/* ============================================================ */}
-      {config.showLobby && (isLive || isEditMode) && (
+      {config.showLobby && showMatchPanel && (
         <div
           ref={lobbyRef}
           onPointerDown={(e) => startDrag('lobby', e)}
@@ -719,7 +753,7 @@ export const OverlayView: React.FC = () => {
                     players={matchState?.blueTeam || []}
                     tierIcons={tierIcons}
                   />
-                  {matchState?.phase === 'coregame' ? (
+                  {matchState?.phase === 'coregame' || matchState?.phase === 'pregame' ? (
                     <VerticalSquadColumn
                       title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
                       tagColor="text-m3-mint"
