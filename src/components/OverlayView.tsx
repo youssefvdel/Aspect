@@ -548,6 +548,15 @@ export const OverlayView: React.FC = () => {
   const isCoregame = matchState?.phase === 'coregame';
   const showScorePanel = isEditMode || (isCoregame && tabHeld);
   const showPregamePanel = isEditMode || isPregame;
+  // Scoreboard mounts/unmounts on every Tab press and panels flip on phase
+  // changes — repaint after each transition so DWM never keeps a stale
+  // white region from the mount/unmount repaint storm.
+  const scoreVisible = config.showLobby && showScorePanel;
+  const pregameVisible = config.showPregame && showPregamePanel;
+  useEffect(() => {
+    const t = setTimeout(forceRepaint, 80);
+    return () => clearTimeout(t);
+  }, [scoreVisible, pregameVisible, forceRepaint]);
   const myPlayer = matchState
     ? [...matchState.blueTeam, ...matchState.redTeam].find((p) => p.isMe)
     : null;
