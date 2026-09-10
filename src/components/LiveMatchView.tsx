@@ -29,8 +29,16 @@ export const LiveMatchView: React.FC = () => {
 
   const [overlayCfg, setOverlayCfg] = useState<OverlayConfig>(() => {
     try {
-      const s = localStorage.getItem('aspect_overlay_cfg_v3');
-      return s ? JSON.parse(s) : DEFAULT_OVERLAY_CONFIG;
+      const s = localStorage.getItem('aspect_overlay_cfg_v4') || localStorage.getItem('aspect_overlay_cfg_v3');
+      if (s) {
+        const parsed = JSON.parse(s);
+        return {
+          ...DEFAULT_OVERLAY_CONFIG,
+          ...parsed,
+          positions: { ...DEFAULT_OVERLAY_CONFIG.positions, ...(parsed.positions || {}) },
+        };
+      }
+      return DEFAULT_OVERLAY_CONFIG;
     } catch {
       return DEFAULT_OVERLAY_CONFIG;
     }
@@ -39,7 +47,7 @@ export const LiveMatchView: React.FC = () => {
   const updateOverlayCfg = async (next: OverlayConfig) => {
     setOverlayCfg(next);
     try {
-      localStorage.setItem('aspect_overlay_cfg_v3', JSON.stringify(next));
+      localStorage.setItem('aspect_overlay_cfg_v4', JSON.stringify(next));
     } catch {}
     try {
       await emit('overlay-config-changed', next);

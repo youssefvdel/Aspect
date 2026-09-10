@@ -262,6 +262,9 @@ export interface LiveMatchPlayer {
   cardId: string;
   isMe: boolean;
   selectionState?: string;
+  region?: string;
+  country?: string;
+  kd?: number | string;
 }
 
 export interface LiveMatchState {

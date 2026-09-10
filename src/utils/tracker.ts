@@ -795,6 +795,7 @@ export const glzHostFor = (region: string): string => {
 };
 
 const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: number; fetchedAt: number }>();
+const livePlayerStatsCache = new Map<string, { kd?: number; country?: string; fetchedAt: number }>();
 
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
   const idleState: LiveMatchState = {
@@ -997,6 +998,29 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         (a) => a.name.toLowerCase() === agentRawName.toLowerCase()
       );
 
+      // Asynchronously fetch TRN stats (KD & country) if not cached
+      const statsCached = livePlayerStatsCache.get(p.puuid);
+      if (!statsCached && resolved?.name && resolved?.tag) {
+        import('./trn')
+          .then(({ fetchTrnActStats }) => {
+            fetchTrnActStats(resolved.name, resolved.tag)
+              .then((res) => {
+                livePlayerStatsCache.set(p.puuid, {
+                  kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
+                  country: res?.countryCode || region.toUpperCase(),
+                  fetchedAt: Date.now(),
+                });
+              })
+              .catch(() => {
+                livePlayerStatsCache.set(p.puuid, {
+                  country: region.toUpperCase(),
+                  fetchedAt: Date.now(),
+                });
+              });
+          })
+          .catch(() => {});
+      }
+
       const targetTeam = shouldSplitFFA ? (idx % 2 === 0 ? 'Blue' : 'Red') : p.team;
 
       const playerObj: LiveMatchPlayer = {
@@ -1017,6 +1041,9 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         cardId: p.cardId,
         isMe: p.puuid === ent.puuid,
         selectionState: p.selectionState,
+        region: region.toUpperCase(),
+        country: statsCached?.country || region.toUpperCase(),
+        kd: statsCached?.kd,
       };
 
       if (targetTeam === 'Blue') {

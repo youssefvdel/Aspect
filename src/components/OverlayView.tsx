@@ -32,9 +32,117 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
     rank: { x: 24, y: 24 },
     display: { x: 300, y: 24 },
     kpi: { x: 24, y: 140 },
-    lobby: { x: 120, y: 90 },
+    lobby: { x: 16, y: 240 }, // Default position: left-mid
   },
 };
+
+function shortRank(rank?: string): string {
+  if (!rank || rank === 'Unrated' || rank === '—') return 'Unr';
+  return rank
+    .replace('Iron ', 'I')
+    .replace('Bronze ', 'B')
+    .replace('Silver ', 'S')
+    .replace('Gold ', 'G')
+    .replace('Platinum ', 'P')
+    .replace('Diamond ', 'D')
+    .replace('Ascendant ', 'A')
+    .replace('Immortal ', 'Imm')
+    .replace('Radiant', 'Rad');
+}
+
+function getCountryDisplay(p: LiveMatchPlayer): { flag: string; label: string } {
+  const code = (p.country || p.region || 'EU').toUpperCase();
+  if (code.length === 2 && /^[A-Z]{2}$/.test(code)) {
+    try {
+      const codePoints = code
+        .split('')
+        .map((c) => 127397 + c.charCodeAt(0));
+      const flag = String.fromCodePoint(...codePoints);
+      return { flag, label: code };
+    } catch {}
+  }
+  return { flag: '🌐', label: code.slice(0, 3) };
+}
+
+function formatKd(kd?: number | string): { text: string; color: string } {
+  if (kd == null || kd === '' || kd === 0) return { text: '—', color: 'text-zinc-500' };
+  const num = typeof kd === 'number' ? kd : parseFloat(kd);
+  if (isNaN(num) || num <= 0) return { text: '—', color: 'text-zinc-500' };
+  const text = num.toFixed(2);
+  const color =
+    num >= 1.2
+      ? 'text-emerald-400 font-bold'
+      : num >= 1.0
+      ? 'text-m3-mint font-semibold'
+      : 'text-rose-400 font-medium';
+  return { text, color };
+}
+
+const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
+  {
+    puuid: 'p1',
+    name: 'You',
+    tag: 'EUW',
+    team: 'Blue',
+    agentId: '',
+    agentName: 'Jett',
+    agentIcon: 'https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/displayicon.png',
+    agentRole: 'Duelist',
+    tier: 22,
+    rank: 'Diamond 2',
+    rr: 64,
+    peakTier: 24,
+    peakRank: 'Ascendant 1',
+    accountLevel: 142,
+    cardId: '',
+    isMe: true,
+    country: 'DE',
+    region: 'EU',
+    kd: 1.28,
+  },
+  {
+    puuid: 'p2',
+    name: 'Shadow',
+    tag: '1337',
+    team: 'Blue',
+    agentId: '',
+    agentName: 'Omen',
+    agentIcon: 'https://media.valorant-api.com/agents/8e253930-4c05-31dd-1b6c-968525494517/displayicon.png',
+    agentRole: 'Controller',
+    tier: 21,
+    rank: 'Diamond 1',
+    rr: 38,
+    peakTier: 23,
+    peakRank: 'Diamond 3',
+    accountLevel: 89,
+    cardId: '',
+    isMe: false,
+    country: 'EG',
+    region: 'EU',
+    kd: 1.05,
+  },
+  {
+    puuid: 'p3',
+    name: 'ViperX',
+    tag: 'NA1',
+    team: 'Blue',
+    agentId: '',
+    agentName: 'Viper',
+    agentIcon: 'https://media.valorant-api.com/agents/707eab51-47e6-8043-86d8-d69c45b3d5b8/displayicon.png',
+    agentRole: 'Controller',
+    tier: 20,
+    rank: 'Platinum 3',
+    rr: 82,
+    peakTier: 22,
+    peakRank: 'Diamond 2',
+    accountLevel: 210,
+    cardId: '',
+    isMe: false,
+    country: 'FR',
+    region: 'EU',
+    kd: 0.94,
+  },
+];
 
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
@@ -49,7 +157,7 @@ export const OverlayView: React.FC = () => {
   // Widget config + positions (persisted)
   const [config, setConfig] = useState<OverlayConfig>(() => {
     try {
-      const saved = localStorage.getItem('aspect_overlay_cfg_v3');
+      const saved = localStorage.getItem('aspect_overlay_cfg_v4') || localStorage.getItem('aspect_overlay_cfg_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -65,7 +173,7 @@ export const OverlayView: React.FC = () => {
   const saveConfig = (next: OverlayConfig) => {
     setConfig(next);
     try {
-      localStorage.setItem('aspect_overlay_cfg_v3', JSON.stringify(next));
+      localStorage.setItem('aspect_overlay_cfg_v4', JSON.stringify(next));
     } catch {}
   };
 
@@ -139,7 +247,7 @@ export const OverlayView: React.FC = () => {
     setActiveDragKey(key);
 
     const targetEl = widgetRefs[key].current;
-    const current = config.positions[key] || { x: 24, y: 24 };
+    const current = config.positions[key] || { x: 16, y: 240 };
 
     let curX = current.x;
     let curY = current.y;
@@ -220,7 +328,7 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
-          <div className="rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3">
+          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3">
             {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
               <img
                 src={tierIcons[myPlayer?.tier ?? profile?.tier ?? 0]}
@@ -270,7 +378,7 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
-          <div className="rounded-xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white">
+          <div className="rounded-xl bg-black/35 backdrop-blur-md border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white">
             <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
             <span>{displayTag}</span>
           </div>
@@ -294,7 +402,7 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
-          <div className="rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono">
+          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono">
             <div className="flex flex-col">
               <span className="text-[9px] uppercase tracking-wider text-zinc-400">Wins</span>
               <span className="text-m3-mint font-bold">{profile.wins}</span>
@@ -314,9 +422,9 @@ export const OverlayView: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* WIDGET 4: Live Match Lobby Radar                            */}
+      {/* WIDGET 4: Vertical Compact In-Game Status Overlay (Left-Mid) */}
       {/* ============================================================ */}
-      {config.showLobby && isLive && (
+      {config.showLobby && (isLive || isEditMode) && (
         <div
           ref={lobbyRef}
           onPointerDown={(e) => startDrag('lobby', e)}
@@ -324,60 +432,88 @@ export const OverlayView: React.FC = () => {
             transform: `translate3d(${config.positions.lobby.x}px, ${config.positions.lobby.y}px, 0)`,
             touchAction: 'none',
           }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none w-full max-w-3xl will-change-transform ${
+          className={`fixed top-0 left-0 pointer-events-auto select-none w-[325px] will-change-transform ${
             isEditMode
-              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1'
+              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-1'
               : ''
           }`}
         >
-          <div className="rounded-3xl bg-zinc-950/90 backdrop-blur-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2">
-            <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-display font-extrabold text-white">
-                  {matchState.mapName} • {matchState.mode}
+          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-2.5 shadow-2xl flex flex-col gap-2">
+            {/* Header: Map • Mode • Phase */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-display font-black text-white truncate">
+                  {matchState?.mapName || 'Live Match Status'}
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-m3-primary/20 text-m3-primary text-[10px] font-mono font-bold">
-                  {matchState.phase === 'coregame' ? 'LIVE' : 'AGENT SELECT'}
-                </span>
+                {matchState?.mode && (
+                  <span className="text-[10px] font-mono text-zinc-400 truncate">
+                    • {matchState.mode}
+                  </span>
+                )}
               </div>
+              <span className="px-1.5 py-0.5 rounded bg-m3-primary/20 text-m3-primary text-[9px] font-mono font-extrabold uppercase shrink-0">
+                {matchState?.phase === 'coregame' ? 'LIVE' : matchState?.phase === 'pregame' ? 'SELECT' : 'PREVIEW'}
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {matchState.isDeathmatch ? (
+            {/* Column Titles */}
+            <div className="flex items-center gap-2 px-2 text-[9px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
+              <span className="flex-1">Player</span>
+              <span className="shrink-0 w-10 text-center">From</span>
+              <span className="shrink-0 w-10 text-left">Rank</span>
+              <span className="shrink-0 w-10 text-left">Peak</span>
+              <span className="shrink-0 w-8 text-right">KD</span>
+            </div>
+
+            {/* Vertical Compact Teams / Player Stack */}
+            <div className="flex flex-col gap-2">
+              {!isLive && isEditMode ? (
+                /* Edit Mode Sample Preview */
+                <VerticalSquadColumn
+                  title="Team Preview"
+                  tagColor="text-m3-primary"
+                  players={PREVIEW_PLAYERS}
+                  tierIcons={tierIcons}
+                />
+              ) : matchState?.isDeathmatch ? (
+                /* FFA / Deathmatch */
                 <>
-                  <CompactSquadColumn
-                    title="Deathmatch (Group 1)"
+                  <VerticalSquadColumn
+                    title="Deathmatch"
                     tagColor="text-m3-gold"
                     players={matchState.blueTeam}
                     tierIcons={tierIcons}
                   />
-                  <CompactSquadColumn
-                    title="Deathmatch (Group 2)"
-                    tagColor="text-m3-gold"
-                    players={matchState.redTeam}
-                    tierIcons={tierIcons}
-                  />
+                  {matchState.redTeam.length > 0 && (
+                    <VerticalSquadColumn
+                      title="Group 2"
+                      tagColor="text-m3-gold"
+                      players={matchState.redTeam}
+                      tierIcons={tierIcons}
+                    />
+                  )}
                 </>
               ) : (
+                /* Standard Competitive / 5v5 Stack */
                 <>
-                  <CompactSquadColumn
-                    title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                  <VerticalSquadColumn
+                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
                     tagColor="text-m3-coral"
-                    players={matchState.blueTeam}
+                    players={matchState?.blueTeam || []}
                     tierIcons={tierIcons}
                   />
-                  {matchState.phase === 'coregame' ? (
-                    <CompactSquadColumn
+                  {matchState?.phase === 'coregame' ? (
+                    <VerticalSquadColumn
                       title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
                       tagColor="text-m3-mint"
                       players={matchState.redTeam}
                       tierIcons={tierIcons}
                     />
                   ) : (
-                    <div className="rounded-2xl bg-zinc-900/60 border border-white/5 p-4 flex flex-col items-center justify-center text-center">
-                      <LockIcon className="w-5 h-5 text-zinc-500 mb-1" />
-                      <span className="text-xs font-semibold text-zinc-300">Enemy Team Hidden</span>
-                      <span className="text-[10px] text-zinc-500">Visible on match start</span>
+                    <div className="rounded-xl bg-black/20 border border-white/5 p-2 flex items-center justify-center gap-2 text-center">
+                      <LockIcon className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="text-[10px] font-semibold text-zinc-300">Enemy Team Hidden</span>
+                      <span className="text-[9px] text-zinc-500">• Visible on match start</span>
                     </div>
                   )}
                 </>
@@ -390,57 +526,83 @@ export const OverlayView: React.FC = () => {
   );
 };
 
-const CompactSquadColumn: React.FC<{
+const VerticalSquadColumn: React.FC<{
   title: string;
   tagColor: string;
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
 }> = ({ title, tagColor, players, tierIcons }) => (
-  <div className="flex flex-col gap-1 rounded-2xl bg-zinc-950/60 p-2 border border-white/5 pointer-events-none select-none">
-    <span className={`text-[10px] font-bold uppercase tracking-wider px-1 ${tagColor}`}>
-      {title}
-    </span>
+  <div className="flex flex-col gap-1">
+    <div className="flex items-center justify-between px-1.5 py-0.5">
+      <span className={`text-[10px] font-bold uppercase tracking-wider ${tagColor}`}>{title}</span>
+      <span className="text-[9px] font-mono text-zinc-400">{players.length}P</span>
+    </div>
     {players.map((p) => {
       const icon = tierIcons[p.tier];
+      const peakIcon = tierIcons[p.peakTier];
+      const country = getCountryDisplay(p);
+      const kd = formatKd(p.kd);
+
       return (
         <div
           key={p.puuid}
-          className={`flex items-center gap-2 px-2 py-1 rounded-xl border text-xs ${
-            p.isMe ? 'bg-purple-950/40 border-purple-500/40 text-white' : 'bg-zinc-900/50 border-white/5 text-zinc-300'
+          className={`flex items-center gap-2 px-2 py-1 rounded-xl border text-xs transition-colors ${
+            p.isMe
+              ? 'bg-purple-950/30 border-purple-500/40 text-white shadow-xs'
+              : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
+          {/* Agent Icon */}
           {p.agentIcon ? (
             <img
               src={p.agentIcon}
               alt=""
               draggable={false}
-              className="w-6 h-6 rounded-md object-cover shrink-0 pointer-events-none select-none"
+              className="w-5 h-5 rounded-md object-cover shrink-0 pointer-events-none select-none border border-white/10"
             />
           ) : (
-            <div className="w-6 h-6 rounded-md bg-zinc-800 shrink-0" />
+            <div className="w-5 h-5 rounded-md bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
+              ?
+            </div>
           )}
 
-          <span className="font-semibold truncate max-w-28 text-white">
-            {p.name}
-          </span>
-          {p.isMe && (
-            <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase">
-              You
+          {/* Player Name */}
+          <div className="flex items-center gap-1 min-w-0 flex-1">
+            <span className="font-semibold truncate text-white text-[11px]" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
+              {p.name}
             </span>
-          )}
-
-          <div className="ml-auto flex items-center gap-1.5 shrink-0">
-            {icon && (
-              <img
-                src={icon}
-                alt=""
-                draggable={false}
-                className="w-5 h-5 object-contain pointer-events-none select-none"
-              />
+            {p.isMe && (
+              <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
+                You
+              </span>
             )}
-            <span className="font-mono text-[10px] font-bold text-purple-300">
-              {p.rank}
-            </span>
+          </div>
+
+          {/* Where is he from (Flag + Code) */}
+          <div className="flex items-center gap-1 shrink-0 px-1 py-0.5 rounded bg-white/5 border border-white/5" title={`Region: ${p.region || 'EU'}`}>
+            <span className="text-xs leading-none select-none">{country.flag}</span>
+            <span className="font-mono text-[9px] font-bold text-zinc-300">{country.label}</span>
+          </div>
+
+          {/* Current Rank */}
+          <div className="flex items-center gap-1 shrink-0 w-10 justify-start" title={`Rank: ${p.rank} (${p.rr} RR)`}>
+            {icon ? (
+              <img src={icon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain shrink-0" />
+            ) : null}
+            <span className="font-mono text-[10px] font-bold text-purple-300">{shortRank(p.rank)}</span>
+          </div>
+
+          {/* Peak Rank */}
+          <div className="flex items-center gap-1 shrink-0 w-10 justify-start" title={`Peak: ${p.peakRank}`}>
+            {peakIcon ? (
+              <img src={peakIcon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain opacity-75 shrink-0" />
+            ) : null}
+            <span className="font-mono text-[10px] text-zinc-400">{shortRank(p.peakRank)}</span>
+          </div>
+
+          {/* KD */}
+          <div className="shrink-0 w-8 text-right font-mono text-[10px]" title="K/D Ratio">
+            <span className={kd.color}>{kd.text}</span>
           </div>
         </div>
       );
