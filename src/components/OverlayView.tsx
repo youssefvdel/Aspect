@@ -907,9 +907,15 @@ export const OverlayView: React.FC = () => {
                 /* Standard Competitive / 5v5 Stack */
                 <>
                   <VerticalSquadColumn
-                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) || (!isLive && isEditMode) ? '(Your Team)' : ''}`}
+                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) || isEditMode ? '(Your Team)' : ''}`}
                     tagColor="text-m3-coral"
-                    players={matchState?.blueTeam?.length ? matchState.blueTeam : PREVIEW_PLAYERS}
+                    players={
+                      isEditMode && (!matchState?.blueTeam || matchState.blueTeam.length < 5)
+                        ? PREVIEW_PLAYERS
+                        : matchState?.blueTeam?.length
+                        ? matchState.blueTeam
+                        : PREVIEW_PLAYERS
+                    }
                     tierIcons={tierIcons}
                   />
                   {matchState?.phase === 'coregame' ? (
@@ -1034,9 +1040,9 @@ export const OverlayView: React.FC = () => {
               title="Your Squad"
               tagColor="text-m3-primary"
               players={
-                !isLive && isEditMode
+                isEditMode && (!matchState?.blueTeam || matchState.blueTeam.length < 5)
                   ? PREVIEW_PLAYERS
-                  : matchState?.blueTeam.length
+                  : matchState?.blueTeam?.length
                   ? matchState.blueTeam
                   : PREVIEW_PLAYERS
               }
