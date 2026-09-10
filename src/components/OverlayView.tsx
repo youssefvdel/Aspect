@@ -28,24 +28,41 @@ export interface OverlayConfig {
   };
 }
 
-export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
-  showLobby: true,
-  showPregame: true,
-  showTopAgents: true,
-  positions: {
-    lobby: { x: 20, y: 180 },
-    pregame: { x: 20, y: 100 },
-    topAgents: {
-      x: typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 410) : 1500,
-      y: typeof window !== 'undefined' ? Math.max(20, window.innerHeight - 380) : 800,
+export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 2088;
+  const h = typeof window !== 'undefined' ? window.innerHeight : 1440;
+
+  return {
+    lobby: {
+      x: Math.max(16, Math.round(w * 0.02)),
+      y: Math.max(80, Math.round(h * 0.18)),
     },
-  },
-  scales: {
-    lobby: 1.0,
-    pregame: 1.0,
-    topAgents: 1.0,
-  },
-};
+    pregame: {
+      x: Math.max(20, Math.round(w * 0.165)),
+      y: Math.max(60, Math.round(h * 0.235)),
+    },
+    topAgents: {
+      x: Math.max(20, Math.round(w * 0.74)),
+      y: Math.max(60, Math.round(h * 0.735)),
+    },
+  };
+}
+
+export function getDefaultOverlayConfig(): OverlayConfig {
+  return {
+    showLobby: true,
+    showPregame: true,
+    showTopAgents: true,
+    positions: getDefaultOverlayPositions(),
+    scales: {
+      lobby: 1.0,
+      pregame: 1.0,
+      topAgents: 1.0,
+    },
+  };
+}
+
+export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = getDefaultOverlayConfig();
 
 function getFlagUrl(code?: string): string | null {
   if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
@@ -738,7 +755,7 @@ export const OverlayView: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => saveConfig(DEFAULT_OVERLAY_CONFIG)}
+                onClick={() => saveConfig(getDefaultOverlayConfig())}
                 className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
                 title="Reset layout to defaults"
               >
@@ -815,7 +832,7 @@ export const OverlayView: React.FC = () => {
                       showPregame: true,
                       positions: {
                         ...config.positions,
-                        pregame: DEFAULT_OVERLAY_CONFIG.positions.pregame,
+                        pregame: getDefaultOverlayPositions().pregame,
                       },
                     });
                   }
@@ -961,7 +978,7 @@ export const OverlayView: React.FC = () => {
                       showTopAgents: true,
                       positions: {
                         ...config.positions,
-                        topAgents: DEFAULT_OVERLAY_CONFIG.positions.topAgents,
+                        topAgents: getDefaultOverlayPositions().topAgents,
                       },
                     });
                   }
