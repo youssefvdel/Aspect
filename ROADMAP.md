@@ -66,7 +66,11 @@ small gains signal MMR below it. Render as `MMR ↑ above rank` / `MMR ~ at rank
 `MMR ↓ below rank`, never as a raw value.
 
 ### Live in-match data — available WITHOUT Overwolf (earlier conclusion was WRONG)
-*Status:* Partially shipped-on-paper; implement from log + presences.
+*Status:* **Deferred — decided we don't need it.** Research kept below so it is never
+re-investigated. Nothing was built; there is no code to remove.
+
+The free part is still on the table if it's ever wanted: the live round score, map,
+queue and INGAME state cost one local HTTP GET per round and no screen capture at all.
 
 An earlier revision of this file claimed no live in-match data was obtainable. That was
 wrong — it came from grepping `ShooterGame.log` for the wrong strings and only reading
