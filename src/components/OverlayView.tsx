@@ -125,6 +125,7 @@ export const OverlayView: React.FC = () => {
   }, []);
 
   // Dragging mechanics: direct, lag-free pointer drag
+  const [activeDragKey, setActiveDragKey] = useState<string | null>(null);
   const draggingRef = useRef<{
     key: keyof OverlayConfig['positions'];
     startX: number;
@@ -137,6 +138,11 @@ export const OverlayView: React.FC = () => {
     if (!isEditMode) return;
     e.preventDefault();
     e.stopPropagation();
+    setActiveDragKey(key);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+
     const current = config.positions[key] || { x: 24, y: 24 };
     draggingRef.current = {
       key,
@@ -150,8 +156,8 @@ export const OverlayView: React.FC = () => {
       if (!draggingRef.current) return;
       const dx = moveEv.clientX - draggingRef.current.startX;
       const dy = moveEv.clientY - draggingRef.current.startY;
-      const newX = Math.max(4, Math.min(window.innerWidth - 60, draggingRef.current.initX + dx));
-      const newY = Math.max(4, Math.min(window.innerHeight - 60, draggingRef.current.initY + dy));
+      const newX = Math.max(0, Math.min(window.innerWidth - 80, draggingRef.current.initX + dx));
+      const newY = Math.max(0, Math.min(window.innerHeight - 80, draggingRef.current.initY + dy));
 
       setConfig((prev) => ({
         ...prev,
@@ -162,12 +168,12 @@ export const OverlayView: React.FC = () => {
       }));
     };
 
-    const onPointerUp = () => {
-      draggingRef.current = null;
+    const onPointerUp = (upEv: PointerEvent) => {
       try {
-        const latest = localStorage.getItem('aspect_overlay_cfg_v2');
-        void latest;
+        (upEv.target as HTMLElement)?.releasePointerCapture?.(upEv.pointerId);
       } catch {}
+      draggingRef.current = null;
+      setActiveDragKey(null);
       setConfig((latest) => {
         try {
           localStorage.setItem('aspect_overlay_cfg_v2', JSON.stringify(latest));
@@ -176,14 +182,10 @@ export const OverlayView: React.FC = () => {
       });
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('mousemove', onPointerMove as unknown as EventListener);
-      window.removeEventListener('mouseup', onPointerUp);
     };
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('mousemove', onPointerMove as unknown as EventListener);
-    window.addEventListener('mouseup', onPointerUp);
   };
 
   const handleExitEditMode = async () => {
@@ -333,10 +335,9 @@ export const OverlayView: React.FC = () => {
           )}
           <div
             onPointerDown={(e) => isEditMode && startDrag('rank', e)}
-            onMouseDown={(e) => isEditMode && startDrag('rank', e as unknown as React.PointerEvent)}
             style={{ touchAction: 'none' }}
             className={`rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3 ${
-              isEditMode ? 'cursor-move' : ''
+              isEditMode ? (activeDragKey === 'rank' ? 'cursor-grabbing' : 'cursor-grab') : ''
             }`}
           >
             {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
@@ -396,10 +397,9 @@ export const OverlayView: React.FC = () => {
           )}
           <div
             onPointerDown={(e) => isEditMode && startDrag('display', e)}
-            onMouseDown={(e) => isEditMode && startDrag('display', e as unknown as React.PointerEvent)}
             style={{ touchAction: 'none' }}
             className={`rounded-xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white ${
-              isEditMode ? 'cursor-move' : ''
+              isEditMode ? (activeDragKey === 'display' ? 'cursor-grabbing' : 'cursor-grab') : ''
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
@@ -434,10 +434,9 @@ export const OverlayView: React.FC = () => {
           )}
           <div
             onPointerDown={(e) => isEditMode && startDrag('kpi', e)}
-            onMouseDown={(e) => isEditMode && startDrag('kpi', e as unknown as React.PointerEvent)}
             style={{ touchAction: 'none' }}
             className={`rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono ${
-              isEditMode ? 'cursor-move' : ''
+              isEditMode ? (activeDragKey === 'kpi' ? 'cursor-grabbing' : 'cursor-grab') : ''
             }`}
           >
             <div className="flex flex-col">
@@ -485,9 +484,11 @@ export const OverlayView: React.FC = () => {
           )}
           <div
             onPointerDown={(e) => isEditMode && startDrag('lobby', e)}
-            onMouseDown={(e) => isEditMode && startDrag('lobby', e as unknown as React.PointerEvent)}
             style={{ touchAction: 'none' }}
-            className={`rounded-3xl bg-zinc-950/90 backdrop-blur-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2 ${isEditMode ? 'cursor-move' : ''}`}>
+            className={`rounded-3xl bg-zinc-950/90 backdrop-blur-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2 ${
+              isEditMode ? (activeDragKey === 'lobby' ? 'cursor-grabbing' : 'cursor-grab') : ''
+            }`}
+          >
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-display font-extrabold text-white">

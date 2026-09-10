@@ -24,7 +24,7 @@
       },
       {
         "label": "overlay",
-        "title": "Aspect Overlay",
+        "title": "",
         "fullscreen": true,
         "resizable": false,
         "decorations": false,

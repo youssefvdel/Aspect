@@ -336,17 +336,25 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             return Err("Overlay window handle is invalid.".to_string());
         }
 
+        // 1. Strip ALL standard window decorations, frames, and captions so zero title bar renders
+        let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let mut style = WINDOW_STYLE(current_style);
+        style &= !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_BORDER);
+        style |= WS_POPUP;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, style.0 as isize);
+
+        // 2. Configure extended styles
         // WS_EX_TRANSPARENT: 0x00000020 (mouse clicks pass through)
         // WS_EX_LAYERED:     0x00080000 (transparency support)
         // WS_EX_NOACTIVATE:  0x08000000 (never steal focus from Valorant)
         // WS_EX_TOPMOST:     0x00000008 (stay above fullscreen game)
         // WS_EX_TOOLWINDOW:  0x00000080 (hide from Alt+Tab switcher)
         let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        ex_style |= 0x00080000 | 0x08000000 | 0x00000008 | 0x00000080;
+        ex_style |= 0x00080000 | 0x00000008 | 0x00000080;
         if clickthrough {
-            ex_style |= 0x00000020;
+            ex_style |= 0x00000020 | 0x08000000;
         } else {
-            ex_style &= !0x00000020;
+            ex_style &= !(0x00000020 | 0x08000000);
         }
 
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
@@ -388,7 +396,15 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
             return Err("Overlay window handle is invalid.".to_string());
         }
 
+        // Always strip caption and force WS_POPUP
+        let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let mut style = WINDOW_STYLE(current_style);
+        style &= !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_BORDER);
+        style |= WS_POPUP;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, style.0 as isize);
+
         let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        ex_style |= 0x00080000 | 0x00000008 | 0x00000080;
         if clickthrough {
             ex_style |= 0x00000020; // WS_EX_TRANSPARENT (clicks pass through)
             ex_style |= 0x08000000; // WS_EX_NOACTIVATE (never steal focus)
