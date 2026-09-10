@@ -195,6 +195,24 @@ pub async fn local_client_version() -> Result<String, String> {
         .map_err(|e| format!("Task failed: {}", e))?
 }
 
+/// Raw local presence list as JSON.
+///
+/// This is the only live source of the player's equipped card and account
+/// level: `/personalization/v1|v2/players/{puuid}/playerloadout` now returns
+/// 404, so the card art had stopped resolving and the sidebar fell back to a
+/// letter avatar. Every local presence carries `playerPresenceData`
+/// (`playerCardId`, `accountLevel`) plus the live match blob.
+#[tauri::command]
+pub async fn local_presences() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let (port, password) = lockfile_auth()?;
+        let v = local_get(&port, &password, "/chat/v4/presences")?;
+        serde_json::to_string(&v).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
+}
+
 /// Chrome-impersonated GET for tracker.gg's Cloudflare wall, via the bundled
 /// trnfetch sidecar (Go + uTLS Chrome fingerprint — pure-Rust TLS spoofing has
 /// no Windows-ready crate; BoringSSL won't compile under MSVC toolchains).

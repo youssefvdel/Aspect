@@ -147,11 +147,15 @@ export interface CachedSidebarMini {
   bannerUrl: string;
   countryCode: string;
   level: number;
+  /** Equipped card. Persisted so the banner/avatar URLs can be re-derived from
+   *  it on the next launch — a cache written while the card endpoint was 404ing
+   *  (empty URLs) heals itself instead of blanking the card again. */
+  cardId?: string;
   puuid?: string;
   savedAt?: number;
 }
 
-const SIDEBAR_MINI_PREFIX = 'recon_sidebar_mini_v1';
+const SIDEBAR_MINI_PREFIX = 'recon_sidebar_mini_v2';
 
 export function readCachedSidebarMini(puuid?: string): CachedSidebarMini | null {
   try {
@@ -528,46 +532,63 @@ export interface PlayerIdentity {
 
 let identityCache: { at: number; id: PlayerIdentity } | null = null;
 
-/** Equipped player card / title / account level, straight from Riot via the
-    local client's own session (same creds as MMR — no key, no TRN).
-    Cached 30 min. Throws when unusable; callers MUST fall back. */
-export async function fetchIdentityDirect(region: string): Promise<PlayerIdentity> {
+/** Equipped player card + account level.
+ *
+ *  `/personalization/v1|v2/players/{puuid}/playerloadout` now 404s (endpoint
+ *  retired), which silently left `cardId` empty and made the sidebar fall back
+ *  to a letter avatar with no banner. The local presence blob carries both
+ *  values for every signed-in player, so that is the source of truth. */
+async function fetchPresenceIdentity(
+  puuid: string
+): Promise<{ cardId: string; level: number } | null> {
+  if (!isTauri()) return null;
+  const raw = await invoke<string>('local_presences');
+  const presences: unknown[] = JSON.parse(raw)?.presences ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const me = (presences as any[]).find(
+    (p) => String(p?.puuid ?? '').toLowerCase() === puuid.toLowerCase()
+  );
+  if (!me?.private) return null;
+  const blob = JSON.parse(decodeBase64Utf8(String(me.private)));
+  const ppd = blob?.playerPresenceData ?? {};
+  return {
+    cardId: String(ppd?.playerCardId ?? ''),
+    level: Number(ppd?.accountLevel ?? 0),
+  };
+}
+
+/** Base64 → UTF-8 string. `atob` alone mangles non-ASCII (player names). */
+function decodeBase64Utf8(b64: string): string {
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export async function fetchIdentityDirect(_region: string): Promise<PlayerIdentity> {
   if (identityCache && Date.now() - identityCache.at < 30 * 60 * 1000) return identityCache.id;
   const ent = await getEntitlements();
-  const j = await riotGet(shardFor(region), `/personalization/v2/players/${ent.puuid}/playerloadout`);
-  const ident = j?.Identity ?? {};
+  const fromPresence = await fetchPresenceIdentity(ent.puuid).catch(() => null);
   const id: PlayerIdentity = {
-    cardId: String(ident?.PlayerCardID ?? ''),
-    titleId: String(ident?.PlayerTitleID ?? ''),
-    level: Number(ident?.AccountLevel ?? 0),
+    cardId: fromPresence?.cardId ?? '',
+    titleId: '',
+    level: fromPresence?.level ?? 0,
   };
   if (!id.cardId) throw new Error('No player card equipped.');
   identityCache = { at: Date.now(), id };
   return id;
 }
 
-/** Player card art (banner + avatar) from the public data API. Cached forever per card. */
-export async function fetchCardArt(cardId: string): Promise<{ wide: string; small: string }> {
-  const fallback = { wide: '', small: '' };
-  if (!cardId) return fallback;
-  const cacheKey = `aspect_cardart_v1_${cardId}`;
-  try {
-    const raw = localStorage.getItem(cacheKey);
-    if (raw) return JSON.parse(raw) as { wide: string; small: string };
-  } catch {}
-  try {
-    const j = await fetch(`https://valorant-api.com/v1/playercards/${cardId}`).then((r) => r.json());
-    const out = {
-      wide: String(j?.data?.wideArt ?? ''),
-      small: String(j?.data?.smallArt ?? j?.data?.displayIcon ?? ''),
-    };
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify(out));
-    } catch {}
-    return out;
-  } catch {
-    return fallback;
-  }
+/** Player card art (banner + avatar).
+ *
+ *  The media host serves each card at a fixed path, so the URLs are derived
+ *  from the card ID directly — no API round-trip, no CORS dependency, and it
+ *  resolves instantly (including offline). `/wideart.png` is the banner,
+ *  `/smallart.png` the square avatar. Synchronous so callers can use it during
+ *  first render, before any fetch resolves. */
+export function cardArtUrls(cardId?: string): { wide: string; small: string } {
+  if (!cardId) return { wide: '', small: '' };
+  const base = `https://media.valorant-api.com/playercards/${cardId}`;
+  return { wide: `${base}/wideart.png`, small: `${base}/smallart.png` };
 }
 
 /** Last N competitive games with map, time, and RR earned — feeds rows AND trend. */

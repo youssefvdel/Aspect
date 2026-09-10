@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   detectLocalAccount,
   detectRegion,
-  fetchCardArt,
+  cardArtUrls,
   fetchIdentityDirect,
   fetchMmrDirect,
   gameData,
@@ -26,6 +26,7 @@ interface Mini {
   bannerUrl: string;
   countryCode: string;
   level: number;
+  cardId?: string;
 }
 
 /** Compact skeleton shown while the local Riot account resolves. */
@@ -54,7 +55,16 @@ export const TrackerMini: React.FC = () => {
   const [mini, setMini] = useState<Mini | null>(() => {
     // 1. Full cached sidebar mini (banner, avatar, rank icons, level) paints instantly
     const cachedMini = readCachedSidebarMini();
-    if (cachedMini?.name) return cachedMini;
+    if (cachedMini?.name) {
+      // Self-heal: a cache written while the card endpoint was 404ing has empty
+      // art URLs. If the card ID is known, rebuild them so the banner is there
+      // on the very first paint instead of only after the live refresh.
+      if (cachedMini.cardId && !cachedMini.bannerUrl) {
+        const art = cardArtUrls(cachedMini.cardId);
+        return { ...cachedMini, bannerUrl: art.wide, avatarUrl: cachedMini.avatarUrl || art.small };
+      }
+      return cachedMini;
+    }
 
     // 2. Fallback to basic account + profile if full mini hasn't been saved yet
     const acc = readCachedAccount();
@@ -106,13 +116,14 @@ export const TrackerMini: React.FC = () => {
         const peakTier = prof.seasons.reduce((m, s) => Math.max(m, s.tier), 0);
         const rawAvatar = trn?.stats.avatarUrl ?? '';
         const cardMatch = rawAvatar.match(/playercards\/([^/]+)/);
-        // Equipped card straight from Riot (works even when TRN is gated).
+        // Equipped card straight from Riot's presence blob (works even when TRN
+        // is gated, and after the old /personalization endpoint was retired).
         const ident = await fetchIdentityDirect(region).catch(() => null);
         if (!live) return;
-        const art = ident?.cardId ? await fetchCardArt(ident.cardId) : { wide: '', small: '' };
-        const bannerUrl =
-          art.wide ||
-          (cardMatch ? `https://media.valorant-api.com/playercards/${cardMatch[1]}/wideart.png` : '');
+        // Either source yields a card ID; the art URLs follow from it directly.
+        const cardId = ident?.cardId || cardMatch?.[1] || '';
+        const art = cardArtUrls(cardId);
+        const bannerUrl = art.wide;
 
         if (!live) return;
         const fullMini: Mini = {
@@ -127,6 +138,7 @@ export const TrackerMini: React.FC = () => {
           bannerUrl,
           countryCode: trn?.countryCode ?? '',
           level: ident?.level ?? 0,
+          cardId,
         };
         setMini(fullMini);
         writeCachedSidebarMini(fullMini, acc?.puuid);
