@@ -131,23 +131,35 @@ export const LiveMatchView: React.FC = () => {
             <span>100% Vanguard Safe • Zero DLL / Game Memory Injections</span>
           </div>
         </div>
-      ) : (
+      ) : matchState.isDeathmatch ? (
+        /* Deathmatch / Free For All: No teams */
         <div className="flex flex-col gap-4">
-          {/* Blue Team (Allies) */}
           <TeamSection
-            title="Team Blue (Your Squad)"
-            color="border-blue-500/40"
-            tagColor="bg-blue-500/10 text-blue-300 border-blue-500/30"
+            title={`Free For All • Deathmatch (${matchState.blueTeam.length + matchState.redTeam.length} Players)`}
+            color="border-m3-gold/40"
+            tagColor="bg-m3-gold/15 text-m3-gold border-m3-gold/30"
+            players={[...matchState.blueTeam, ...matchState.redTeam]}
+            tierIcons={tierIcons}
+          />
+        </div>
+      ) : (
+        /* Standard 5v5 Modes: Attackers & Defenders */
+        <div className="flex flex-col gap-4">
+          {/* Attackers */}
+          <TeamSection
+            title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : '(Enemy Team)'}`}
+            color="border-m3-coral/40"
+            tagColor="bg-m3-coral/15 text-m3-coral border-m3-coral/30"
             players={matchState.blueTeam}
             tierIcons={tierIcons}
           />
 
-          {/* Red Team (Opponents) */}
+          {/* Defenders */}
           {matchState.phase === 'coregame' ? (
             <TeamSection
-              title="Team Red (Opponents)"
-              color="border-red-500/40"
-              tagColor="bg-red-500/10 text-red-300 border-red-500/30"
+              title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : '(Enemy Team)'}`}
+              color="border-m3-mint/40"
+              tagColor="bg-m3-mint/15 text-m3-mint border-m3-mint/30"
               players={matchState.redTeam}
               tierIcons={tierIcons}
             />

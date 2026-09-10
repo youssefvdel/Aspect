@@ -128,30 +128,49 @@ export const OverlayView: React.FC = () => {
             exit={{ opacity: 0, y: 15 }}
             className="w-full max-w-6xl mx-auto my-auto grid grid-cols-1 md:grid-cols-2 gap-4 pointer-events-auto"
           >
-            {/* Team Blue */}
-            <OverlaySquadCard
-              title="Team Blue"
-              tagColor="bg-blue-500/20 text-blue-300 border-blue-500/40"
-              players={matchState.blueTeam}
-              tierIcons={tierIcons}
-            />
-
-            {/* Team Red */}
-            {matchState.phase === 'coregame' ? (
-              <OverlaySquadCard
-                title="Team Red"
-                tagColor="bg-red-500/20 text-red-300 border-red-500/40"
-                players={matchState.redTeam}
-                tierIcons={tierIcons}
-              />
+            {matchState.isDeathmatch ? (
+              <>
+                <OverlaySquadCard
+                  title={`Deathmatch (Group 1)`}
+                  tagColor="bg-m3-gold/20 text-m3-gold border-m3-gold/40"
+                  players={matchState.blueTeam}
+                  tierIcons={tierIcons}
+                />
+                <OverlaySquadCard
+                  title={`Deathmatch (Group 2)`}
+                  tagColor="bg-m3-gold/20 text-m3-gold border-m3-gold/40"
+                  players={matchState.redTeam}
+                  tierIcons={tierIcons}
+                />
+              </>
             ) : (
-              <div className="rounded-3xl bg-black/80 backdrop-blur-xl border border-white/10 p-6 flex flex-col items-center justify-center text-center shadow-2xl">
-                <Lock className="w-8 h-8 text-zinc-500 mb-2" />
-                <h4 className="font-display font-bold text-sm text-white">Enemy Team Hidden</h4>
-                <p className="text-xs text-zinc-400 mt-1 max-w-xs">
-                  Riot protects opponent identities during Agent Select. Full enemy roster appears automatically on map load.
-                </p>
-              </div>
+              <>
+                {/* Attackers */}
+                <OverlaySquadCard
+                  title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                  tagColor="bg-m3-coral/20 text-m3-coral border-m3-coral/40"
+                  players={matchState.blueTeam}
+                  tierIcons={tierIcons}
+                />
+
+                {/* Defenders */}
+                {matchState.phase === 'coregame' ? (
+                  <OverlaySquadCard
+                    title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                    tagColor="bg-m3-mint/20 text-m3-mint border-m3-mint/40"
+                    players={matchState.redTeam}
+                    tierIcons={tierIcons}
+                  />
+                ) : (
+                  <div className="rounded-3xl bg-black/80 backdrop-blur-xl border border-white/10 p-6 flex flex-col items-center justify-center text-center shadow-2xl">
+                    <Lock className="w-8 h-8 text-zinc-500 mb-2" />
+                    <h4 className="font-display font-bold text-sm text-white">Enemy Team Hidden</h4>
+                    <p className="text-xs text-zinc-400 mt-1 max-w-xs">
+                      Riot protects opponent identities during Agent Select. Full enemy roster appears automatically on map load.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         )}

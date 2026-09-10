@@ -270,6 +270,7 @@ export interface LiveMatchState {
   mapId: string;
   mapName: string;
   mode: string;
+  isDeathmatch: boolean;
   blueTeam: LiveMatchPlayer[];
   redTeam: LiveMatchPlayer[];
   updatedAt: number;
