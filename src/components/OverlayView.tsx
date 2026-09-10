@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
-import { getMapRecommendation } from '../utils/mapAdvisor';
+import { useTrackerData } from '../hooks/useTrackerData';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -14,26 +14,32 @@ export interface WidgetPos {
 export interface OverlayConfig {
   showLobby: boolean;
   showPregame: boolean;
+  showTopAgents: boolean;
   positions: {
     lobby: WidgetPos;
     pregame: WidgetPos;
+    topAgents: WidgetPos;
   };
   scales: {
     lobby: number;
     pregame: number;
+    topAgents: number;
   };
 }
 
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   showLobby: true,
   showPregame: true,
+  showTopAgents: true,
   positions: {
     lobby: { x: 20, y: 180 },
     pregame: { x: 20, y: 100 },
+    topAgents: { x: 20, y: 440 },
   },
   scales: {
     lobby: 1.0,
     pregame: 1.0,
+    topAgents: 1.0,
   },
 };
 
@@ -79,6 +85,60 @@ const PARTY_STYLES: Record<number, { border: string; bg: string; dot: string; te
     name: 'Party 3',
   },
 };
+
+interface AgentStatSummary {
+  agent: string;
+  role?: string;
+  matches: number;
+  wins: number;
+  losses: number;
+  winPct: number;
+  kd: number;
+  hsPct: number;
+}
+
+const PREVIEW_TOP_AGENTS: AgentStatSummary[] = [
+  {
+    agent: 'Jett',
+    role: 'Duelist',
+    matches: 48,
+    wins: 30,
+    losses: 18,
+    winPct: 62.5,
+    kd: 1.34,
+    hsPct: 28.4,
+  },
+  {
+    agent: 'Omen',
+    role: 'Controller',
+    matches: 32,
+    wins: 19,
+    losses: 13,
+    winPct: 59.4,
+    kd: 1.18,
+    hsPct: 22.1,
+  },
+  {
+    agent: 'Sova',
+    role: 'Initiator',
+    matches: 26,
+    wins: 15,
+    losses: 11,
+    winPct: 57.7,
+    kd: 1.12,
+    hsPct: 24.6,
+  },
+  {
+    agent: 'Cypher',
+    role: 'Sentinel',
+    matches: 18,
+    wins: 10,
+    losses: 8,
+    winPct: 55.6,
+    kd: 1.08,
+    hsPct: 21.8,
+  },
+];
 
 const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
   {
@@ -295,6 +355,7 @@ const PREVIEW_OPPONENTS: LiveMatchPlayer[] = [
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
+  const [agentIcons, setAgentIcons] = useState<Record<string, string>>({});
 
   // Edit mode state (synced with main app)
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
@@ -329,14 +390,21 @@ export const OverlayView: React.FC = () => {
     } catch {}
   };
 
+  const { trnAgents } = useTrackerData();
+  const topAgentsList = (trnAgents && trnAgents.length > 0)
+    ? [...trnAgents].sort((a, b) => b.matches - a.matches || b.winPct - a.winPct)
+    : PREVIEW_TOP_AGENTS;
+
   // Direct element references for GPU hardware-accelerated zero-lag dragging
   const rootRef = useRef<HTMLDivElement>(null);
   const lobbyRef = useRef<HTMLDivElement>(null);
   const pregameRef = useRef<HTMLDivElement>(null);
+  const topAgentsRef = useRef<HTMLDivElement>(null);
 
   const widgetRefs = {
     lobby: lobbyRef,
     pregame: pregameRef,
+    topAgents: topAgentsRef,
   };
 
   // Native DWM message handling strips non-client borders natively.
@@ -374,7 +442,12 @@ export const OverlayView: React.FC = () => {
   const phaseRef = useRef<string>('idle');
   const idleSkips = useRef(0);
   useEffect(() => {
-    gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
+    gameData()
+      .then((d) => {
+        setTierIcons(d.tierIcons);
+        setAgentIcons(d.agents || {});
+      })
+      .catch(() => {});
 
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -570,10 +643,11 @@ export const OverlayView: React.FC = () => {
   // white region from the mount/unmount repaint storm.
   const scoreVisible = config.showLobby && showScorePanel;
   const pregameVisible = config.showPregame && showPregamePanel;
+  const topAgentsVisible = config.showTopAgents && (isPregame || isEditMode);
   useEffect(() => {
     const t = setTimeout(forceRepaint, 80);
     return () => clearTimeout(t);
-  }, [scoreVisible, pregameVisible, forceRepaint]);
+  }, [scoreVisible, pregameVisible, topAgentsVisible, forceRepaint]);
 
   return (
     <div
@@ -772,6 +846,79 @@ export const OverlayView: React.FC = () => {
                 }`}
               >
                 {config.showLobby ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>Remove from Screen</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add to Default Place</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* 3. TOP AGENTS MINI PREVIEW CARD */}
+            <div
+              className={`flex flex-col gap-2 p-3 rounded-2xl border select-none transition-all w-52 ${
+                config.showTopAgents
+                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                  : 'bg-zinc-900/60 border-white/10 opacity-70'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span className="text-m3-gold font-bold">⭐</span>
+                  <span>Top Agents</span>
+                </span>
+                <span
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full ${
+                    config.showTopAgents
+                      ? 'bg-m3-mint/20 text-m3-mint border border-m3-mint/30'
+                      : 'bg-white/10 text-zinc-400 border border-white/10'
+                  }`}
+                >
+                  {config.showTopAgents ? 'ON' : 'OFF'}
+                </span>
+              </div>
+
+              {/* Mini visual mockup of Top Agents */}
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-1 pointer-events-none">
+                <div className="flex items-center justify-between text-[8px] font-mono">
+                  <span className="text-white font-bold">Jett • 62.5% WR</span>
+                  <span className="text-m3-mint font-bold">1.34 KD</span>
+                </div>
+                <div className="flex items-center justify-between text-[8px] font-mono text-zinc-400">
+                  <span>Omen • 59.4% WR</span>
+                  <span>1.18 KD</span>
+                </div>
+              </div>
+
+              {/* Add to Default Place Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (config.showTopAgents) {
+                    saveConfig({ ...config, showTopAgents: false });
+                  } else {
+                    saveConfig({
+                      ...config,
+                      showTopAgents: true,
+                      positions: {
+                        ...config.positions,
+                        topAgents: DEFAULT_OVERLAY_CONFIG.positions.topAgents,
+                      },
+                    });
+                  }
+                }}
+                className={`mt-auto px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showTopAgents
+                    ? 'bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300'
+                    : 'bg-m3-primary/20 hover:bg-m3-primary/30 border border-m3-primary/40 text-m3-primary font-bold'
+                }`}
+              >
+                {config.showTopAgents ? (
                   <>
                     <X className="w-3.5 h-3.5" />
                     <span>Remove from Screen</span>
@@ -1047,8 +1194,165 @@ export const OverlayView: React.FC = () => {
                   : PREVIEW_PLAYERS
               }
               tierIcons={tierIcons}
-              mapName={matchState?.mapName || 'Ascent'}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* WIDGET 3: Player Top Agents & Performance                    */}
+      {/* ============================================================ */}
+      {config.showTopAgents && (isPregame || isEditMode) && (
+        <div
+          ref={topAgentsRef}
+          onPointerDown={(e) => startDrag('topAgents', e)}
+          style={{
+            transform: `translate3d(${config.positions.topAgents.x}px, ${config.positions.topAgents.y}px, 0) scale(${config.scales?.topAgents ?? 1.0})`,
+            transformOrigin: 'top left',
+            touchAction: 'none',
+          }}
+          className={`fixed top-0 left-0 ${
+            isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
+          } select-none w-[360px] will-change-transform z-10 ${
+            isEditMode
+              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1 shadow-2xl'
+              : ''
+          }`}
+        >
+          {isEditMode && (
+            <>
+              <div
+                onPointerDown={(e) => startDrag('topAgents', e)}
+                className="mb-2 px-3.5 py-1.5 rounded-2xl bg-m3-primary/20 border border-m3-primary/40 flex items-center justify-between cursor-grab active:cursor-grabbing text-xs font-mono font-bold text-m3-primary select-none shadow-sm"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Move className="w-3.5 h-3.5" />
+                  <span>Move Top Agents Panel</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-400 font-normal">Hold to drag</span>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      saveConfig({ ...config, showTopAgents: false });
+                    }}
+                    className="w-5 h-5 rounded-md bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                    title="Remove Top Agents from screen"
+                  >
+                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('topAgents', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
+          )}
+
+          <div
+            className={`rounded-3xl border p-3 shadow-2xl flex flex-col gap-2 transition-all ${
+              isEditMode
+                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
+                : 'bg-[#0c0816]/75 border-white/10'
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-m3-gold font-black text-xs">⭐</span>
+                <span className="font-display font-black text-white text-xs tracking-wider uppercase">
+                  Your Top Agents
+                </span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-[9px] font-mono font-bold uppercase shrink-0">
+                Act Stats
+              </span>
+            </div>
+
+            {/* Column Headers */}
+            <div className="grid grid-cols-[1fr_54px_50px_46px_44px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+              <span>Agent</span>
+              <span className="text-right">Matches</span>
+              <span className="text-right">Win%</span>
+              <span className="text-right">K/D</span>
+              <span className="text-right">HS%</span>
+            </div>
+
+            {/* Agent Rows */}
+            <div className="flex flex-col gap-1">
+              {topAgentsList.slice(0, 5).map((stat) => {
+                const normName = stat.agent.toLowerCase();
+                const icon = Object.entries(agentIcons).find(
+                  ([name]) => name.toLowerCase() === normName
+                )?.[1];
+                const kd = stat.kd.toFixed(2);
+                const kdColor =
+                  stat.kd >= 1.2
+                    ? 'text-emerald-400 font-bold'
+                    : stat.kd >= 1.0
+                    ? 'text-m3-mint font-semibold'
+                    : 'text-rose-400 font-medium';
+
+                return (
+                  <div
+                    key={stat.agent}
+                    className="grid grid-cols-[1fr_54px_50px_46px_44px] items-center px-2 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
+                  >
+                    {/* Agent Icon & Name */}
+                    <div className="flex items-center gap-2 min-w-0 pr-1">
+                      {icon ? (
+                        <img
+                          src={icon}
+                          alt=""
+                          draggable={false}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLElement).style.display = 'none';
+                          }}
+                          className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                          {stat.agent.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0 flex-1 leading-tight">
+                        <span className="font-bold text-[11px] text-white truncate">{stat.agent}</span>
+                        <span className="text-[8px] font-mono text-zinc-400 truncate">{stat.role || 'Agent'}</span>
+                      </div>
+                    </div>
+
+                    {/* Matches (Games + W/L) */}
+                    <div className="flex flex-col items-end leading-none font-mono" title={`${stat.wins} Wins - ${stat.losses} Losses`}>
+                      <span className="text-[10px] font-bold text-white">{stat.matches}G</span>
+                      <span className="text-[8px] text-zinc-400 mt-0.5">{stat.wins}W-{stat.losses}L</span>
+                    </div>
+
+                    {/* Win % */}
+                    <div className="text-right font-mono text-[10px] font-bold" title="Win Rate">
+                      <span className={stat.winPct >= 50 ? 'text-m3-mint' : 'text-zinc-400'}>
+                        {stat.winPct.toFixed(1)}%
+                      </span>
+                    </div>
+
+                    {/* K/D */}
+                    <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio">
+                      <span className={kdColor}>{kd}</span>
+                    </div>
+
+                    {/* HS% */}
+                    <div className="text-right font-mono text-[10px] text-amber-200/90 font-medium" title="Headshot %">
+                      {stat.hsPct.toFixed(0)}%
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -1061,10 +1365,7 @@ const PregameTeamColumn: React.FC<{
   tagColor: string;
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
-  mapName: string;
-}> = ({ players, tierIcons, mapName }) => {
-  const mapRec = getMapRecommendation(mapName);
-
+}> = ({ players, tierIcons }) => {
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
       {/* Table Column Headers: Agent, Player, Rank (Icon), Peak (Icon), K/D, Win%, HS%, Recent */}
@@ -1212,18 +1513,6 @@ const PregameTeamColumn: React.FC<{
             </div>
           );
         })}
-      </div>
-
-      {/* Smart Map Advisor: Best Agent on this Map */}
-      <div className="mt-1 px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between text-[10px] font-mono">
-        <div className="flex items-center gap-1.5">
-          <span className="text-m3-gold font-bold">🎯 {mapRec.isMetaPick ? 'META PICK' : 'YOUR BEST'}:</span>
-          <span className="text-white font-bold">{mapRec.agentName}</span>
-          <span className="text-zinc-500">({mapRec.role})</span>
-        </div>
-        <span className="text-m3-mint text-[9px] font-medium truncate max-w-[240px] text-right" title={mapRec.reason}>
-          {mapRec.reason}
-        </span>
       </div>
     </div>
   );
