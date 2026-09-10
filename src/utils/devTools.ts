@@ -80,6 +80,10 @@ const mk = (
     region: 'EU',
     country: 'DE',
     kd: 1.1,
+    winPct: 48 + (i % 5) * 3,
+    hsPct: 24 + (i % 4),
+    // Spread across the tier bands so the badge range is visible in previews.
+    trnScore: [880, 690, 520, 410, 940, 610, 760, 330, 830, 560, 700, 470][i % 12],
     recentWon: 3 + (i % 4),
     recentLost: i % 3,
     streak: 2,

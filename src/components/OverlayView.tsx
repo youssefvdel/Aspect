@@ -3,6 +3,7 @@ import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Troph
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
+import { ScoreBadge, scoreTier } from './ScoreBadge';
 import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
@@ -206,9 +207,11 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     kd: 1.28,
     winPct: 58,
     hsPct: 28,
+    trnScore: 712,
     recentWon: 3,
     recentLost: 1,
     streak: 2,
+    streakIsWin: true,
     selectionState: 'locked',
     partyIndex: 1,
   },
@@ -1212,7 +1215,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[560px] max-w-[96vw] will-change-transform z-10 ${
+          } select-none w-[580px] max-w-[96vw] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1 shadow-2xl'
               : ''
@@ -1612,8 +1615,9 @@ const PregameTeamColumn: React.FC<{
 }> = ({ players, tierIcons, seasons }) => {
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
-      {/* Table Column Headers: Agent, Player, Rank (Icon), Peak (Icon), K/D, Win%, HS%, Recent */}
-      <div className="grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+      {/* Table Column Headers: Score badge, Agent, Player, Rank, Peak, K/D, Win%, HS%, Recent */}
+      <div className="grid grid-cols-[30px_1fr_36px_36px_42px_46px_42px_64px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+        <span className="text-center" title="Tracker Score tier">TS</span>
         <span>Player</span>
         <span className="text-center">Rank</span>
         <span className="text-center">Peak</span>
@@ -1637,7 +1641,7 @@ const PregameTeamColumn: React.FC<{
           return (
             <div
               key={p.puuid}
-              className={`grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
+              className={`grid grid-cols-[30px_1fr_36px_36px_42px_46px_42px_64px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
                 party
                   ? `${party.border} ${party.bg} border-white/5`
                   : p.isMe
@@ -1645,6 +1649,24 @@ const PregameTeamColumn: React.FC<{
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
             >
+              {/* Tracker Score badge (hex tier emblem, never a raw number) */}
+              <div
+                className="flex items-center justify-center shrink-0"
+                title={
+                  p.trnScore != null
+                    ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
+                    : 'Tracker Score unavailable'
+                }
+              >
+                {p.trnScore != null ? (
+                  <ScoreBadge tier={scoreTier(p.trnScore).tier} size={22} />
+                ) : (
+                  <span className="w-[22px] h-[22px] rounded-md border border-white/10 bg-white/[0.03] flex items-center justify-center text-[9px] font-mono text-zinc-600">
+                    —
+                  </span>
+                )}
+              </div>
+
               {/* Agent Icon (with Flag overlay) + Player Name & Pick State */}
               <div className="flex items-center gap-2 min-w-0 pr-1">
                 <div className="relative shrink-0">
