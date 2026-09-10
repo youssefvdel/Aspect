@@ -724,7 +724,9 @@ export const OverlayView: React.FC = () => {
             transformOrigin: 'top left',
             touchAction: 'none',
           }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none w-[325px] will-change-transform z-10 ${
+          className={`fixed top-0 left-0 ${
+            isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
+          } select-none w-[325px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-1 shadow-2xl'
               : ''
@@ -867,7 +869,9 @@ export const OverlayView: React.FC = () => {
             transformOrigin: 'top left',
             touchAction: 'none',
           }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none w-[720px] max-w-[94vw] will-change-transform z-10 ${
+          className={`fixed top-0 left-0 ${
+            isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
+          } select-none w-[720px] max-w-[94vw] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1 shadow-2xl'
               : ''

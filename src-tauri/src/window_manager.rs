@@ -816,11 +816,10 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080; // WS_EX_TOOLWINDOW
-        ex_style &= !0x00080000;
         if clickthrough {
-            ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
+            ex_style |= 0x00080000 | 0x00000020 | 0x08000000; // WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
-            ex_style &= !(0x00000020 | 0x08000000);
+            ex_style &= !(0x00080000 | 0x00000020 | 0x08000000);
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
