@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
@@ -724,7 +724,21 @@ export const OverlayView: React.FC = () => {
                   <Move className="w-3.5 h-3.5" />
                   <span>Move Scoreboard</span>
                 </div>
-                <span className="text-[9px] text-zinc-400 font-normal">Hold to drag</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-zinc-400 font-normal">Hold to drag</span>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      saveConfig({ ...config, showLobby: false });
+                    }}
+                    className="w-5 h-5 rounded-md bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                    title="Remove Scoreboard from screen"
+                  >
+                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
               </div>
               <div
                 onPointerDown={(e) => startResize('lobby', e)}
@@ -847,7 +861,21 @@ export const OverlayView: React.FC = () => {
                   <Move className="w-3.5 h-3.5" />
                   <span>Move Agent Select Panel</span>
                 </div>
-                <span className="text-[10px] text-zinc-400 font-normal">Hold to drag</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-400 font-normal">Hold to drag</span>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      saveConfig({ ...config, showPregame: false });
+                    }}
+                    className="w-5 h-5 rounded-md bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                    title="Remove Agent Select from screen"
+                  >
+                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
               </div>
               <div
                 onPointerDown={(e) => startResize('pregame', e)}
