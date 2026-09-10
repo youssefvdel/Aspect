@@ -46,16 +46,11 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   },
 };
 
-function getCountryFlag(code?: string): string | null {
+function getFlagUrl(code?: string): string | null {
   if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
-  const upper = code.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper)) return null;
-  try {
-    const codePoints = upper.split('').map((c) => 127397 + c.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
-  } catch {
-    return null;
-  }
+  let lower = code.toLowerCase();
+  if (lower === 'uk') lower = 'gb';
+  return `https://flagcdn.com/24x18/${lower}.png`;
 }
 
 
@@ -1401,7 +1396,7 @@ const PregameTeamColumn: React.FC<{
           const locked = (p.selectionState || '').toLowerCase().includes('lock');
           const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
           const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
-          const countryFlag = getCountryFlag(p.country);
+          const flagUrl = getFlagUrl(p.country);
 
           return (
             <div
@@ -1414,25 +1409,40 @@ const PregameTeamColumn: React.FC<{
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
             >
-              {/* Agent Icon + Player Name & Pick State */}
+              {/* Agent Icon (with Flag overlay) + Player Name & Pick State */}
               <div className="flex items-center gap-2 min-w-0 pr-1">
-                {p.agentIcon ? (
-                  <img
-                    src={p.agentIcon}
-                    alt=""
-                    draggable={false}
-                    onError={(e) => {
-                      (e.currentTarget as HTMLElement).style.display = 'none';
-                    }}
-                    className={`w-7 h-7 rounded-lg object-cover shrink-0 border ${
-                      locked ? 'border-m3-mint/60' : hasPick ? 'border-amber-300/60' : 'border-white/10'
-                    } pointer-events-none select-none`}
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
-                    ?
-                  </div>
-                )}
+                <div className="relative shrink-0">
+                  {p.agentIcon ? (
+                    <img
+                      src={p.agentIcon}
+                      alt=""
+                      draggable={false}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                      className={`w-7 h-7 rounded-lg object-cover border ${
+                        locked ? 'border-m3-mint/60' : hasPick ? 'border-amber-300/60' : 'border-white/10'
+                      } pointer-events-none select-none`}
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                      ?
+                    </div>
+                  )}
+                  {flagUrl && (
+                    <img
+                      src={flagUrl}
+                      alt={p.country || ''}
+                      title={`Country: ${p.country}`}
+                      draggable={false}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                      className="absolute -bottom-0.5 -right-0.5 w-3.5 h-2.5 object-cover rounded-[2px] shadow-sm border border-black/80 pointer-events-none select-none"
+                    />
+                  )}
+                </div>
+
                 <div className="flex flex-col min-w-0 flex-1 leading-tight">
                   <div className="flex items-center gap-1 min-w-0">
                     <span className="font-bold text-[11px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
@@ -1450,15 +1460,6 @@ const PregameTeamColumn: React.FC<{
                       >
                         <EyeOff className="w-2.5 h-2.5" />
                         Hidden
-                      </span>
-                    )}
-                    {countryFlag && p.country && (
-                      <span
-                        className="flex items-center gap-0.5 px-1 py-px rounded bg-white/5 border border-white/10 text-[8px] font-mono text-zinc-300 font-bold shrink-0"
-                        title={`Country: ${p.country}`}
-                      >
-                        <span className="text-[10px] leading-none">{countryFlag}</span>
-                        <span>{p.country}</span>
                       </span>
                     )}
                     {party && (
@@ -1572,7 +1573,7 @@ const VerticalSquadColumn: React.FC<{
       const peakIcon = tierIcons[p.peakTier];
       const kd = formatKd(p.kd);
       const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
-      const countryFlag = getCountryFlag(p.country);
+      const flagUrl = getFlagUrl(p.country);
 
       return (
         <div
@@ -1585,22 +1586,36 @@ const VerticalSquadColumn: React.FC<{
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
-          {/* Agent Icon */}
-          {p.agentIcon ? (
-            <img
-              src={p.agentIcon}
-              alt=""
-              draggable={false}
-              onError={(e) => {
-                (e.currentTarget as HTMLElement).style.display = 'none';
-              }}
-              className="w-5 h-5 rounded-md object-cover shrink-0 pointer-events-none select-none border border-white/10"
-            />
-          ) : (
-            <div className="w-5 h-5 rounded-md bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
-              ?
-            </div>
-          )}
+          {/* Agent Icon (with Flag Overlay) */}
+          <div className="relative shrink-0">
+            {p.agentIcon ? (
+              <img
+                src={p.agentIcon}
+                alt=""
+                draggable={false}
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+                className="w-5 h-5 rounded-md object-cover pointer-events-none select-none border border-white/10"
+              />
+            ) : (
+              <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
+                ?
+              </div>
+            )}
+            {flagUrl && (
+              <img
+                src={flagUrl}
+                alt={p.country || ''}
+                title={`Country: ${p.country}`}
+                draggable={false}
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] shadow-xs border border-black/80 pointer-events-none select-none"
+              />
+            )}
+          </div>
 
           {/* Player Name */}
           <div className="flex items-center gap-1 min-w-0 flex-1">
@@ -1618,15 +1633,6 @@ const VerticalSquadColumn: React.FC<{
                 title="Name Hidden in Valorant (Unmasked by Recon)"
               >
                 <EyeOff className="w-2.5 h-2.5" />
-              </span>
-            )}
-            {countryFlag && p.country && (
-              <span
-                className="flex items-center gap-0.5 px-1 py-px rounded bg-white/5 border border-white/10 text-[8px] font-mono text-zinc-300 font-bold shrink-0"
-                title={`Country: ${p.country}`}
-              >
-                <span className="text-[9px] leading-none">{countryFlag}</span>
-                <span>{p.country}</span>
               </span>
             )}
             {party && (
