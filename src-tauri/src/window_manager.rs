@@ -3,6 +3,7 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
 };
+use windows::Win32::Graphics::Dwm::{DwmEnableBlurBehindWindow, DWM_BB_ENABLE, DWM_BLURBEHIND};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW,
@@ -427,14 +428,11 @@ pub fn strip_all_dwm_borders(hwnd: HWND) {
             std::mem::size_of::<u32>() as u32,
         );
 
-        // 2. Disable DWM non-client rendering entirely (kills 1px native top accent border)
-        let ncrp_disabled: u32 = 1; // DWMNCRP_DISABLED
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            2, // DWMWA_NCRENDERING_POLICY
-            &ncrp_disabled as *const _ as *const std::ffi::c_void,
-            std::mem::size_of::<u32>() as u32,
-        );
+        // 2. NOTE: DWMWA_NCRENDERING_POLICY = DWMNCRP_DISABLED is intentionally
+        // NOT set here. Per MS docs it is a documented reset trigger for the
+        // blur-behind compositing tao establishes at window creation — setting
+        // it makes DWM composite the transparent overlay opaque (white bar).
+        // The border/caption color attributes below already suppress all chrome.
 
         // 3. Strictly prohibit DWM from drawing any window border or frame
         let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
@@ -453,6 +451,82 @@ pub fn strip_all_dwm_borders(hwnd: HWND) {
             std::mem::size_of::<u32>() as u32,
         );
     }
+}
+
+/// Re-enable DWM blur-behind compositing — the transparency tao establishes
+/// at window creation for `transparent: true` windows. Style/pos changes and
+/// the resulting WM_NCCALCSIZE can make DWM drop it, leaving the overlay
+/// composited opaque (the white bar). Harmless if already enabled.
+pub fn restore_blur_behind(hwnd: HWND) {
+    unsafe {
+        let bb = DWM_BLURBEHIND {
+            dwFlags: DWM_BB_ENABLE,
+            fEnable: true.into(),
+            hRgnBlur: HRGN(std::ptr::null_mut()),
+            fTransitionOnMaximized: false.into(),
+        };
+        let _ = DwmEnableBlurBehindWindow(hwnd, &bb);
+    }
+}
+
+fn overlay_monitor_file() -> std::path::PathBuf {
+    std::env::var("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(r"C:\Users\Administrator\AppData\Local")
+        })
+        .join("Recon")
+        .join("overlay_monitor.txt")
+}
+
+/// Overlay monitor choice: "auto" (default — follow the game window) or a
+/// `\\.\DISPLAYn` device name pinned by the user in Settings.
+pub fn get_overlay_monitor_setting() -> String {
+    std::fs::read_to_string(overlay_monitor_file())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "auto".to_string())
+}
+
+pub fn set_overlay_monitor_setting(name: &str) -> Result<String, String> {
+    let clean = name.trim();
+    if !clean.eq_ignore_ascii_case("auto") {
+        let known = crate::display::get_all_monitors();
+        if !known.iter().any(|m| m.device_name == clean) {
+            return Err(format!("Unknown monitor '{}'", clean));
+        }
+    }
+    let file = overlay_monitor_file();
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create settings dir: {}", e))?;
+    }
+    std::fs::write(&file, clean).map_err(|e| format!("Cannot save overlay monitor: {}", e))?;
+    Ok(clean.to_string())
+}
+
+/// Pinned monitor rect, if the user picked one and it is still attached.
+pub fn overlay_monitor_rect() -> Option<(i32, i32, i32, i32)> {
+    let want = get_overlay_monitor_setting();
+    if want.eq_ignore_ascii_case("auto") {
+        return None;
+    }
+    crate::display::get_all_monitors().into_iter().find_map(|m| {
+        if m.device_name == want && m.is_attached && !m.is_device_disabled {
+            Some((m.position_x, m.position_y, m.width as i32, m.height as i32))
+        } else {
+            None
+        }
+    })
+}
+
+/// Single source of truth for where the overlay belongs: pinned monitor >
+/// game window > nearest monitor.
+pub fn overlay_target_rect(hwnd: HWND) -> (i32, i32, i32, i32) {
+    if let Some(r) = overlay_monitor_rect() {
+        return r;
+    }
+    get_valorant_or_screen_rect(hwnd)
 }
 
 pub fn get_valorant_or_screen_rect(hwnd: HWND) -> (i32, i32, i32, i32) {
@@ -492,31 +566,26 @@ pub fn align_overlay_to_valorant(hwnd_val: isize) -> Result<(), String> {
             return Err("Overlay window handle is invalid.".to_string());
         }
 
-        if let Some(val) = find_valorant_game_window() {
-            let val_hwnd = HWND(val.hwnd as *mut std::ffi::c_void);
-            let mut val_rect = RECT::default();
-            if GetWindowRect(val_hwnd, &mut val_rect).is_ok() {
-                let w = val_rect.right - val_rect.left;
-                let h = val_rect.bottom - val_rect.top;
-                if w > 100 && h > 100 {
-                    let mut cur_rect = RECT::default();
-                    if GetWindowRect(hwnd, &mut cur_rect).is_ok() {
-                        if cur_rect.left != val_rect.left
-                            || cur_rect.top != val_rect.top
-                            || (cur_rect.right - cur_rect.left) != w
-                            || (cur_rect.bottom - cur_rect.top) != h
-                        {
-                            let _ = SetWindowPos(
-                                hwnd,
-                                HWND_TOPMOST,
-                                val_rect.left,
-                                val_rect.top,
-                                w,
-                                h,
-                                SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW,
-                            );
-                        }
-                    }
+        // Pinned monitor wins; otherwise follow the game window (or nearest
+        // screen via overlay_target_rect's fallback).
+        let (tx, ty, tw, th) = overlay_target_rect(hwnd);
+        if tw > 100 && th > 100 {
+            let mut cur_rect = RECT::default();
+            if GetWindowRect(hwnd, &mut cur_rect).is_ok() {
+                if cur_rect.left != tx
+                    || cur_rect.top != ty
+                    || (cur_rect.right - cur_rect.left) != tw
+                    || (cur_rect.bottom - cur_rect.top) != th
+                {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        tx,
+                        ty,
+                        tw,
+                        th,
+                        SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW,
+                    );
                 }
             }
         }
@@ -552,7 +621,8 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
-            | 0x00000080; // WS_EX_TOOLWINDOW
+            | 0x00000080  // WS_EX_TOOLWINDOW
+            | 0x00200000; // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
@@ -564,7 +634,7 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
         strip_all_dwm_borders(hwnd);
 
         // 4. Align strictly to Valorant window rect
-        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
+        let (x, y, width, height) = overlay_target_rect(hwnd);
 
         let _ = SetWindowPos(
             hwnd,
@@ -576,6 +646,7 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
 
+        restore_blur_behind(hwnd);
         redraw_all(hwnd);
 
         Ok(())
@@ -608,13 +679,14 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080  // WS_EX_TOOLWINDOW
+            | 0x00200000  // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
             | 0x08000000; // WS_EX_NOACTIVATE
         ex_style &= !0x00000020;
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
         strip_all_dwm_borders(hwnd);
 
-        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
+        let (x, y, width, height) = overlay_target_rect(hwnd);
 
         let _ = SetWindowPos(
             hwnd,
@@ -626,6 +698,7 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
 
+        restore_blur_behind(hwnd);
         redraw_all(hwnd);
 
         Ok(())
@@ -652,7 +725,8 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
-            | 0x00000080; // WS_EX_TOOLWINDOW
+            | 0x00000080  // WS_EX_TOOLWINDOW
+            | 0x00200000; // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
@@ -664,7 +738,7 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
         strip_all_dwm_borders(hwnd);
 
         // Synchronize position to Valorant if running
-        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
+        let (x, y, width, height) = overlay_target_rect(hwnd);
 
         let _ = SetWindowPos(
             hwnd,
@@ -676,6 +750,7 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
 
+        restore_blur_behind(hwnd);
         redraw_all(hwnd);
 
         Ok(())

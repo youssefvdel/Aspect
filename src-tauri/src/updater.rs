@@ -14,7 +14,7 @@ pub struct UpdateInfo {
 }
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const DEFAULT_REPO: &str = "youssefvdel/Aspect";
+pub const DEFAULT_REPO: &str = "youssefvdel/Recon";
 
 /// Compares two semver strings (e.g. "2.0.0" vs "v2.0.1").
 /// Returns true if remote is strictly greater than current.
@@ -51,7 +51,7 @@ pub fn is_newer_version(current: &str, remote: &str) -> bool {
 pub fn check_for_updates() -> Result<UpdateInfo, String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", DEFAULT_REPO);
 
-    let user_agent = format!("User-Agent: Aspect/{}", CURRENT_VERSION);
+    let user_agent = format!("User-Agent: Recon/{}", CURRENT_VERSION);
     let mut cmd = Command::new("curl");
     cmd.args([
         "-s",
@@ -85,8 +85,8 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
                 has_update: false,
                 current_version: CURRENT_VERSION.to_string(),
                 latest_version: CURRENT_VERSION.to_string(),
-                release_title: format!("Aspect v{}", CURRENT_VERSION),
-                release_notes: "You are currently running the latest version of Aspect.".to_string(),
+                release_title: format!("Recon v{}", CURRENT_VERSION),
+                release_notes: "You are currently running the latest version of Recon.".to_string(),
                 published_at: String::new(),
                 html_url: format!("https://github.com/{}", DEFAULT_REPO),
                 download_url: None,
@@ -146,6 +146,48 @@ pub fn open_url(url: &str) -> Result<(), String> {
         ShellExecuteW(None, windows::core::PCWSTR(open_h.as_ptr()), windows::core::PCWSTR(url_h.as_ptr()), None, None, SW_SHOWNORMAL);
     }
     Ok(())
+}
+
+/// Downloads the updated binary/installer and triggers execution
+pub fn download_and_install_update(download_url: &str) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let target_file = temp_dir.join("Recon_Update.exe");
+
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-sL",
+        "--max-time", "180",
+        "-o", &target_file.to_string_lossy(),
+        download_url,
+    ]);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output().map_err(|e| format!("Download failed: {}", e))?;
+    if !output.status.success() {
+        return Err("Update download failed or timed out".to_string());
+    }
+
+    if !target_file.exists() {
+        return Err("Downloaded update file not found".to_string());
+    }
+
+    let mut spawn_cmd = Command::new(&target_file);
+    spawn_cmd.args(["/SILENT", "/VERYSILENT", "--updated"]);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        spawn_cmd.creation_flags(0x00000008); // DETACHED_PROCESS
+    }
+
+    spawn_cmd.spawn().map_err(|e| format!("Failed to launch installer: {}", e))?;
+
+    Ok("Update downloaded and started".to_string())
 }
 
 #[cfg(test)]

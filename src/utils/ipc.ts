@@ -600,6 +600,23 @@ export async function fetchAllMonitors(): Promise<MonitorDevice[]> {
   return await invoke<MonitorDevice[]>('get_all_monitors');
 }
 
+export async function fetchOverlayMonitor(): Promise<string> {
+  if (!isTauri()) return localStorage.getItem('recon_overlay_monitor') || 'auto';
+  try {
+    return await invoke<string>('get_overlay_monitor');
+  } catch {
+    return 'auto';
+  }
+}
+
+export async function setOverlayMonitor(monitor: string): Promise<string> {
+  if (!isTauri()) {
+    localStorage.setItem('recon_overlay_monitor', monitor);
+    return monitor;
+  }
+  return await invoke<string>('set_overlay_monitor', { monitor });
+}
+
 /**
  * @deprecated Kept for backend compat only. The Display Manager UI no longer
  * uses CCD Attached/Detached — use {@link setMonitorDeviceEnabled} instead.
@@ -813,10 +830,10 @@ export async function checkAppUpdates(): Promise<UpdateInfo> {
       has_update: false,
       current_version: APP_VERSION,
       latest_version: APP_VERSION,
-      release_title: `Aspect v${APP_VERSION}`,
+      release_title: `Recon v${APP_VERSION}`,
       release_notes: 'Running latest dev build.',
       published_at: new Date().toISOString(),
-      html_url: 'https://github.com/youssefvdel/Aspect',
+      html_url: 'https://github.com/youssefvdel/Recon',
       download_url: null,
     };
   }
@@ -830,4 +847,36 @@ export async function openExternalUrl(url: string): Promise<void> {
   }
   await invoke('open_external_url', { url });
 }
+
+export async function installAppUpdate(downloadUrl: string): Promise<string> {
+  if (!isTauri()) {
+    window.open(downloadUrl, '_blank');
+    return 'Browser download initiated';
+  }
+  return await invoke<string>('install_app_update', { downloadUrl });
+}
+
+export async function getAutostartEnabled(): Promise<boolean> {
+  if (!isTauri()) {
+    return localStorage.getItem('aspect_autostart') === 'true';
+  }
+  try {
+    return await invoke<boolean>('get_autostart_enabled');
+  } catch {
+    return false;
+  }
+}
+
+export async function setAutostartEnabled(enabled: boolean): Promise<boolean> {
+  if (!isTauri()) {
+    localStorage.setItem('aspect_autostart', enabled ? 'true' : 'false');
+    return enabled;
+  }
+  try {
+    return await invoke<boolean>('set_autostart_enabled', { enabled });
+  } catch {
+    return false;
+  }
+}
+
 

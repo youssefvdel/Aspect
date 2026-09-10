@@ -84,7 +84,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                   Software Updates
                 </h3>
                 <p className="text-[10px] text-m3-outline">
-                  Aspect • GitHub Releases
+                  Recon • GitHub Releases
                 </p>
               </div>
             </div>
@@ -105,7 +105,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                   Checking for new releases...
                 </p>
                 <p className="text-[10px] text-m3-outline font-mono">
-                  github.com/youssefvdel/Aspect
+                  github.com/youssefvdel/Recon
                 </p>
               </div>
             ) : error ? (
@@ -160,7 +160,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                     You're up to date!
                   </h4>
                   <p className="text-[11px] text-m3-outline mt-0.5">
-                    Aspect {updateInfo?.current_version || `v${__APP_VERSION__}`} is the latest version.
+                    Recon {updateInfo?.current_version || `v${__APP_VERSION__}`} is the latest version.
                   </p>
                 </div>
               </div>

@@ -583,6 +583,43 @@ fn check_app_updates() -> Result<updater::UpdateInfo, String> {
 }
 
 #[tauri::command]
+fn install_app_update(download_url: String) -> Result<String, String> {
+    updater::download_and_install_update(&download_url)
+}
+
+#[tauri::command]
+fn get_autostart_enabled() -> Result<bool, String> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run = hkcu.open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_READ)
+        .map_err(|e| format!("Failed to open Run key: {}", e))?;
+    match run.get_value::<String, _>("Aspect") {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool) -> Result<bool, String> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (run, _) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        .map_err(|e| format!("Failed to open Run key for write: {}", e))?;
+    if enabled {
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Cannot get current exe path: {}", e))?;
+        let exe_str = format!("\"{}\"", exe_path.to_string_lossy());
+        run.set_value("Aspect", &exe_str)
+            .map_err(|e| format!("Failed to set registry value: {}", e))?;
+    } else {
+        let _ = run.delete_value("Aspect");
+    }
+    Ok(enabled)
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     updater::open_url(&url)
 }
@@ -596,6 +633,26 @@ fn trim_memory() -> Result<(), String> {
 #[tauri::command]
 fn get_all_monitors() -> Result<Vec<display::MonitorDevice>, String> {
     Ok(display::get_all_monitors())
+}
+
+#[tauri::command]
+fn get_overlay_monitor() -> Result<String, String> {
+    Ok(window_manager::get_overlay_monitor_setting())
+}
+
+#[tauri::command]
+fn set_overlay_monitor(app: tauri::AppHandle, monitor: String) -> Result<String, String> {
+    let saved = window_manager::set_overlay_monitor_setting(&monitor)?;
+    // Move immediately if the overlay is up; the 2s daemon also enforces it.
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        if overlay.is_visible().unwrap_or(false) {
+            #[cfg(windows)]
+            if let Ok(hwnd) = overlay.hwnd() {
+                let _ = window_manager::align_overlay_to_valorant(hwnd.0 as isize);
+            }
+        }
+    }
+    Ok(saved)
 }
 
 /// Kept for backend compat only. The Display Manager UI no longer exposes CCD
@@ -937,6 +994,8 @@ pub fn run() {
             check_requested_tab,
             trim_memory,
             get_all_monitors,
+            get_overlay_monitor,
+            set_overlay_monitor,
             set_monitor_attached,
             set_monitor_device_enabled,
             set_monitor_primary,
@@ -949,6 +1008,9 @@ pub fn run() {
             remove_custom_override,
             list_supported_modes,
             check_app_updates,
+            install_app_update,
+            get_autostart_enabled,
+            set_autostart_enabled,
             open_external_url,
         ])
         .run(tauri::generate_context!())

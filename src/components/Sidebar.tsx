@@ -4,9 +4,9 @@ import {
   Sliders,
   Settings,
   Keyboard,
-  Sparkles,
   LayoutDashboard,
   FlaskConical,
+  FileCode2,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 import { TrackerMini } from './TrackerMini';
@@ -54,12 +54,22 @@ const UTILITY_TABS: SidebarTab[] = [
   },
 ];
 
-/* Settings group — stretch setup, config editor, and GPU scaling. */
+/* Config group — stretch setup, Valorant config editor, and GPU scaling. */
+const CONFIG_TABS: SidebarTab[] = [
+  {
+    id: 'game_config',
+    label: 'Game Config',
+    shortcut: '3',
+    icon: FileCode2,
+  },
+];
+
+/* Application Settings group — software updater, auto-start, system tray. */
 const SETTINGS_TABS: SidebarTab[] = [
   {
     id: 'settings',
     label: 'Settings',
-    shortcut: '3',
+    shortcut: '4',
     icon: Settings,
   },
 ];
@@ -81,10 +91,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   displayInfo,
   gpuInfo,
   hasUpdate,
-  onOpenUpdates,
 }) => {
   const isStretched = displayInfo?.active_profile === 'stretched';
   const [appVer, setAppVer] = useState(APP_VERSION);
+
+  // Primary GPU only — multi-adapter strings ("RTX 3080 (+ Radeon…)") stretch the card.
+  const shortGpu = (gpuInfo?.name ?? '')
+    .split(/[+|/(]/)[0]
+    .replace('NVIDIA ', '')
+    .replace('GeForce ', '')
+    .replace('AMD ', '')
+    .trim();
 
   useEffect(() => {
     appVersion().then(setAppVer);
@@ -92,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const renderGroup = (group: TabGroup, isFirst: boolean) => (
     <div key={group.title}>
-      <div className={`flex items-center gap-2 px-3 pb-1.5 ${isFirst ? 'pt-1' : 'pt-3'}`} aria-hidden="true">
+      <div className={`flex items-center gap-2 px-3 pb-1.5 ${isFirst ? 'pt-1' : 'pt-2'}`} aria-hidden="true">
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">
           {group.title}
         </span>
@@ -105,7 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const isActive =
             (tab.id === 'overview' && (currentTab === 'overview' || currentTab === 'matches')) ||
             (tab.id === 'switcher' && (currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless')) ||
-            (tab.id === 'settings' && (currentTab === 'settings' || currentTab === 'valorant' || currentTab === 'gpu'));
+            (tab.id === 'game_config' && (currentTab === 'game_config' || currentTab === 'valorant' || currentTab === 'gpu')) ||
+            (tab.id === 'settings' && currentTab === 'settings');
           return (
             <button
               key={tab.id}
@@ -149,21 +167,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <aside className="w-68 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30 overflow-hidden">
+    <aside className="w-72 min-w-72 max-w-72 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30 overflow-hidden">
       {/* Brand & Top Section */}
       <div className="flex flex-col min-h-0 flex-1 overflow-y-auto custom-scrollbar">
         {/* App Identity */}
         <div className="p-4 sm:p-5 border-b border-m3-outline-subtle flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 min-w-0">
             <img
               src="/icon.png"
-              alt="Aspect"
+              alt="Recon"
               className="w-10 h-10 object-contain shrink-0 drop-shadow-[0_4px_12px_rgba(208,188,255,0.25)]"
             />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center space-x-1">
-                <span className="font-display font-black text-xl tracking-tight text-m3-on-surface">
-                  Aspect
+                <span className="font-display font-black text-xl tracking-tight text-m3-on-surface truncate">
+                  Recon
                 </span>
               </div>
             </div>
@@ -171,26 +189,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             type="button"
-            onClick={onOpenUpdates}
-            title={hasUpdate ? "New update available — click to view" : "Check for updates"}
-            className="group/ver relative px-2 py-0.5 text-[10px] font-mono font-semibold text-m3-primary bg-m3-primary-container/50 hover:bg-m3-primary/20 border border-m3-primary/40 rounded-full flex items-center gap-1 transition-all cursor-pointer"
+            onClick={() => onSelectTab('settings')}
+            title={hasUpdate ? "New update available — click to open Settings" : `Recon v${appVer}`}
+            className={`shrink-0 relative px-2.5 py-0.5 text-[10px] font-mono font-semibold rounded-full flex items-center gap-1.5 transition-all cursor-pointer ${
+              hasUpdate
+                ? 'text-m3-on-primary bg-m3-primary shadow-sm hover:opacity-90 animate-pulse'
+                : 'text-m3-primary bg-m3-primary-container/50 hover:bg-m3-primary/20 border border-m3-primary/40'
+            }`}
           >
             {hasUpdate && (
-              <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-m3-on-primary" />
             )}
             <span>v{appVer}</span>
+            {hasUpdate && (
+              <span className="text-[9px] uppercase font-bold tracking-wider">UPDATE</span>
+            )}
           </button>
         </div>
 
         {/* Live Hardware Telemetry Widget (M3 Expressive Tonal Card) */}
-        <div className="p-3.5 mx-3.5 my-3 rounded-3xl bg-m3-surface-container border border-m3-outline-subtle flex flex-col space-y-2.5 shadow-m3-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-m3-on-surface-variant font-medium flex items-center space-x-1.5">
+        <div className="p-3 mx-3 my-2 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle flex flex-col space-y-2 shadow-m3-1 overflow-hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-m3-on-surface-variant font-medium flex items-center gap-1.5 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
               <span>Active Display</span>
             </span>
             <span
-              className={`text-[10px] font-mono font-semibold uppercase px-2.5 py-0.5 rounded-full ${
+              className={`text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded-full whitespace-nowrap leading-relaxed ${
                 isStretched
                   ? 'bg-m3-tertiary text-m3-on-tertiary shadow-sm'
                   : 'bg-m3-surface-container-high text-m3-secondary border border-m3-outline-subtle'
@@ -201,21 +226,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {displayInfo && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-display font-bold text-m3-on-surface tabular-nums text-sm">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-display font-bold text-m3-on-surface tabular-nums text-sm whitespace-nowrap">
                 {displayInfo.current_width}×{displayInfo.current_height}
               </span>
-              <span className="font-mono text-m3-primary tabular-nums text-xs font-semibold px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle">
+              <span className="font-mono text-m3-primary tabular-nums text-xs font-semibold px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle whitespace-nowrap leading-relaxed">
                 {displayInfo.current_hz} Hz
               </span>
             </div>
           )}
 
-          {gpuInfo && (
-            <div className="flex items-center space-x-1.5 text-[11px] text-m3-on-surface-variant pt-1 border-t border-m3-outline-subtle/60 truncate">
+          {shortGpu && (
+            <div
+              className="flex items-center gap-1.5 text-[11px] text-m3-on-surface-variant pt-2 border-t border-m3-outline-subtle/60 min-w-0"
+              title={gpuInfo?.name}
+            >
               <Cpu className="w-3.5 h-3.5 text-m3-outline shrink-0" />
-              <span className="truncate text-m3-on-surface-variant font-medium">
-                {gpuInfo.name.replace('NVIDIA ', '').replace('GeForce ', '').replace('AMD ', '')}
+              <span className="truncate font-medium min-w-0 leading-relaxed">
+                {shortGpu}
               </span>
             </div>
           )}
@@ -225,44 +253,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 pt-1">
           {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, true)}
           {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, false)}
-          {renderGroup({ title: 'Settings', tabs: SETTINGS_TABS }, false)}
+          {renderGroup({ title: 'Config', tabs: CONFIG_TABS }, false)}
+          {renderGroup({ title: 'Application', tabs: SETTINGS_TABS }, false)}
           {IS_DEV && renderGroup({ title: 'Dev', tabs: DEV_TABS }, false)}
         </div>
       </div>
 
-      {/* Sidebar Footer: player chip, updates & keyboard hint */}
+      {/* Sidebar Footer: player chip & keyboard hint */}
       <div className="flex flex-col shrink-0">
         <TrackerMini />
         <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
-        {onOpenUpdates && (
-          <button
-            type="button"
-            onClick={onOpenUpdates}
-            className={`w-full h-7 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-between border transition-all cursor-pointer ${
-              hasUpdate
-                ? 'bg-m3-primary/15 border-m3-primary text-m3-primary hover:bg-m3-primary/25'
-                : 'bg-transparent border-transparent text-m3-outline hover:text-m3-on-surface hover:bg-m3-surface-container-high'
-            }`}
-          >
-            <span className="flex items-center gap-1.5 truncate">
-              <Sparkles className="w-3 h-3 text-m3-primary shrink-0" />
-              <span>{hasUpdate ? 'Update Available' : 'Check for Updates'}</span>
+          <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant px-1">
+            <span className="flex items-center space-x-1.5">
+              <Keyboard className="w-3.5 h-3.5 text-m3-outline" />
+              <span>Switch Tabs</span>
             </span>
-            {hasUpdate && (
-              <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-ping shrink-0" />
-            )}
-          </button>
-        )}
-
-        <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant px-1">
-          <span className="flex items-center space-x-1.5">
-            <Keyboard className="w-3.5 h-3.5 text-m3-outline" />
-            <span>Switch Tabs</span>
-          </span>
-          <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-            Keys 1 - 3
-          </span>
-        </div>
+            <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
+              Keys 1 - 4
+            </span>
+          </div>
         </div>
       </div>
     </aside>

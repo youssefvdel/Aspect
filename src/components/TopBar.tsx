@@ -1,4 +1,4 @@
-import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, LayoutDashboard, FlaskConical } from 'lucide-react';
+import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, FileCode2, LayoutDashboard, FlaskConical } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
 interface TopBarProps {
@@ -50,9 +50,14 @@ const TAB_METADATA: Record<
     description: 'Merged into switcher grid — alias view',
     icon: Layout,
   },
+  game_config: {
+    title: 'Game Config — Stretch & Valorant Setup',
+    description: 'Customize stretch targets, edit Valorant config files, and manage GPU scaling',
+    icon: FileCode2,
+  },
   settings: {
-    title: 'Stretch Resolution & Game Config Settings',
-    description: 'Customize your primary stretch target and sync custom resolutions across all game files',
+    title: 'Application Settings',
+    description: 'Software updates, Windows startup preferences, and system tray configuration',
     icon: Settings,
   },
   valorant: {
@@ -81,8 +86,6 @@ const TAB_METADATA: Record<
 export const TopBar: React.FC<TopBarProps> = ({
   currentTab,
   displayInfo,
-  hasUpdate,
-  onOpenUpdates,
 }) => {
   const meta = TAB_METADATA[currentTab];
   const Icon = meta.icon;
@@ -118,24 +121,6 @@ export const TopBar: React.FC<TopBarProps> = ({
               {isStretched ? '1.45:1 Stretched' : 'Native 16:9'}
             </span>
           </div>
-        )}
-
-        {onOpenUpdates && (
-          <button
-            onClick={onOpenUpdates}
-            title={hasUpdate ? "New update available!" : "Check for updates"}
-            className={`h-7 px-2.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
-              hasUpdate
-                ? 'bg-m3-primary/20 border-m3-primary text-m3-primary hover:bg-m3-primary/30'
-                : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface hover:bg-m3-surface-container-high'
-            }`}
-          >
-            <Sparkles className="w-3 h-3 text-m3-primary" />
-            <span className="text-[10px]">Updates</span>
-            {hasUpdate && (
-              <span className="w-1.5 h-1.5 rounded-full bg-m3-primary animate-ping" />
-            )}
-          </button>
         )}
       </div>
     </header>

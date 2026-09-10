@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Aspect",
+  "productName": "Recon",
   "version": "../package.json",
-  "identifier": "com.aspect.utility",
+  "identifier": "com.recon.utility",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Aspect • Stretched Resolution & Utility",
+        "title": "Recon • Stretched Resolution & Utility",
         "width": 1180,
         "height": 860,
         "minWidth": 980,

@@ -228,6 +228,7 @@ export type TabType =
   | 'custom_res'
   | 'gpu'
   | 'borderless'
+  | 'game_config'
   | 'settings'
   | 'valorant'
   | 'overview'

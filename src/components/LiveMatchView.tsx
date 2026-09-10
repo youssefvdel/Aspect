@@ -152,7 +152,7 @@ export const LiveMatchView: React.FC = () => {
             Waiting for Valorant Match
           </h3>
           <p className="text-xs text-m3-outline max-w-sm mt-1 mb-4 leading-relaxed">
-            Queue into Agent Select or an active game. Aspect detects lobby players and pulls ranks, RR, and top agents live.
+            Queue into Agent Select or an active game. Recon detects lobby players and pulls ranks, RR, and top agents live.
           </p>
           <div className="flex items-center gap-2 text-[11px] text-m3-outline font-medium bg-m3-surface-container px-3 py-1.5 rounded-xl border border-m3-outline-subtle">
             <Shield className="w-3.5 h-3.5 text-m3-mint" />

@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { UtilityView } from './components/UtilityView';
 import { SettingsView } from './components/SettingsView';
+import { AppSettingsView } from './components/AppSettingsView';
 import { TrackerView } from './components/TrackerView';
 import { DevDashboard } from './components/DevDashboard';
 import { OverlayView } from './components/OverlayView';
@@ -92,9 +93,9 @@ export const App: React.FC = () => {
     const msg = errorToMessage(e);
     if (isBadModeErrorMessage(msg)) {
       showToast(msg, 'info', 7000);
-      // Brief delay so the toast is visible while landing on Settings.
+      // Brief delay so the toast is visible while landing on Game Config.
       setTimeout(() => {
-        setCurrentTab('settings');
+        setCurrentTab('game_config');
       }, 900);
       return true;
     }
@@ -123,13 +124,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadAllTelemetry();
 
-    // Keyboard shortcut navigation (1: Tracker, 2: Utility, 3: Settings)
+    // Keyboard shortcut navigation (1: Tracker, 2: Utility, 3: Game Config, 4: Settings)
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === '1') setCurrentTab('overview');
       if (e.key === '2') setCurrentTab('switcher');
-      if (e.key === '3') setCurrentTab('settings');
-      if (e.key === '4') setCurrentTab('gpu');
+      if (e.key === '3') setCurrentTab('game_config');
+      if (e.key === '4') setCurrentTab('settings');
       if (e.key === '5') setCurrentTab('valorant');
       if (e.key === '6') setCurrentTab('overview');
       if (e.key === '7') setCurrentTab('matches');
@@ -171,14 +172,14 @@ export const App: React.FC = () => {
       try {
         const req = await checkRequestedTab();
         if (req) {
-          if (['switcher', 'visualizer', 'settings', 'gpu', 'valorant', 'overview', 'matches'].includes(req)) {
+          if (['switcher', 'visualizer', 'game_config', 'settings', 'gpu', 'valorant', 'overview', 'matches'].includes(req)) {
             setCurrentTab(req as TabType);
           } else if (req === 'borderless' || req === 'display' || req === 'monitors') {
             // Legacy alias: Window Stretcher merged into switcher grid
             setCurrentTab('switcher');
           } else if (['config', 'custom', 'cru', 'custom_res'].includes(req)) {
-            // Legacy aliases: custom builder merged into the settings tab
-            setCurrentTab('settings');
+            // Legacy aliases: custom builder merged into the game config tab
+            setCurrentTab('game_config');
           } else if (req === 'sens') {
             // Legacy alias: sens matcher merged into the switcher tab
             setCurrentTab('switcher');
@@ -327,7 +328,7 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {(currentTab === 'settings' || currentTab === 'valorant' || currentTab === 'gpu') && (
+                {(currentTab === 'game_config' || currentTab === 'valorant' || currentTab === 'gpu') && (
                   <SettingsView
                     initialSubTab={currentTab === 'valorant' ? 'valorant' : currentTab === 'gpu' ? 'gpu' : 'setup'}
                     displayInfo={displayInfo}
@@ -335,6 +336,15 @@ export const App: React.FC = () => {
                     onStretchResChanged={(w, h) => setPreferredStretched([w, h])}
                     onRefreshDisplayInfo={loadAllTelemetry}
                     onOpenControlPanel={handleOpenControlPanel}
+                  />
+                )}
+
+                {currentTab === 'settings' && (
+                  <AppSettingsView
+                    onUpdateStatusChange={(has, ver) => {
+                      setHasUpdate(has);
+                      setLatestVersion(ver);
+                    }}
                   />
                 )}
               </motion.div>
