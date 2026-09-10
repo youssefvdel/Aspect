@@ -1120,17 +1120,30 @@ export async function fetchPlayer24hRecord(
 
   const task = (async (): Promise<Recent24hRecord> => {
     try {
-      const j = await riotGet(
-        shardFor(region),
-        `/match-history/v1/history/${puuid}?startIndex=0&endIndex=20`
-      );
       const cutoff = Date.now() - 24 * 3600 * 1000;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recent = ((Array.isArray(j?.History) ? j.History : []) as any[])
-        .map((h) => ({ id: String(h?.MatchID ?? ''), at: Number(h?.GameStartTime ?? 0) }))
+      // Riot caps this endpoint at ~25 rows per request, so page through until
+      // the oldest row falls outside the 24h window (heavy grinders).
+      const entries: { id: string; at: number }[] = [];
+      for (let page = 0; page < 3; page++) {
+        const start = page * 20;
+        const j = await riotGet(
+          shardFor(region),
+          `/match-history/v1/history/${puuid}?startIndex=${start}&endIndex=${start + 20}`
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows = ((Array.isArray(j?.History) ? j.History : []) as any[]).map((h) => ({
+          id: String(h?.MatchID ?? ''),
+          at: Number(h?.GameStartTime ?? 0),
+        }));
+        if (rows.length === 0) break;
+        entries.push(...rows);
+        const oldest = rows[rows.length - 1]?.at ?? 0;
+        if (oldest < cutoff) break;
+      }
+
+      const recent = entries
         .filter((h) => h.id && h.at >= cutoff)
-        .sort((a, b) => b.at - a.at)
-        .slice(0, 20);
+        .sort((a, b) => b.at - a.at);
 
       if (recent.length === 0) {
         recent24hCache.set(puuid, empty);
