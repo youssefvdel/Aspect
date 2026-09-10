@@ -117,6 +117,9 @@ function emitStore() {
 
 function updateStore(partial: Partial<TrackerData>) {
   store = { ...store, ...partial };
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>).__reconStore = store;
+  }
   emitStore();
 }
 

@@ -436,7 +436,7 @@ export const OverlayView: React.FC = () => {
     } catch {}
   };
 
-  const { detailsById, mapById, profile } = useTrackerData();
+  const { detailsById, mapById, profile, trnAgents } = useTrackerData();
 
   const activeMapName =
     matchState?.mapName && matchState.mapName !== 'No Match Active' && matchState.mapName !== 'Live Match Status'
@@ -453,10 +453,39 @@ export const OverlayView: React.FC = () => {
     profile?.puuid
   );
 
-  // 2. Check if user has an agent on this map with >= 50% win rate
+  // 2. The player's REAL agent pool across every map (act-wide), so we never
+  //    pretend they have no history just because this map is new to them.
+  const overallAgentStats: AgentStatSummary[] = (trnAgents ?? [])
+    .filter((a) => a.matches > 0)
+    .map((a) => ({
+      agent: a.agent,
+      role: a.role,
+      matches: a.matches,
+      wins: a.wins,
+      losses: a.losses,
+      winPct: Number(a.winPct.toFixed(1)),
+      kd: Number(a.kd.toFixed(2)),
+      hsPct: Number((a.hsPct ?? 0).toFixed(0)),
+    }))
+    .sort((a, b) => b.matches - a.matches || b.winPct - a.winPct);
+
+  // Scope of the personal view. A map record of one game per agent is noise —
+  // it used to fire the "<50% win rate on this map" warning off a single loss
+  // and call a 1-game agent the "best pick". An agent's map record only counts
+  // once it has a real sample.
+  const MAP_AGENT_MIN = 2;
+  const trustedMapStats = mapAgentStats.filter((s) => s.matches >= MAP_AGENT_MIN);
+  const mapGames = mapAgentStats.reduce((n, s) => n + s.matches, 0);
+  const hasMapHistory = trustedMapStats.length > 0;
+  const personalStats: AgentStatSummary[] = hasMapHistory ? trustedMapStats : overallAgentStats;
+  const personalScope: 'map' | 'all' | 'preview' =
+    hasMapHistory ? 'map' : overallAgentStats.length > 0 ? 'all' : 'preview';
+  const thinMapSample = !hasMapHistory && mapGames > 0;
+
+  // 3. Check if user has an agent on this map with >= 50% win rate
   const hasWinningAgentOnMap = mapAgentStats.some((s) => s.matches >= 2 && s.winPct >= 50);
 
-  // 3. Rank-tuned map meta picks
+  // 4. Rank-tuned map meta picks
   const userTier = profile?.tier || 22;
   const rankTierLabel = getRankTierLabel(userTier);
   const metaPicks = getMapMetaPicks(normActiveMap, userTier);
@@ -464,10 +493,12 @@ export const OverlayView: React.FC = () => {
   // Decide whether to show meta recommendations or personal stats
   const showMetaPicks = viewMode === 'blitz' || (viewMode === 'auto' && !hasWinningAgentOnMap);
 
+  // Never fabricate: the preview list only appears when there is no account data
+  // at all (dev mock / signed-out), never as a stand-in for missing map games.
   const topAgentsList: AgentStatSummary[] =
-    mapAgentStats.length > 0
-      ? mapAgentStats
-      : PREVIEW_TOP_AGENTS;
+    personalStats.length > 0 ? personalStats : PREVIEW_TOP_AGENTS;
+
+  const personalListCount = personalStats.length;
 
   // Direct element references for GPU hardware-accelerated zero-lag dragging
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1347,7 +1378,13 @@ export const OverlayView: React.FC = () => {
               <div className="flex items-center gap-1.5 min-w-0">
                 <Trophy className="w-3.5 h-3.5 text-m3-gold shrink-0" />
                 <span className="font-display font-black text-white text-xs tracking-wider uppercase truncate">
-                  {activeMapName} • {showMetaPicks ? 'Recommended' : 'Your Top Picks'}
+                  {showMetaPicks
+                    ? `${activeMapName} • Recommended`
+                    : personalScope === 'map'
+                    ? `${activeMapName} • Your Agents`
+                    : personalScope === 'all'
+                    ? 'Your Agents • All Maps'
+                    : 'Your Agents • Preview'}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -1356,10 +1393,10 @@ export const OverlayView: React.FC = () => {
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => setViewMode(showMetaPicks ? 'personal' : 'blitz')}
                   className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-[9px] font-mono font-bold uppercase shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
-                  title="Toggle between your map stats and rank recommended picks"
+                  title="Toggle between your own agent stats and rank recommended picks"
                 >
                   {showMetaPicks ? (
-                    <span>Your Stats ({mapAgentStats.length})</span>
+                    <span>Your Agents ({personalListCount})</span>
                   ) : (
                     <span>Meta ({rankTierLabel})</span>
                   )}
@@ -1367,8 +1404,20 @@ export const OverlayView: React.FC = () => {
               </div>
             </div>
 
+            {/* Not enough games on this map to judge — say so instead of guessing */}
+            {!showMetaPicks && personalScope === 'all' && (
+              <div className="px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-1.5 text-[10px] font-mono text-zinc-300">
+                <AlertTriangle className="w-3 h-3 text-zinc-400 shrink-0" />
+                <span>
+                  {thinMapSample
+                    ? `Only ${mapGames} ${activeMapName} game${mapGames === 1 ? '' : 's'} — showing your full agent pool`
+                    : `No ${activeMapName} games recorded — showing your full agent pool`}
+                </span>
+              </div>
+            )}
+
             {/* If user struggles on this map (<50% win rate), show tactical alert */}
-            {!hasWinningAgentOnMap && !showMetaPicks && (
+            {!hasWinningAgentOnMap && !showMetaPicks && personalScope === 'map' && (
               <div className="px-2.5 py-1 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-between text-[10px] font-mono text-amber-200">
                 <div className="flex items-center gap-1.5">
                   <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
@@ -1447,8 +1496,20 @@ export const OverlayView: React.FC = () => {
                 })}
               </div>
             ) : (
-              /* PLAYER PERSONAL STATS ON THIS SPECIFIC MAP */
+              /* PLAYER'S OWN AGENT STATS */
               <div className="flex flex-col gap-1">
+                <div className="px-1 text-[9px] font-mono text-zinc-400 flex items-center justify-between border-b border-white/5 pb-1 mb-0.5">
+                  <span>
+                    {personalScope === 'map'
+                      ? `Your record on ${activeMapName} (${mapGames} games)`
+                      : personalScope === 'all'
+                      ? 'Your agent pool (all maps, this act)'
+                      : 'Sample preview'}
+                  </span>
+                  <span className="text-m3-mint font-bold">
+                    {personalScope === 'preview' ? 'Demo' : 'Win & K/D'}
+                  </span>
+                </div>
                 {/* Column Headers */}
                 <div className="grid grid-cols-[1fr_58px_50px_46px_40px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
                   <span>Agent</span>
