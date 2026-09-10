@@ -3,7 +3,6 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
 };
-use windows::Win32::Graphics::Dwm::{DwmEnableBlurBehindWindow, DWM_BB_ENABLE, DWM_BLURBEHIND};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics,
@@ -484,16 +483,10 @@ pub fn strip_all_dwm_borders(hwnd: HWND) {
 /// at window creation for `transparent: true` windows. Style/pos changes and
 /// the resulting WM_NCCALCSIZE can make DWM drop it, leaving the overlay
 /// composited opaque (the white bar). Harmless if already enabled.
-pub fn restore_blur_behind(hwnd: HWND) {
-    unsafe {
-        let bb = DWM_BLURBEHIND {
-            dwFlags: DWM_BB_ENABLE,
-            fEnable: true.into(),
-            hRgnBlur: HRGN(std::ptr::null_mut()),
-            fTransitionOnMaximized: false.into(),
-        };
-        let _ = DwmEnableBlurBehindWindow(hwnd, &bb);
-    }
+pub fn restore_blur_behind(_hwnd: HWND) {
+    // No-op: modern Windows 10/11 DirectComposition transparent webview
+    // handles alpha blending natively. DwmEnableBlurBehindWindow is a legacy
+    // API that causes visual artifacts and flickering on layered windows.
 }
 
 fn overlay_monitor_file() -> std::path::PathBuf {

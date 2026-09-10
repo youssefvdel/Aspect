@@ -509,7 +509,7 @@ export const OverlayView: React.FC = () => {
       {/* Edit Mode Full-Screen Dark Dimmer Backdrop: darkens the screen for focused editing */}
       {isEditMode && (
         <div
-          className="fixed inset-0 pointer-events-auto bg-black/65 backdrop-blur-[2px] transition-opacity duration-200 z-0"
+          className="fixed inset-0 pointer-events-auto bg-black/75 transition-opacity duration-200 z-0"
           onPointerDown={(e) => {
             e.stopPropagation();
           }}
@@ -522,7 +522,7 @@ export const OverlayView: React.FC = () => {
       {/* CUSTOM EDIT MODE WIDGET DOCK (Visual Miniature Cards)        */}
       {/* ============================================================ */}
       {isEditMode && (
-        <div className="fixed bottom-6 inset-x-0 mx-auto w-fit max-w-[96vw] z-50 pointer-events-auto flex flex-col gap-2 p-3 rounded-3xl bg-zinc-950/92 backdrop-blur-2xl border border-white/15 shadow-2xl">
+        <div className="fixed bottom-6 inset-x-0 mx-auto w-fit max-w-[96vw] z-50 pointer-events-auto flex flex-col gap-2 p-3 rounded-3xl bg-[#140e1b] border border-white/20 shadow-2xl">
           {/* Header row */}
           <div className="flex items-center justify-between px-2 gap-4">
             <div className="flex items-center gap-2">
@@ -768,8 +768,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-zinc-900/95 backdrop-blur-2xl border-white/25 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/20'
-                : 'bg-black/35 backdrop-blur-md border-white/10'
+                ? 'bg-[#181222] border-white/30 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/20'
+                : 'bg-[#140e1b]/95 border-white/15'
             }`}
           >
             {/* Header: Map • Mode • Phase */}
@@ -911,8 +911,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-3xl border p-4 shadow-2xl flex flex-col gap-3 transition-all ${
               isEditMode
-                ? 'bg-zinc-900/95 backdrop-blur-2xl border-white/25 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/20'
-                : 'bg-black/45 backdrop-blur-xl border-white/10'
+                ? 'bg-[#181222] border-white/30 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/20'
+                : 'bg-[#140e1b]/95 border-white/15'
             }`}
           >
             <div className="flex items-center justify-between px-1">
