@@ -674,12 +674,28 @@ pub fn run() {
             });
 
             // In-Game TAB Overlay Peek Thread:
-            // When user holds TAB while in Valorant, show the overlay. When released, hide it.
+            // Only active when Valorant game window is present!
             let tab_handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut was_tab_down = false;
+                let mut valorant_present = false;
+                let mut check_ticks = 0u32;
+
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(35));
+                    std::thread::sleep(std::time::Duration::from_millis(60));
+                    check_ticks += 1;
+
+                    // Re-check if Valorant is running once every ~2 seconds (35 ticks * 60ms = 2.1s)
+                    if check_ticks >= 35 || check_ticks == 1 {
+                        check_ticks = 0;
+                        valorant_present = window_manager::find_valorant_game_window().is_some();
+                    }
+
+                    if !valorant_present {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        continue;
+                    }
+
                     let tab_down = unsafe {
                         (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(0x09) as u16 & 0x8000) != 0
                     };
@@ -691,9 +707,7 @@ pub fn run() {
                                 let _ = show_overlay(tab_handle.clone());
                             }
                         } else {
-                            if window_manager::is_valorant_foreground() {
-                                let _ = hide_overlay(tab_handle.clone());
-                            }
+                            let _ = hide_overlay(tab_handle.clone());
                         }
                     }
                 }

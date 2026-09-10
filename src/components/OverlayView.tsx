@@ -18,15 +18,26 @@ export const OverlayView: React.FC = () => {
   const [minimized, setMinimized] = useState(false);
   const [clickThrough, setClickThrough] = useState(true);
 
-  // Poll live match state every 3.5 seconds
+  // Poll live match state ONLY when the overlay window is visible
   useEffect(() => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
     const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchLiveMatchState().then(setMatchState).catch(() => {});
     };
-    tick();
-    const id = setInterval(tick, 3500);
-    return () => clearInterval(id);
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) tick();
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVis);
+    }
+    const id = setInterval(tick, 5000);
+    return () => {
+      clearInterval(id);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
   }, []);
 
   // Ensure click-through is enabled in native Win32 window style

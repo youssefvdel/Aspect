@@ -498,7 +498,7 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
   // Resolve real player names from PUUIDs using Riot name-service
   try {
     const puuids = players.map((p) => p.puuid).filter(Boolean);
-    const nameMap = await resolvePlayerNames(puuids, shard);
+    const nameMap = await resolvePlayerNames(puuids, region);
     for (const p of players) {
       if (nameMap[p.puuid]?.name) {
         p.name = nameMap[p.puuid].name;
@@ -794,6 +794,8 @@ export const glzHostFor = (region: string): string => {
   return map[r] ?? 'glz-eu-1.eu.a.pvp.net';
 };
 
+const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: number; fetchedAt: number }>();
+
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
   const idleState: LiveMatchState = {
     phase: 'idle',
@@ -911,27 +913,46 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const puuids = rawPlayers.map((p) => p.puuid).filter(Boolean);
     const nameMap = await resolvePlayerNames(puuids, region);
 
-    // Fetch MMRs in parallel with safety fallback
+    // Fetch MMRs only for players not already cached within the last 15 minutes
     const mmrMap = new Map<string, { tier: number; rr: number; peakTier: number }>();
-    await Promise.all(
-      puuids.map(async (p) => {
-        try {
-          const j = await riotGet(shard, `/mmr/v1/players/${p}`);
-          const latest = j?.LatestCompetitiveUpdate ?? {};
-          const tierId = Number(latest?.TierAfterUpdate ?? 0);
-          const rr = Number(latest?.RankedRatingAfterUpdate ?? 0);
-          let peak = tierId;
-          const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          for (const s of Object.values(seasons) as any[]) {
-            peak = Math.max(peak, Number(s?.CompetitiveTier ?? 0));
-          }
-          mmrMap.set(p, { tier: tierId, rr, peakTier: peak });
-        } catch {
-          mmrMap.set(p, { tier: 0, rr: 0, peakTier: 0 });
-        }
-      })
-    );
+    const missingMmr = puuids.filter((p) => {
+      const cached = liveMmrCache.get(p);
+      if (cached && Date.now() - cached.fetchedAt < 15 * 60 * 1000) {
+        mmrMap.set(p, cached);
+        return false;
+      }
+      return true;
+    });
+
+    if (missingMmr.length > 0) {
+      // Chunk in groups of 4 to avoid spawning 12 curl processes at the exact same instant
+      for (let i = 0; i < missingMmr.length; i += 4) {
+        const batch = missingMmr.slice(i, i + 4);
+        await Promise.all(
+          batch.map(async (p) => {
+            try {
+              const j = await riotGet(shard, `/mmr/v1/players/${p}`);
+              const latest = j?.LatestCompetitiveUpdate ?? {};
+              const tierId = Number(latest?.TierAfterUpdate ?? 0);
+              const rr = Number(latest?.RankedRatingAfterUpdate ?? 0);
+              let peak = tierId;
+              const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              for (const s of Object.values(seasons) as any[]) {
+                peak = Math.max(peak, Number(s?.CompetitiveTier ?? 0));
+              }
+              const val = { tier: tierId, rr, peakTier: peak, fetchedAt: Date.now() };
+              liveMmrCache.set(p, val);
+              mmrMap.set(p, val);
+            } catch {
+              const val = { tier: 0, rr: 0, peakTier: 0, fetchedAt: Date.now() };
+              liveMmrCache.set(p, val);
+              mmrMap.set(p, val);
+            }
+          })
+        );
+      }
+    }
 
     const rawMapId = String(matchData.MapID || '').toLowerCase();
     const mapDict: Record<string, string> = {
