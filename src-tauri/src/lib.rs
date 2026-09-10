@@ -293,6 +293,7 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
         if in_edit_mode {
             let _ = window.set_ignore_cursor_events(false);
             let _ = window.show();
+            let _ = window.set_focus();
             let _ = window.set_shadow(false);
             #[cfg(windows)]
             {

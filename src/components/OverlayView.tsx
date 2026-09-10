@@ -263,19 +263,8 @@ export const OverlayView: React.FC = () => {
     pregame: pregameRef,
   };
 
-  // DWM/WebView2 can keep a stale white surface region after Win32 style
-  // toggles or resolution switches (Chromium never repaints undamaged
-  // transparent areas). Hiding + reflowing the root forces a full re-raster,
-  // discarding the stale pixels. Costs one invisible frame.
-  const forceRepaint = useCallback(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    requestAnimationFrame(() => {
-      el.style.display = 'none';
-      void el.offsetHeight;
-      el.style.display = '';
-    });
-  }, []);
+  // Native DWM message handling strips non-client borders natively.
+  const forceRepaint = useCallback(() => {}, []);
 
   // Sync edit mode and config changes from main app
   useEffect(() => {

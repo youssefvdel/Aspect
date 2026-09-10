@@ -671,14 +671,6 @@ unsafe extern "system" fn overlay_subclass_proc(
 pub fn install_overlay_subclass(top_hwnd: HWND) {
     unsafe {
         let _ = SetWindowSubclass(top_hwnd, Some(overlay_subclass_proc), 0x7001, 0);
-        let _ = EnumChildWindows(top_hwnd, Some(enum_child_subclass_proc), LPARAM(0));
-    }
-}
-
-unsafe extern "system" fn enum_child_subclass_proc(child: HWND, _lparam: LPARAM) -> BOOL {
-    unsafe {
-        let _ = SetWindowSubclass(child, Some(overlay_subclass_proc), 0x7002, 0);
-        BOOL(1)
     }
 }
 
@@ -699,7 +691,7 @@ unsafe extern "system" fn enum_child_clickthrough_proc(child: HWND, lparam: LPAR
         if clickthrough {
             ex |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
-            ex &= !0x00000020;
+            ex &= !(0x00000020 | 0x08000000);
         }
         SetWindowLongPtrW(child, GWL_EXSTYLE, ex as isize);
         let _ = SetWindowPos(
@@ -736,8 +728,7 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
-            | 0x00000080  // WS_EX_TOOLWINDOW
-            | 0x00200000; // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
+            | 0x00000080; // WS_EX_TOOLWINDOW
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
@@ -796,7 +787,6 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080  // WS_EX_TOOLWINDOW
-            | 0x00200000  // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
             | 0x08000000; // WS_EX_NOACTIVATE
         ex_style &= !0x00000020;
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
@@ -858,12 +848,11 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00080000  // WS_EX_LAYERED
             | 0x00000008  // WS_EX_TOPMOST
-            | 0x00000080  // WS_EX_TOOLWINDOW
-            | 0x00200000; // WS_EX_NOREDIRECTIONBITMAP (kills WebView2 ghost titlebar on transparent windows)
+            | 0x00000080; // WS_EX_TOOLWINDOW
         if clickthrough {
             ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
-            ex_style &= !(0x00000020 | 0x08000000); // Allow mouse clicks & dragging
+            ex_style &= !(0x00000020 | 0x08000000);
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
