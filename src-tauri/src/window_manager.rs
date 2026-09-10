@@ -122,6 +122,7 @@ pub fn is_valorant_game_window(_hwnd: HWND, title: &str, class_name: &str) -> bo
     lower == "valorant"
 }
 
+#[allow(dead_code)]
 pub fn is_valorant_foreground() -> bool {
     unsafe {
         let fg = GetForegroundWindow();

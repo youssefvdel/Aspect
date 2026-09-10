@@ -673,46 +673,6 @@ pub fn run() {
                 }
             });
 
-            // In-Game TAB Overlay Peek Thread:
-            // Only active when Valorant game window is present!
-            let tab_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let mut was_tab_down = false;
-                let mut valorant_present = false;
-                let mut check_ticks = 0u32;
-
-                loop {
-                    std::thread::sleep(std::time::Duration::from_millis(60));
-                    check_ticks += 1;
-
-                    // Re-check if Valorant is running once every ~2 seconds (35 ticks * 60ms = 2.1s)
-                    if check_ticks >= 35 || check_ticks == 1 {
-                        check_ticks = 0;
-                        valorant_present = window_manager::find_valorant_game_window().is_some();
-                    }
-
-                    if !valorant_present {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
-                        continue;
-                    }
-
-                    let tab_down = unsafe {
-                        (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(0x09) as u16 & 0x8000) != 0
-                    };
-
-                    if tab_down != was_tab_down {
-                        was_tab_down = tab_down;
-                        if tab_down {
-                            if window_manager::is_valorant_foreground() {
-                                let _ = show_overlay(tab_handle.clone());
-                            }
-                        } else {
-                            let _ = hide_overlay(tab_handle.clone());
-                        }
-                    }
-                }
-            });
-
             // Automated working set trimmer to keep RAM consumption minimal across host and WebView2 child tree
             std::thread::spawn(|| {
                 loop {
