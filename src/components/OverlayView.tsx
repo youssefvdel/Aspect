@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Trophy, EyeOff, Swords, Clock } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Trophy, EyeOff, Swords, Clock, Zap, AlertTriangle } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
+import { computeMapAgentStats, BLITZ_MAP_META, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -35,8 +36,8 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
     lobby: { x: 20, y: 180 },
     pregame: { x: 20, y: 100 },
     topAgents: {
-      x: typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 380) : 1520,
-      y: typeof window !== 'undefined' ? Math.max(20, window.innerHeight - 300) : 800,
+      x: typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 410) : 1500,
+      y: typeof window !== 'undefined' ? Math.max(20, window.innerHeight - 380) : 800,
     },
   },
   scales: {
@@ -96,16 +97,7 @@ const PARTY_STYLES: Record<number, { border: string; bg: string; dot: string; te
   },
 };
 
-interface AgentStatSummary {
-  agent: string;
-  role?: string;
-  matches: number;
-  wins: number;
-  losses: number;
-  winPct: number;
-  kd: number;
-  hsPct: number;
-}
+
 
 const PREVIEW_TOP_AGENTS: AgentStatSummary[] = [
   {
@@ -366,7 +358,8 @@ const PREVIEW_OPPONENTS: LiveMatchPlayer[] = [
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
-  const [agentIcons, setAgentIcons] = useState<Record<string, string>>({});
+  const [agentMap, setAgentMap] = useState<Record<string, { name: string; icon: string; role: string }>>({});
+  const [viewMode, setViewMode] = useState<'auto' | 'personal' | 'blitz'>('auto');
 
   // Edit mode state (synced with main app)
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
@@ -401,10 +394,36 @@ export const OverlayView: React.FC = () => {
     } catch {}
   };
 
-  const { trnAgents } = useTrackerData();
-  const topAgentsList = (trnAgents && trnAgents.length > 0)
-    ? [...trnAgents].sort((a, b) => b.matches - a.matches || b.winPct - a.winPct)
-    : PREVIEW_TOP_AGENTS;
+  const { detailsById, mapById, profile } = useTrackerData();
+
+  const activeMapName =
+    matchState?.mapName && matchState.mapName !== 'No Match Active' && matchState.mapName !== 'Live Match Status'
+      ? matchState.mapName
+      : 'Ascent';
+
+  const normActiveMap = activeMapName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // 1. Compute user's real stats on this specific active map
+  const mapAgentStats = computeMapAgentStats(
+    activeMapName,
+    detailsById || {},
+    mapById || {},
+    profile?.puuid
+  );
+
+  // 2. Check if user has an agent on this map with >= 50% win rate
+  const hasWinningAgentOnMap = mapAgentStats.some((s) => s.matches >= 2 && s.winPct >= 50);
+
+  // 3. Authoritative Blitz.gg meta picks for this map
+  const blitzMetaPicks = BLITZ_MAP_META[normActiveMap] || BLITZ_MAP_META.ascent;
+
+  // Decide whether to show Blitz recommendations or personal stats
+  const showBlitzMeta = viewMode === 'blitz' || (viewMode === 'auto' && !hasWinningAgentOnMap);
+
+  const topAgentsList: AgentStatSummary[] =
+    mapAgentStats.length > 0
+      ? mapAgentStats
+      : PREVIEW_TOP_AGENTS;
 
   // Direct element references for GPU hardware-accelerated zero-lag dragging
   const rootRef = useRef<HTMLDivElement>(null);
@@ -456,7 +475,7 @@ export const OverlayView: React.FC = () => {
     gameData()
       .then((d) => {
         setTierIcons(d.tierIcons);
-        setAgentIcons(d.agents || {});
+        setAgentMap(d.agentInfo || {});
       })
       .catch(() => {});
 
@@ -1208,7 +1227,7 @@ export const OverlayView: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* WIDGET 3: Player Top Agents & Performance                    */}
+      {/* WIDGET 3: Player Top Agents on Active Map & Blitz Meta      */}
       {/* ============================================================ */}
       {config.showTopAgents && (isPregame || isEditMode) && (
         <div
@@ -1221,7 +1240,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[360px] will-change-transform z-10 ${
+          } select-none w-[370px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1 shadow-2xl'
               : ''
@@ -1235,7 +1254,7 @@ export const OverlayView: React.FC = () => {
               >
                 <div className="flex items-center gap-1.5">
                   <Move className="w-3.5 h-3.5" />
-                  <span>Move Top Agents Panel</span>
+                  <span>Move Map Agents Panel</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-zinc-400 font-normal">Hold to drag</span>
@@ -1247,7 +1266,7 @@ export const OverlayView: React.FC = () => {
                       saveConfig({ ...config, showTopAgents: false });
                     }}
                     className="w-5 h-5 rounded-md bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
-                    title="Remove Top Agents from screen"
+                    title="Remove Map Agents from screen"
                   >
                     <X className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
@@ -1270,97 +1289,206 @@ export const OverlayView: React.FC = () => {
                 : 'bg-[#0c0816]/75 border-white/10'
             }`}
           >
-            {/* Header */}
+            {/* Header with Map name & Mode toggle */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
-                <Trophy className="w-3.5 h-3.5 text-m3-gold" />
-                <span className="font-display font-black text-white text-xs tracking-wider uppercase">
-                  Your Top Agents
+                {showBlitzMeta ? (
+                  <Zap className="w-3.5 h-3.5 text-m3-mint" />
+                ) : (
+                  <Trophy className="w-3.5 h-3.5 text-m3-gold" />
+                )}
+                <span className="font-display font-black text-white text-xs tracking-wider uppercase truncate">
+                  {activeMapName} • {showBlitzMeta ? 'Blitz Meta' : 'Your Top Picks'}
                 </span>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-[9px] font-mono font-bold uppercase shrink-0">
-                Act Stats
-              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setViewMode(showBlitzMeta ? 'personal' : 'blitz')}
+                  className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-[9px] font-mono font-bold uppercase shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Toggle between your map stats and Blitz.gg recommended tier list"
+                >
+                  {showBlitzMeta ? (
+                    <span>Your Stats ({mapAgentStats.length})</span>
+                  ) : (
+                    <>
+                      <Zap className="w-2.5 h-2.5 text-m3-mint" />
+                      <span>Blitz Meta</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Column Headers */}
-            <div className="grid grid-cols-[1fr_54px_50px_46px_44px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
-              <span>Agent</span>
-              <span className="text-right">Matches</span>
-              <span className="text-right">Win%</span>
-              <span className="text-right">K/D</span>
-              <span className="text-right">HS%</span>
-            </div>
+            {/* If user struggles on this map (<50% win rate), show tactical alert */}
+            {!hasWinningAgentOnMap && !showBlitzMeta && (
+              <div className="px-2.5 py-1 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-between text-[10px] font-mono text-amber-200">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>&lt;50% Win Rate on {activeMapName}</span>
+                </div>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setViewMode('blitz')}
+                  className="text-[9px] underline text-amber-300 hover:text-white cursor-pointer font-bold"
+                >
+                  See Blitz Picks
+                </button>
+              </div>
+            )}
 
-            {/* Agent Rows */}
-            <div className="flex flex-col gap-1">
-              {topAgentsList.slice(0, 5).map((stat) => {
-                const normName = stat.agent.toLowerCase();
-                const icon = Object.entries(agentIcons).find(
-                  ([name]) => name.toLowerCase() === normName
-                )?.[1];
-                const kd = stat.kd.toFixed(2);
-                const kdColor =
-                  stat.kd >= 1.2
-                    ? 'text-emerald-400 font-bold'
-                    : stat.kd >= 1.0
-                    ? 'text-m3-mint font-semibold'
-                    : 'text-rose-400 font-medium';
+            {/* Table / Rows */}
+            {showBlitzMeta ? (
+              /* BLITZ.GG RECOMMENDED S-TIER PICKS FOR THIS MAP */
+              <div className="flex flex-col gap-1.5">
+                <div className="px-1 text-[9px] font-mono text-zinc-400 flex items-center justify-between">
+                  <span>Blitz.gg S-Tier Recommendations</span>
+                  <span className="text-m3-mint font-bold">Diamond+ Meta</span>
+                </div>
+                {blitzMetaPicks.map((b) => {
+                  const norm = b.agent.toLowerCase();
+                  const meta = Object.values(agentMap).find((a) => a.name.toLowerCase() === norm);
+                  const icon =
+                    meta?.icon ||
+                    (norm === 'sova'
+                      ? 'https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/displayicon.png'
+                      : '');
 
-                return (
-                  <div
-                    key={stat.agent}
-                    className="grid grid-cols-[1fr_54px_50px_46px_44px] items-center px-2 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
-                  >
-                    {/* Agent Icon & Name */}
-                    <div className="flex items-center gap-2 min-w-0 pr-1">
-                      {icon ? (
-                        <img
-                          src={icon}
-                          alt=""
-                          draggable={false}
-                          onError={(e) => {
-                            (e.currentTarget as HTMLElement).style.display = 'none';
-                          }}
-                          className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
-                        />
-                      ) : (
-                        <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
-                          {stat.agent.slice(0, 2).toUpperCase()}
+                  return (
+                    <div
+                      key={b.agent}
+                      className="flex flex-col gap-1 px-2.5 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {icon ? (
+                            <img
+                              src={icon}
+                              alt=""
+                              draggable={false}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                              }}
+                              className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                              {b.agent.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex flex-col min-w-0 leading-tight">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[11px] text-white">{b.agent}</span>
+                              <span className="px-1 py-px rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[7px] font-mono font-bold uppercase">
+                                {b.tier} Tier
+                              </span>
+                            </div>
+                            <span className="text-[8px] font-mono text-zinc-400">{b.role}</span>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex flex-col min-w-0 flex-1 leading-tight">
-                        <span className="font-bold text-[11px] text-white truncate">{stat.agent}</span>
-                        <span className="text-[8px] font-mono text-zinc-400 truncate">{stat.role || 'Agent'}</span>
+                        <div className="flex flex-col items-end leading-none font-mono">
+                          <span className="text-[10px] font-bold text-m3-mint">{b.winRate}% WR</span>
+                          <span className="text-[8px] text-zinc-400 mt-0.5">{b.pickRate}% Pick</span>
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Matches (Games + W/L) */}
-                    <div className="flex flex-col items-end leading-none font-mono" title={`${stat.wins} Wins - ${stat.losses} Losses`}>
-                      <span className="text-[10px] font-bold text-white">{stat.matches}G</span>
-                      <span className="text-[8px] text-zinc-400 mt-0.5">{stat.wins}W-{stat.losses}L</span>
-                    </div>
-
-                    {/* Win % */}
-                    <div className="text-right font-mono text-[10px] font-bold" title="Win Rate">
-                      <span className={stat.winPct >= 50 ? 'text-m3-mint' : 'text-zinc-400'}>
-                        {stat.winPct.toFixed(1)}%
+                      <span className="text-[9px] font-mono text-zinc-300 leading-tight border-t border-white/5 pt-1 truncate" title={b.reason}>
+                        💡 {b.reason}
                       </span>
                     </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* PLAYER PERSONAL STATS ON THIS SPECIFIC MAP */
+              <div className="flex flex-col gap-1">
+                {/* Column Headers */}
+                <div className="grid grid-cols-[1fr_58px_50px_46px_40px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+                  <span>Agent</span>
+                  <span className="text-right">Matches</span>
+                  <span className="text-right">Win%</span>
+                  <span className="text-right">K/D</span>
+                  <span className="text-right">HS%</span>
+                </div>
 
-                    {/* K/D */}
-                    <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio">
-                      <span className={kdColor}>{kd}</span>
-                    </div>
+                {topAgentsList.slice(0, 5).map((stat) => {
+                  const normName = stat.agent.toLowerCase();
+                  const meta = Object.values(agentMap).find(
+                    (a) => a.name.toLowerCase() === normName
+                  );
+                  const icon =
+                    meta?.icon ||
+                    (normName === 'sova'
+                      ? 'https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/displayicon.png'
+                      : '');
+                  const role = meta?.role || stat.role || 'Agent';
+                  const kd = stat.kd.toFixed(2);
+                  const kdColor =
+                    stat.kd >= 1.2
+                      ? 'text-emerald-400 font-bold'
+                      : stat.kd >= 1.0
+                      ? 'text-m3-mint font-semibold'
+                      : 'text-rose-400 font-medium';
 
-                    {/* HS% */}
-                    <div className="text-right font-mono text-[10px] text-amber-200/90 font-medium" title="Headshot %">
-                      {stat.hsPct.toFixed(0)}%
+                  return (
+                    <div
+                      key={stat.agent}
+                      className="grid grid-cols-[1fr_58px_50px_46px_40px] items-center px-2 py-1.5 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] text-xs transition-colors"
+                    >
+                      {/* Agent Icon & Name */}
+                      <div className="flex items-center gap-2 min-w-0 pr-1">
+                        {icon ? (
+                          <img
+                            src={icon}
+                            alt=""
+                            draggable={false}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                            {stat.agent.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex flex-col min-w-0 flex-1 leading-tight">
+                          <span className="font-bold text-[11px] text-white truncate">{stat.agent}</span>
+                          <span className="text-[8px] font-mono text-zinc-400 truncate">{role}</span>
+                        </div>
+                      </div>
+
+                      {/* Matches on this map */}
+                      <div
+                        className="flex flex-col items-end leading-none font-mono"
+                        title={`${stat.wins} Wins - ${stat.losses} Losses on ${activeMapName}`}
+                      >
+                        <span className="text-[10px] font-bold text-white">{stat.matches}G</span>
+                        <span className="text-[8px] text-zinc-400 mt-0.5">{stat.wins}W-{stat.losses}L</span>
+                      </div>
+
+                      {/* Win % */}
+                      <div className="text-right font-mono text-[10px] font-bold" title="Win Rate">
+                        <span className={stat.winPct >= 50 ? 'text-m3-mint' : 'text-zinc-400'}>
+                          {stat.winPct.toFixed(1)}%
+                        </span>
+                      </div>
+
+                      {/* K/D */}
+                      <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio">
+                        <span className={kdColor}>{kd}</span>
+                      </div>
+
+                      {/* HS% */}
+                      <div className="text-right font-mono text-[10px] text-amber-200/90 font-medium" title="Headshot %">
+                        {stat.hsPct.toFixed(0)}%
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
