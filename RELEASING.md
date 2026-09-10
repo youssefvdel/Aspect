@@ -52,39 +52,39 @@ Outputs under `src-tauri/target/release/bundle/`:
 
 | Artifact | Purpose |
 | --- | --- |
-| `nsis/Recon_<v>_x64-setup.exe` | normal manual installer |
-| `nsis/Recon_<v>_x64-setup.exe.sig` | its signature |
-| `nsis/Recon_<v>_x64-setup.nsis.zip` | **the updater payload** |
-| `nsis/Recon_<v>_x64-setup.nsis.zip.sig` | **its signature** |
+| `nsis/Recon_<v>_x64-setup.exe` | manual installer **and the updater payload** |
+| `nsis/Recon_<v>_x64-setup.exe.sig` | **its signature — without this, updates are refused** |
 | `msi/Recon_<v>_x64_en-US.msi` | enterprise install |
+| `msi/Recon_<v>_x64_en-US.msi.sig` | its signature |
 
-If `.sig` files are missing, the build was not signed — do not publish it.
+> Tauri v2 signs the NSIS `-setup.exe` directly. There is no `.nsis.zip` wrapper —
+> don't go looking for one.
+
+**Missing `.sig` files mean the build was not signed. Do not publish it.** The build
+still "succeeds" and produces installers; signing failure shows up only as:
+
+```
+A public key has been found, but no private key.
+Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
+```
+
+Use `TAURI_SIGNING_PRIVATE_KEY` (the key **contents**). The `..._PATH` variant did not
+take effect on this setup. Confirm the `.sig` files exist before going further.
 
 ### 3. Generate `latest.json`
 
 The updater endpoint is
 `https://github.com/youssefvdel/Recon/releases/latest/download/latest.json`, so this
-file must be attached to the release. It is not produced automatically outside CI:
+file must be attached to the release. Tauri does not create it outside CI, so there is
+a script:
 
 ```bash
-V=0.4.0
-ZIP="src-tauri/target/release/bundle/nsis/Recon_${V}_x64-setup.nsis.zip"
-cat > /tmp/latest.json <<EOF
-{
-  "version": "${V}",
-  "notes": "See the release page for details.",
-  "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "platforms": {
-    "windows-x86_64": {
-      "signature": "$(cat "${ZIP}.sig")",
-      "url": "https://github.com/youssefvdel/Recon/releases/download/v${V}/Recon_${V}_x64-setup.nsis.zip"
-    }
-  }
-}
-EOF
+bash scripts/make-latest-json.sh 0.4.0 /tmp/recon_release_notes.md
 ```
 
-(The signature must be the **contents** of the `.sig` file, not a path.)
+It reads the `.sig` next to the setup exe and writes the manifest
+(`version`, `notes`, `pub_date`, and `platforms["windows-x86_64"]{signature,url}`)
+to `$TMPDIR/latest.json`. The signature must be the file **contents**, never a path.
 
 ### 4. Publish the release
 
