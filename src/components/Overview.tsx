@@ -100,7 +100,7 @@ const PLAYLISTS = [
 ];
 
 export const Overview: React.FC = () => {
-  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, clientClosed, banner, setBanner, refresh } =
+  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, games, detailsById, isLoading, clientClosed, banner, setBanner, refresh } =
     useTrackerData();
 
   const [playlist, setPlaylist] = useState('competitive');
@@ -171,9 +171,51 @@ export const Overview: React.FC = () => {
   const topAgentMeta = topAgent
     ? Object.values(agentInfo).find((a) => a.name.toLowerCase() === topAgent.agent.toLowerCase())
     : null;
-  const hitTotal = (S?.headHits ?? 0) + (S?.bodyHits ?? 0) + (S?.legHits ?? 0);
-  const bodyPct = hitTotal > 0 ? ((S?.bodyHits ?? 0) / hitTotal) * 100 : 0;
-  const legPct = hitTotal > 0 ? ((S?.legHits ?? 0) / hitTotal) * 100 : 0;
+
+  // Accuracy over the LAST 20 MATCHES (real hit-location data from match details),
+  // not the act-wide TRN aggregate. Matches whose cached detail has no hit
+  // breakdown are skipped so a stale/empty cache can't drag the numbers down.
+  const recentHit = useMemo(() => {
+    const puuid = profile?.puuid;
+    if (!puuid) return null;
+    const ordered =
+      (games ?? []).map((g) => g.matchId).filter(Boolean).length > 0
+        ? (games ?? []).map((g) => g.matchId).filter(Boolean)
+        : Object.keys(detailsById ?? {});
+
+    let head = 0;
+    let body = 0;
+    let legs = 0;
+    let used = 0;
+    for (const id of ordered) {
+      if (used >= 20) break;
+      const d = detailsById?.[id];
+      if (!d?.players) continue;
+      const me = d.players.find((p) => p.puuid === puuid);
+      if (!me) continue;
+      const h = me.headshots || 0;
+      const b = me.bodyshots || 0;
+      const l = me.legshots || 0;
+      if (h + b + l === 0) continue; // hit data unavailable for this match
+      head += h;
+      body += b;
+      legs += l;
+      used++;
+    }
+    if (used === 0) return null;
+    return { head, body, legs, used, total: head + body + legs };
+  }, [games, detailsById, profile]);
+
+  // Prefer the last-20 sample; fall back to the act-wide TRN aggregate when no
+  // local match details carry hit data yet.
+  const accHead = recentHit ? recentHit.head : S?.headHits ?? 0;
+  const accBody = recentHit ? recentHit.body : S?.bodyHits ?? 0;
+  const accLegs = recentHit ? recentHit.legs : S?.legHits ?? 0;
+  const accHeadPct = recentHit ? (recentHit.head / recentHit.total) * 100 : S?.hsPct ?? 0;
+  const hitTotal = accHead + accBody + accLegs;
+  const bodyPct = hitTotal > 0 ? (accBody / hitTotal) * 100 : 0;
+  const legPct = hitTotal > 0 ? (accLegs / hitTotal) * 100 : 0;
+  const accLabel = recentHit ? `Last ${recentHit.used}` : 'Act-wide';
 
   if (!profile) {
     if (clientClosed) {
@@ -394,26 +436,28 @@ export const Overview: React.FC = () => {
               className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface">Accuracy</h4>
-                <span className="text-xs text-m3-outline font-medium">Act-wide</span>
+                <span className="text-xs text-m3-outline font-medium" title={recentHit ? `Last ${recentHit.used} matches` : 'Act-wide from Tracker.gg'}>
+                  {accLabel}
+                </span>
               </div>
-              {S && hitTotal > 0 ? (
+              {hitTotal > 0 ? (
                 <div className="flex gap-4 items-center flex-1 py-1">
-                  <BodyFigure head={S.hsPct} body={bodyPct} legs={legPct} />
+                  <BodyFigure head={accHeadPct} body={bodyPct} legs={legPct} />
                   <div className="flex-1 flex flex-col justify-around h-full gap-2 text-[12px] min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-m3-outline font-medium w-10">Head</span>
-                      <span className="font-mono font-bold text-base text-m3-primary">{S.hsPct.toFixed(2)}%</span>
-                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.headHits.toLocaleString()} hits</span>
+                      <span className="font-mono font-bold text-base text-m3-primary">{accHeadPct.toFixed(2)}%</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{accHead.toLocaleString()} hits</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-m3-outline font-medium w-10">Body</span>
                       <span className="font-mono font-bold text-base text-m3-on-surface">{bodyPct.toFixed(2)}%</span>
-                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.bodyHits.toLocaleString()} hits</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{accBody.toLocaleString()} hits</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-m3-outline font-medium w-10">Legs</span>
                       <span className="font-mono font-bold text-base text-m3-on-surface">{legPct.toFixed(2)}%</span>
-                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{S.legHits.toLocaleString()} hits</span>
+                      <span className="font-mono text-xs text-m3-outline tabular-nums ml-auto">{accLegs.toLocaleString()} hits</span>
                     </div>
                   </div>
                 </div>
@@ -440,9 +484,12 @@ export const Overview: React.FC = () => {
                   {recentActs.map((s) => {
                     const isCurrent = s.id.toLowerCase() === profile?.currentSeasonId.toLowerCase();
                     const prev = trnPrev[s.id.toLowerCase()];
-                    const rankTier = isCurrent ? profile.tier : s.tier;
-                    const rName = isCurrent ? profile.rank : tierName(s.tier);
-                    const kdVal = isCurrent ? (S?.kd ?? agg?.kd ?? 0) : (prev?.kd ?? 0);
+                    // "Peak Rating" means the HIGHEST tier reached in that act —
+                    // including the live act, where the current tier can sit below
+                    // the peak (e.g. peaked Ascendant 3, now Ascendant 2).
+                    const rankTier = s.tier;
+                    const rName = tierName(s.tier);
+                    const kdVal = isCurrent ? (S?.kd ?? agg?.kd ?? prev?.kd ?? 0) : (prev?.kd ?? 0);
                     const matchesCount = isCurrent
                       ? (S ? S.wins + S.losses + S.ties : profile.games)
                       : (prev?.matches ?? s.games);
