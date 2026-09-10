@@ -294,6 +294,25 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
                 if let Ok(hwnd) = window.hwnd() {
                     let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, true);
                 }
+                // Hand focus back: the overlay owned focus while editing, and
+                // a click-through layer that stays the ACTIVE window keeps DWM
+                // painting active-frame chrome (the pale top bar). Exiting from
+                // the app's button never hit this — the click itself had
+                // already deactivated the overlay.
+                unsafe {
+                    use windows::Win32::Foundation::HWND;
+                    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+                    let target = window_manager::find_valorant_game_window()
+                        .map(|w| w.hwnd)
+                        .or_else(|| {
+                            app.get_webview_window("main")
+                                .and_then(|m| m.hwnd().ok())
+                                .map(|h| h.0 as isize)
+                        });
+                    if let Some(raw) = target {
+                        let _ = SetForegroundWindow(HWND(raw as *mut std::ffi::c_void));
+                    }
+                }
             }
         }
         let _ = app.emit("overlay-edit-mode-changed", in_edit_mode);

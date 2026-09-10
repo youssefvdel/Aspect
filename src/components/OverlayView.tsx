@@ -545,7 +545,9 @@ export const OverlayView: React.FC = () => {
       {isEditMode && (
         <button
           type="button"
-          onClick={() => void setOverlayEditMode(false)}
+          onClick={async () => {
+            await setOverlayEditMode(false);
+          }}
           className="fixed top-4 right-4 z-50 pointer-events-auto px-4 py-2 rounded-2xl bg-m3-mint text-zinc-950 text-xs font-black shadow-2xl border border-white/20 cursor-pointer hover:brightness-110"
         >
           ✓ Lock HUD (Esc)
