@@ -15,7 +15,6 @@ export const LiveMatchView: React.FC = () => {
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const [autoPoll, setAutoPoll] = useState(false);
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -32,13 +31,13 @@ export const LiveMatchView: React.FC = () => {
     isOverlayVisible().then(setOverlayOpen).catch(() => {});
   }, [loadState]);
 
+  // Always automatically sync live match state in the background
   useEffect(() => {
-    if (!autoPoll) return;
     const interval = setInterval(() => {
       fetchLiveMatchState().then(setMatchState).catch(() => {});
     }, 4000);
     return () => clearInterval(interval);
-  }, [autoPoll]);
+  }, []);
 
   const handleToggleOverlay = async () => {
     const isVis = await isOverlayVisible();
@@ -81,16 +80,6 @@ export const LiveMatchView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
-          <label className="flex items-center gap-1.5 text-[11px] text-m3-outline cursor-pointer select-none bg-m3-surface-container px-2.5 py-1.5 rounded-xl border border-m3-outline-subtle">
-            <input
-              type="checkbox"
-              checked={autoPoll}
-              onChange={(e) => setAutoPoll(e.target.checked)}
-              className="w-3 h-3 rounded accent-m3-primary cursor-pointer"
-            />
-            <span>Auto-poll</span>
-          </label>
-
           <button
             onClick={loadState}
             disabled={loading}
