@@ -667,37 +667,10 @@ pub fn install_overlay_subclass(top_hwnd: HWND) {
     }
 }
 
-pub fn make_child_windows_clickthrough(top_hwnd: HWND, clickthrough: bool) {
-    unsafe {
-        let _ = EnumChildWindows(
-            top_hwnd,
-            Some(enum_child_clickthrough_proc),
-            LPARAM(if clickthrough { 1 } else { 0 }),
-        );
-    }
-}
-
-unsafe extern "system" fn enum_child_clickthrough_proc(child: HWND, lparam: LPARAM) -> BOOL {
-    unsafe {
-        let clickthrough = lparam.0 != 0;
-        let mut ex = GetWindowLongPtrW(child, GWL_EXSTYLE) as u32;
-        if clickthrough {
-            ex |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
-        } else {
-            ex &= !(0x00000020 | 0x08000000);
-        }
-        SetWindowLongPtrW(child, GWL_EXSTYLE, ex as isize);
-        let _ = SetWindowPos(
-            child,
-            None,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
-        );
-        BOOL(1)
-    }
+pub fn make_child_windows_clickthrough(_top_hwnd: HWND, _clickthrough: bool) {
+    // No-op: do NOT mutate child HWND extended styles.
+    // Calling SetWindowLongPtrW/SetWindowPos on WebView2's Intermediate D3D Window
+    // breaks DirectComposition swapchain presentation to Windows DWM!
 }
 
 pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
