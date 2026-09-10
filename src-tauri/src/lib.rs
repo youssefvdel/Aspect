@@ -13,6 +13,7 @@ use std::sync::Mutex;
 
 static AUTO_BORDERLESS_ENABLED: AtomicBool = AtomicBool::new(false);
 static OVERLAY_EDIT_MODE: AtomicBool = AtomicBool::new(false);
+static OVERLAY_WINDOWED: AtomicBool = AtomicBool::new(false);
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -354,6 +355,7 @@ fn is_tab_down() -> Result<bool, String> {
 /// moved, and DevTools-docked like any app window.
 #[tauri::command]
 fn set_overlay_windowed(app: tauri::AppHandle, windowed: bool) -> Result<(), String> {
+    OVERLAY_WINDOWED.store(windowed, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("overlay") {
         #[cfg(windows)]
         {
@@ -777,7 +779,9 @@ pub fn run() {
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(2000));
-                    if OVERLAY_EDIT_MODE.load(Ordering::Relaxed) {
+                    if OVERLAY_EDIT_MODE.load(Ordering::Relaxed)
+                        || OVERLAY_WINDOWED.load(Ordering::Relaxed)
+                    {
                         continue;
                     }
                     let valorant_present = window_manager::find_valorant_game_window().is_some();
