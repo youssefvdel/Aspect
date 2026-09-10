@@ -65,39 +65,55 @@ verified live, returns 20 matches). Large gains signal MMR above your visible ra
 small gains signal MMR below it. Render as `MMR ↑ above rank` / `MMR ~ at rank` /
 `MMR ↓ below rank`, never as a raw value.
 
-### Live in-match combat stats (KDA, round score, headshot %) — not available
-*Status:* Blocked by Riot's API surface. The overlay shows act-wide aggregates plus a
-real performance trend instead.
+### Live in-match data — available WITHOUT Overwolf (earlier conclusion was WRONG)
+*Status:* Partially shipped-on-paper; implement from log + presences.
 
-Riot does **not** expose live in-match combat data to any local or third-party client.
-Verified four ways (do not re-litigate):
-1. `/core-game/v1/matches/{id}` is schema'd as `Players[]` containing only `Subject`,
-   `TeamID`, `TeamNumber`, `CharacterID`, `PlayerIdentity`, `SeasonalBadgeInfo`,
-   `IsCoach`, `IsAssociated`, `PlatformType`, `PremierPrestige`. No `Stats` object.
-2. Probed candidate live-stats endpoints — `/core-game/v1/matches/{id}/stats`,
-   `/scoreboard`, `/rounds`, `/core-game/v1/players/{puuid}/stats`, `/live-match/v1/...`
-   → all 404/503. Only `/loadouts` returns 200.
-3. `ShooterGame.log` contains no combat data (0 "Headshot", 1 "Kill" in 2.2 MB).
-4. VALORANT.exe and VALORANT-Win64-Shipping.exe open **no local listening sockets** —
-   there is no game-side local API to query.
+An earlier revision of this file claimed no live in-match data was obtainable. That was
+wrong — it came from grepping `ShooterGame.log` for the wrong strings and only reading
+`/chat/v4/presences` for party IDs. Both sources carry live match data.
 
-**Where every live overlay gets it:** Overwolf's **Game Events Provider** (GEP) — a
-licensed Overwolf-platform API exposing `match_info.score`, `round_number`, per-player
-`scoreboard` (kills/deaths/assists/money/alive), `round_report` (damage, headshots,
-bodyshots, legshots) and a `kill_feed` event. Tracker.gg's Valorant overlay is an
-Overwolf app; that is the source of its "live match stats". GEP requires the Overwolf
-runtime, a registered + reviewed app, and `setRequiredFeatures()` subscriptions — it
-cannot be used from a standalone Tauri build.
+**How Overwolf actually does it** (three local techniques, no magic Riot feed):
+1. **Log tailing** — `ShooterGame.log`.
+2. **The local client API** — the same `127.0.0.1` endpoints we already call.
+3. **OCR vision** — their native `vgep.dll` runs a capture+OCR pipeline (Windows
+   Graphics Capture + Windows.Media.Ocr) over HUD regions. Confirmed by the
+   `hoangvu12/gigi` project, which reconstructed it: *"Overwolf keeps the real
+   digit-OCR rectangles in its native `vgep.dll`, not in any readable config."*
+   Overwolf's own GEP docs corroborate — `scoreboard_screen` open/close, `kill_feed`,
+   and `round_report` (damage/hits/headshots/bodyshots/legshots) are all screen-derived.
 
-**Remaining honest options**, if this ever becomes a priority:
-- **Screen OCR** of the Tab scoreboard (pure read, no injection → Vanguard-safe, but
-  fragile: stylised fonts, colour-dependent, needs per-resolution calibration).
-- **Overwolf GEP** if we ever ship an Overwolf build alongside the Tauri app.
+**Verified live on this machine** (competitive game in progress, Split):
+```json
+// GET /chat/v4/presences  →  private (base64)
+"matchPresenceData": { "gameScoreType": "Rounds", "matchMap": "/Game/Maps/Bonsai/Bonsai",
+                       "queueId": "competitive", "sessionLoopState": "INGAME" },
+"partyOwnerMatchScoreAllyTeam": 10, "partyOwnerMatchScoreEnemyTeam": 12
+```
+That is the **live round score, map, and queue with zero screen capture**.
 
-Until then: the in-game widget shows the real live lobby (ranks, peak, party grouping,
-ACS/KD/win%/HS% act-wide, last-24h record) sorted by ACS, plus a real
-performance-over-time curve built from completed ranked matches. Nothing on the widget
-may be labelled as "this match".
+`ShooterGame.log` (3.9 MB, this box) also carries: `Reconcile … InGame/MainMenu` (match
+lifecycle), `Map Name:` (89 hits), `OnRoundEnded`, round numbers, `glz-*`/`pd-*` hosts
+(region/shard), mode codenames (`Bomb`, `swiftplay`), and agent voice-line lines
+(approximate local kills/headshots).
+
+**What each source yields:**
+
+| Data | Source | Status |
+| --- | --- | --- |
+| Live round score (allies/enemies), map, queue, INGAME | presences `private` blob | verified live |
+| Match lifecycle, round phase, round number, side, shop | `ShooterGame.log` tail | patterns confirmed |
+| Roster, agents, ranks, incognito | local client API | already built |
+| Local player K/D/HS | log voice-lines | approximate only |
+| Whole-lobby KDA, precise health | OCR of HUD/scoreboard | not built |
+
+**Cost:** log tailing is an in-process file reader (`notify`, offset-based, never
+re-scans); the presences call is one local HTTP GET per round. Both are ~0 RAM and
+~0 CPU. OCR would add GPU-side capture at ~2 fps (measured ~0.5-2.2 ms per ROI), still
+inside the existing process — **no Overwolf, no sidecar, no second runtime.**
+
+**So the Overwolf question is closed in our favour:** their GEP is replicable with
+read-only local sources. Only whole-lobby KDA needs the OCR layer, and that is the last
+piece, not the first.
 
 ### "Can we spoof being Overwolf / Blitz to get live data?" — No.
 *Status:* Ruled out. There is no handshake with VALORANT to imitate.
