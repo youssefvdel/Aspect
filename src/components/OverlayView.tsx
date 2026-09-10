@@ -232,7 +232,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     team: 'Blue',
     agentId: '',
     agentName: 'Sova',
-    agentIcon: 'https://media.valorant-api.com/agents/ded3520f-4264-bfed-162d-b080e2f0f09f/displayicon.png',
+    agentIcon: 'https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/displayicon.png',
     agentRole: 'Initiator',
     tier: 23,
     rank: 'Diamond 3',

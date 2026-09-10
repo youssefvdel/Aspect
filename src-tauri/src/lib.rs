@@ -901,9 +901,14 @@ pub fn run() {
                 let _ = window.set_icon(img);
             }
 
-            // Ensure overlay window starts with DWM shadow disabled
+            // Ensure overlay window starts in true click-through mode
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_shadow(false);
+                let _ = overlay.set_ignore_cursor_events(true);
+                #[cfg(windows)]
+                if let Ok(hwnd) = overlay.hwnd() {
+                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, true);
+                }
             }
 
             // Create System Tray Menu

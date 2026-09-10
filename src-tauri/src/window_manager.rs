@@ -690,15 +690,14 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             as i32 as isize;
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
-        // 2. Configure extended styles (preserve Tao DirectComposition surface)
+        // 2. Configure extended styles
         let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
             | 0x00000008  // WS_EX_TOPMOST
             | 0x00000080; // WS_EX_TOOLWINDOW
-        ex_style &= !0x00080000; // DO NOT set WS_EX_LAYERED (breaks DirectComposition)
         if clickthrough {
-            ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
+            ex_style |= 0x00080000 | 0x00000020 | 0x08000000; // WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
-            ex_style &= !(0x00000020 | 0x08000000);
+            ex_style &= !(0x00080000 | 0x00000020 | 0x08000000);
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
@@ -792,7 +791,7 @@ pub fn overlay_clickthrough_missing(hwnd_val: isize) -> bool {
             return false;
         }
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        ex & 0x00000020 == 0 // WS_EX_TRANSPARENT
+        (ex & 0x00000020 == 0) || (ex & 0x00080000 == 0) // WS_EX_TRANSPARENT or WS_EX_LAYERED
     }
 }
 
