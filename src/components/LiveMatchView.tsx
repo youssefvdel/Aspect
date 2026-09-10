@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   RefreshCw,
   Eye,
@@ -7,11 +7,42 @@ import {
   Lock,
   Edit3,
   Check,
+  EyeOff,
+  Swords,
+  Users,
+  Clock,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
+import { useTrackerData } from '../hooks/useTrackerData';
+import { ScoreBadge, scoreTier } from './ScoreBadge';
+import { PerformanceTrend, buildPerformanceSeries } from './PerformanceTrend';
+import {
+  getFlagUrl,
+  rankTooltip,
+  shortAct,
+  formatKd,
+  recentLabel,
+  PARTY_STYLES,
+  splitTeams,
+  byAcsDesc,
+} from '../utils/playerDisplay';
 import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
+
+/* In-app Live Match page.
+
+   IMPORTANT — data honesty:
+   Riot's local client API exposes the live match LOBBY (who is in it, their
+   ranks, agent picks, party grouping) but NO live combat data. There is no
+   endpoint, log line, or local socket carrying current-match kills, deaths,
+   round score, or in-match headshot %. Verified against the live payload, the
+   official endpoint schema, and the game's own log files.
+
+   So every number on this page is act/career aggregate from Riot + Tracker.gg,
+   never a fabricated "current match" figure. The column header says so
+   explicitly. Live combat stats would require Overwolf's Game Events Provider
+   (a licensed Overwolf-only API) or screen OCR — see ROADMAP.md. */
 
 export const LiveMatchView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
@@ -19,6 +50,16 @@ export const LiveMatchView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [inEditMode, setInEditMode] = useState(false);
+
+  // Act labels for the peak-act caption under the peak emblem.
+  const { seasonNames, detailsById, profile } = useTrackerData();
+
+  // Recent ranked form. This is history, so it lives ONLY on the app page —
+  // the in-game widget must show the current game and nothing else.
+  const perfSeries = useMemo(
+    () => buildPerformanceSeries(detailsById ?? {}, profile?.puuid ?? ''),
+    [detailsById, profile?.puuid]
+  );
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -78,6 +119,38 @@ export const LiveMatchView: React.FC = () => {
   };
 
   const isLive = matchState && matchState.phase !== 'idle';
+
+  // Your team / enemy team, with Deathmatch flattened into one FFA board.
+  const teams = useMemo(
+    () =>
+      matchState
+        ? splitTeams({
+            isDeathmatch: matchState.isDeathmatch,
+            blueTeam: matchState.blueTeam,
+            redTeam: matchState.redTeam,
+          })
+        : { yours: [], theirs: [], isFfa: false },
+    [matchState]
+  );
+
+  const allPlayers = useMemo(
+    () => [...(matchState?.blueTeam ?? []), ...(matchState?.redTeam ?? [])],
+    [matchState]
+  );
+
+  // Distinct parties (size ≥2) so the header can summarise who queued together.
+  const partyGroups = useMemo(() => {
+    const byIndex = new Map<number, LiveMatchPlayer[]>();
+    for (const p of allPlayers) {
+      if (!p.partyIndex) continue;
+      const list = byIndex.get(p.partyIndex) ?? [];
+      list.push(p);
+      byIndex.set(p.partyIndex, list);
+    }
+    return [...byIndex.entries()]
+      .filter(([, list]) => list.length >= 2)
+      .sort((a, b) => a[0] - b[0]);
+  }, [allPlayers]);
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-10">
@@ -142,6 +215,28 @@ export const LiveMatchView: React.FC = () => {
         </div>
       </div>
 
+      {/* Match status strip — what Riot actually tells us about the live game. */}
+      {isLive && matchState && (
+        <MatchStatusStrip state={matchState} partyGroups={partyGroups} />
+      )}
+
+      {/* Riot exposes no in-match combat stats, so current-game performance
+          cannot be charted. This panel is explicitly the player's recent ranked
+          form, kept on the app page and clearly labelled as history. */}
+      {perfSeries.length >= 2 && (
+        <section className="rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle px-3.5 py-2.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-m3-outline">
+              Recent form · ranked
+            </span>
+            <span className="text-[9px] font-mono text-m3-outline">
+              not live — Riot publishes no in-match stats
+            </span>
+          </div>
+          <PerformanceTrend points={perfSeries} metric="acs" width={640} height={56} />
+        </section>
+      )}
+
       {/* Main Content Area */}
       {!isLive ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 rounded-3xl bg-m3-surface-container-low border border-m3-outline-subtle text-center">
@@ -159,37 +254,31 @@ export const LiveMatchView: React.FC = () => {
             <span>100% Vanguard Safe • Zero DLL / Game Memory Injections</span>
           </div>
         </div>
-      ) : matchState.isDeathmatch ? (
-        /* Deathmatch / Free For All: No teams */
-        <div className="flex flex-col gap-4">
-          <TeamSection
-            title={`Free For All • Deathmatch (${matchState.blueTeam.length + matchState.redTeam.length} Players)`}
-            color="border-m3-gold/40"
-            tagColor="bg-m3-gold/15 text-m3-gold border-m3-gold/30"
-            players={[...matchState.blueTeam, ...matchState.redTeam]}
-            tierIcons={tierIcons}
-          />
-        </div>
+      ) : teams.isFfa ? (
+        <PlayerTable
+          title={`Free For All • Deathmatch (${teams.yours.length} Players)`}
+          accent="gold"
+          players={teams.yours}
+          tierIcons={tierIcons}
+          seasonNames={seasonNames}
+        />
       ) : (
-        /* Standard 5v5 Modes: Attackers & Defenders */
         <div className="flex flex-col gap-4">
-          {/* Attackers */}
-          <TeamSection
-            title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : '(Enemy Team)'}`}
-            color="border-m3-coral/40"
-            tagColor="bg-m3-coral/15 text-m3-coral border-m3-coral/30"
-            players={matchState.blueTeam}
+          <PlayerTable
+            title="Your Team"
+            accent="primary"
+            players={teams.yours}
             tierIcons={tierIcons}
+            seasonNames={seasonNames}
           />
 
-          {/* Defenders */}
           {matchState.phase === 'coregame' ? (
-            <TeamSection
-              title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : '(Enemy Team)'}`}
-              color="border-m3-mint/40"
-              tagColor="bg-m3-mint/15 text-m3-mint border-m3-mint/30"
-              players={matchState.redTeam}
+            <PlayerTable
+              title="Enemy Team"
+              accent="coral"
+              players={teams.theirs}
               tierIcons={tierIcons}
+              seasonNames={seasonNames}
             />
           ) : (
             <div className="p-4 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-center text-xs text-m3-outline flex items-center justify-center gap-2">
@@ -203,116 +292,310 @@ export const LiveMatchView: React.FC = () => {
   );
 };
 
-const TeamSection: React.FC<{
-  title: string;
-  color: string;
-  tagColor: string;
-  players: LiveMatchPlayer[];
-  tierIcons: Record<number, string>;
-}> = ({ title, tagColor, players, tierIcons }) => (
-  <section className="rounded-3xl bg-m3-surface-container-low border border-m3-outline-subtle p-3.5 shadow-m3-1 flex flex-col gap-2.5">
-    <div className="flex items-center justify-between px-1">
-      <span className={`text-[11px] font-bold font-display px-2.5 py-0.5 rounded-full border ${tagColor}`}>
-        {title}
-      </span>
-      <span className="text-[10px] font-mono text-m3-outline">
-        {players.length} Players
-      </span>
-    </div>
+/* ------------------------------------------------------------------ */
+/* Live match status strip                                             */
+/* ------------------------------------------------------------------ */
 
-    <div className="grid grid-cols-1 gap-1.5">
-      {players.map((p) => {
-        const icon = tierIcons[p.tier];
-        const peakIcon = tierIcons[p.peakTier];
+const MatchStatusStrip: React.FC<{
+  state: LiveMatchState;
+  partyGroups: [number, LiveMatchPlayer[]][];
+}> = ({ state, partyGroups }) => {
+  const units = (n: number) => `${n} Player${n === 1 ? '' : 's'}`;
 
-        return (
-          <div
-            key={p.puuid}
-            className={`rounded-2xl border px-3 py-2 flex items-center gap-3 transition-colors ${
-              p.isMe
-                ? 'bg-m3-primary/10 border-m3-primary/40 shadow-xs'
-                : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
+  return (
+    <section className="rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle px-3.5 py-2.5 flex items-center gap-x-4 gap-y-2 flex-wrap text-[11px]">
+      <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+        <Swords className="w-3.5 h-3.5 text-m3-primary" />
+        <span className="font-bold text-m3-on-surface">{state.mapName || 'Unknown map'}</span>
+        <span>•</span>
+        <span>{state.mode}</span>
+      </span>
+
+      {state.startingSide && !state.isDeathmatch && (
+        <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+          <span className="text-m3-outline">Starting side</span>
+          <span
+            className={`px-1.5 py-px rounded font-bold ${
+              state.startingSide === 'Attack'
+                ? 'bg-m3-coral/15 text-m3-coral border border-m3-coral/30'
+                : 'bg-m3-mint/15 text-m3-mint border border-m3-mint/30'
             }`}
           >
-            {/* Agent portrait */}
-            {p.agentIcon ? (
-              <img
-                src={p.agentIcon}
-                alt={p.agentName}
-                className="w-10 h-10 rounded-xl object-cover bg-m3-surface-container-highest border border-m3-outline-subtle shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-xl bg-m3-surface-container-highest border border-m3-outline-subtle flex items-center justify-center text-xs font-bold text-m3-outline shrink-0">
-                ?
-              </div>
+            {state.startingSide}
+          </span>
+        </span>
+      )}
+
+      <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+        <Users className="w-3.5 h-3.5" />
+        <span>{units(state.blueTeam.length + state.redTeam.length)} in lobby</span>
+      </span>
+
+      {partyGroups.length > 0 && (
+        <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+          {partyGroups.map(([idx, list]) => {
+            const style = PARTY_STYLES[idx];
+            return (
+              <span key={idx} className={`px-1.5 py-px rounded border font-bold ${style?.badge ?? ''}`}>
+                {list.length} stack
+              </span>
+            );
+          })}
+        </span>
+      )}
+
+      <span className="flex items-center gap-1.5 font-mono text-m3-outline ml-auto">
+        <Clock className="w-3.5 h-3.5" />
+        <span>synced {new Date(state.updatedAt || Date.now()).toLocaleTimeString()}</span>
+      </span>
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Player table — mirrors the Agent Select widget's columns            */
+/* ------------------------------------------------------------------ */
+
+const GRID = 'grid grid-cols-[32px_1fr_40px_40px_52px_48px_54px_48px_74px_52px] items-center gap-x-1';
+
+const ACCENTS: Record<string, { tag: string; border: string }> = {
+  primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
+  coral: { tag: 'bg-m3-coral/15 text-m3-coral border-m3-coral/30', border: 'border-m3-coral/25' },
+  gold: { tag: 'bg-m3-gold/15 text-m3-gold border-m3-gold/30', border: 'border-m3-gold/25' },
+};
+
+const PlayerTable: React.FC<{
+  title: string;
+  accent: keyof typeof ACCENTS;
+  players: LiveMatchPlayer[];
+  tierIcons: Record<number, string>;
+  seasonNames: Record<string, string>;
+}> = ({ title, accent, players, tierIcons, seasonNames }) => {
+  const a = ACCENTS[accent] ?? ACCENTS.primary;
+
+  return (
+    <section
+      className={`rounded-3xl bg-m3-surface-container-low border ${a.border} p-3 shadow-m3-1 flex flex-col gap-2`}
+    >
+      <div className="flex items-center justify-between px-1">
+        <span className={`text-[11px] font-bold font-display px-2.5 py-0.5 rounded-full border ${a.tag}`}>
+          {title}
+        </span>
+        <span className="text-[10px] font-mono text-m3-outline">
+          {players.length} Players
+        </span>
+      </div>
+
+      {/* Column headers. Act-wide disclosure is deliberate: Riot exposes no
+          live combat stats, so nothing here may imply "this match". */}
+      <div
+        className={`${GRID} px-2 pb-1 text-[9px] font-mono uppercase tracking-wider text-m3-outline border-b border-m3-outline-subtle`}
+      >
+        <span className="text-center" title="Tracker Score tier">TS</span>
+        <span>Player</span>
+        <span className="text-center">Rank</span>
+        <span className="text-center" title="Peak rank — the act it was earned in is shown under the emblem">
+          Peak
+        </span>
+        <span className="text-right" title="Act-wide average combat score — the column this board is sorted by">
+          ACS
+        </span>
+        <span className="text-right" title="Act-wide K/D (Riot exposes no live kill data)">K/D</span>
+        <span className="text-right" title="Act-wide win rate">Win%</span>
+        <span className="text-right" title="Act-wide headshot %">HS%</span>
+        <span className="text-right" title="Wins/losses in the last 24 hours">Last 24h</span>
+        <span className="text-right">Lvl</span>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {[...players].sort(byAcsDesc).map((p) => (
+          <PlayerRow key={p.puuid} p={p} tierIcons={tierIcons} seasonNames={seasonNames} />
+        ))}
+        {players.length === 0 && (
+          <div className="px-2 py-3 text-center text-[11px] text-m3-outline font-mono">
+            No players detected yet.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+const PlayerRow: React.FC<{
+  p: LiveMatchPlayer;
+  tierIcons: Record<number, string>;
+  seasonNames: Record<string, string>;
+}> = ({ p, tierIcons, seasonNames }) => {
+  const rankIcon = tierIcons[p.tier];
+  const peakIcon = tierIcons[p.peakTier];
+  const kd = formatKd(p.kd);
+  const recent = recentLabel(p);
+  const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+  const flagUrl = getFlagUrl(p.country);
+  const actLabel = p.peakSeasonId ? seasonNames[p.peakSeasonId] : undefined;
+
+  return (
+    <div
+      className={`${GRID} rounded-2xl border px-2 py-1.5 transition-colors ${
+        party
+          ? `${party.border} ${party.bg} border-m3-outline-subtle`
+          : p.isMe
+          ? 'bg-m3-primary/10 border-m3-primary/40 shadow-xs'
+          : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
+      }`}
+    >
+      {/* Tracker Score badge (hex tier emblem, never a raw number) */}
+      <div
+        className="flex items-center justify-center"
+        title={
+          p.trnScore != null
+            ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
+            : 'Tracker Score unavailable'
+        }
+      >
+        {p.trnScore != null ? (
+          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={24} />
+        ) : (
+          <span className="w-6 h-6 rounded-md border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[9px] font-mono text-m3-outline">
+            —
+          </span>
+        )}
+      </div>
+
+      {/* Agent portrait + flag, name, badges */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="relative shrink-0">
+          {p.agentIcon ? (
+            <img
+              src={p.agentIcon}
+              alt={p.agentName}
+              className="w-8 h-8 rounded-xl object-cover bg-m3-surface-container-highest border border-m3-outline-subtle"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-xl bg-m3-surface-container-highest border border-m3-outline-subtle flex items-center justify-center text-xs font-bold text-m3-outline">
+              ?
+            </div>
+          )}
+          {flagUrl && (
+            <img
+              src={flagUrl}
+              alt={p.country || ''}
+              title={`Country: ${p.country}`}
+              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-2.5 object-cover rounded-[2px] border border-m3-surface shadow-sm"
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col min-w-0 leading-tight">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="font-display font-extrabold text-[12px] text-m3-on-surface truncate"
+              title={`${p.name}${p.tag ? '#' + p.tag : ''}`}
+            >
+              {p.name}
+            </span>
+            {p.tag && (
+              <span className="text-[9px] font-mono text-m3-outline truncate">#{p.tag}</span>
             )}
-
-            {/* Name + Tag + Agent */}
-            <div className="w-40 sm:w-48 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-display font-extrabold text-sm text-m3-on-surface truncate">
-                  {p.name}
-                </span>
-                {p.tag && (
-                  <span className="text-[10px] font-mono text-m3-outline truncate">
-                    #{p.tag}
-                  </span>
-                )}
-                {p.isMe && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-m3-primary text-m3-on-primary text-[9px] font-black uppercase">
-                    You
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] text-m3-outline truncate flex items-center gap-1">
-                <span className="font-semibold text-m3-on-surface-variant">{p.agentName}</span>
-                {p.agentRole && <span>• {p.agentRole}</span>}
-              </div>
-            </div>
-
-            {/* Current Rank */}
-            <div className="flex items-center gap-2 shrink-0 w-36">
-              {icon ? (
-                <img src={icon} alt="" className="w-8 h-8 object-contain shrink-0" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-m3-surface-container-high shrink-0" />
-              )}
-              <div className="flex flex-col">
-                <span className="text-[11px] font-display font-extrabold text-m3-on-surface leading-tight truncate">
-                  {p.rank}
-                </span>
-                <span className="text-[10px] font-mono text-m3-primary font-bold">
-                  {p.rr} RR
-                </span>
-              </div>
-            </div>
-
-            {/* Peak Rank */}
-            <div className="hidden sm:flex items-center gap-2 shrink-0 w-36">
-              {peakIcon ? (
-                <img src={peakIcon} alt="" className="w-7 h-7 object-contain opacity-80 shrink-0" />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-m3-surface-container-high shrink-0" />
-              )}
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">
-                  Peak
-                </span>
-                <span className="text-[11px] font-display font-bold text-m3-on-surface leading-tight truncate">
-                  {p.peakRank}
-                </span>
-              </div>
-            </div>
-
-            {/* Account Level */}
-            {p.accountLevel > 0 && (
-              <div className="hidden md:flex ml-auto items-center px-2 py-0.5 rounded-md bg-m3-surface-container-high border border-m3-outline-subtle text-[10px] font-mono text-m3-outline">
-                Lvl {p.accountLevel}
-              </div>
+            {p.isMe && (
+              <span className="px-1 py-px rounded bg-m3-primary text-m3-on-primary text-[8px] font-black uppercase shrink-0">
+                You
+              </span>
+            )}
+            {p.isIncognito && (
+              <span
+                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-500 border border-amber-400/30 text-[8px] font-mono font-bold uppercase shrink-0"
+                title="Name hidden in Valorant — unmasked by Recon from the account UUID"
+              >
+                <EyeOff className="w-2.5 h-2.5" />
+                Hidden
+              </span>
+            )}
+            {party && (
+              <span
+                className={`px-1 py-px rounded text-[8px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
+                title={`Queued together with ${party.name}`}
+              >
+                {party.name}
+              </span>
             )}
           </div>
-        );
-      })}
+          <div className="text-[10px] text-m3-outline truncate flex items-center gap-1">
+            <span className="font-semibold text-m3-on-surface-variant truncate">
+              {p.agentName}
+            </span>
+            {p.agentRole && <span className="truncate">• {p.agentRole}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Current rank — emblem only, per the "no rank text" rule */}
+      <div className="flex items-center justify-center" title={rankTooltip(p, actLabel)}>
+        {rankIcon ? (
+          <img src={rankIcon} alt={p.rank} className="w-8 h-8 object-contain" />
+        ) : (
+          <span className="text-[9px] font-mono text-m3-outline">—</span>
+        )}
+      </div>
+
+      {/* Peak rank — emblem with the act it was earned in beneath it */}
+      <div
+        className="flex flex-col items-center justify-center"
+        title={p.peakTier > 0 ? `Peak ${p.peakRank}${actLabel ? ` (${shortAct(actLabel)})` : ''}` : 'Peak unavailable'}
+      >
+        {peakIcon ? (
+          <img src={peakIcon} alt={p.peakRank} className="w-7 h-7 object-contain opacity-90" />
+        ) : (
+          <span className="text-[9px] font-mono text-m3-outline">—</span>
+        )}
+        {p.peakSeasonId && actLabel && (
+          <span className="text-[7px] font-mono text-m3-outline leading-none mt-px">
+            {shortAct(actLabel)}
+          </span>
+        )}
+      </div>
+
+      {/* ACS — the sort key, so it reads first among the numbers */}
+      <div className="text-right font-mono text-[11px] font-bold" title="Act-wide average combat score">
+        {p.acs != null ? (
+          <span className={p.acs >= 200 ? 'text-m3-primary' : p.acs >= 150 ? 'text-m3-on-surface' : 'text-m3-outline'}>
+            {p.acs}
+          </span>
+        ) : (
+          <span className="text-m3-outline">—</span>
+        )}
+      </div>
+
+      {/* K/D */}
+      <div className="text-right font-mono text-[11px] font-bold" title="Act-wide K/D">
+        <span className={kd.color}>{kd.text}</span>
+      </div>
+
+      {/* Win % */}
+      <div className="text-right font-mono text-[11px]" title="Act-wide win rate">
+        {p.winPct != null ? (
+          <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
+            {p.winPct.toFixed(0)}%
+          </span>
+        ) : (
+          <span className="text-m3-outline">—</span>
+        )}
+      </div>
+
+      {/* HS % */}
+      <div className="text-right font-mono text-[11px] text-amber-500" title="Act-wide headshot %">
+        {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-m3-outline">—</span>}
+      </div>
+
+      {/* Last 24h W/L */}
+      <div className="text-right font-mono text-[10px]" title="Wins / losses in the last 24 hours">
+        {recent ? <span className={recent.color}>{recent.text}</span> : <span className="text-m3-outline">—</span>}
+      </div>
+
+      {/* Account level */}
+      <div className="text-right font-mono text-[10px] text-m3-outline" title="Account level">
+        {p.accountLevel > 0 ? p.accountLevel : '—'}
+      </div>
     </div>
-  </section>
-);
+  );
+};

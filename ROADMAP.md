@@ -64,3 +64,37 @@ performance-bonus component of `/mmr/v1/players/{puuid}/competitiveupdates` (end
 verified live, returns 20 matches). Large gains signal MMR above your visible rank;
 small gains signal MMR below it. Render as `MMR ↑ above rank` / `MMR ~ at rank` /
 `MMR ↓ below rank`, never as a raw value.
+
+### Live in-match combat stats (KDA, round score, headshot %) — not available
+*Status:* Blocked by Riot's API surface. The overlay shows act-wide aggregates plus a
+real performance trend instead.
+
+Riot does **not** expose live in-match combat data to any local or third-party client.
+Verified four ways (do not re-litigate):
+1. `/core-game/v1/matches/{id}` is schema'd as `Players[]` containing only `Subject`,
+   `TeamID`, `TeamNumber`, `CharacterID`, `PlayerIdentity`, `SeasonalBadgeInfo`,
+   `IsCoach`, `IsAssociated`, `PlatformType`, `PremierPrestige`. No `Stats` object.
+2. Probed candidate live-stats endpoints — `/core-game/v1/matches/{id}/stats`,
+   `/scoreboard`, `/rounds`, `/core-game/v1/players/{puuid}/stats`, `/live-match/v1/...`
+   → all 404/503. Only `/loadouts` returns 200.
+3. `ShooterGame.log` contains no combat data (0 "Headshot", 1 "Kill" in 2.2 MB).
+4. VALORANT.exe and VALORANT-Win64-Shipping.exe open **no local listening sockets** —
+   there is no game-side local API to query.
+
+**Where every live overlay gets it:** Overwolf's **Game Events Provider** (GEP) — a
+licensed Overwolf-platform API exposing `match_info.score`, `round_number`, per-player
+`scoreboard` (kills/deaths/assists/money/alive), `round_report` (damage, headshots,
+bodyshots, legshots) and a `kill_feed` event. Tracker.gg's Valorant overlay is an
+Overwolf app; that is the source of its "live match stats". GEP requires the Overwolf
+runtime, a registered + reviewed app, and `setRequiredFeatures()` subscriptions — it
+cannot be used from a standalone Tauri build.
+
+**Remaining honest options**, if this ever becomes a priority:
+- **Screen OCR** of the Tab scoreboard (pure read, no injection → Vanguard-safe, but
+  fragile: stylised fonts, colour-dependent, needs per-resolution calibration).
+- **Overwolf GEP** if we ever ship an Overwolf build alongside the Tauri app.
+
+Until then: the in-game widget shows the real live lobby (ranks, peak, party grouping,
+ACS/KD/win%/HS% act-wide, last-24h record) sorted by ACS, plus a real
+performance-over-time curve built from completed ranked matches. Nothing on the widget
+may be labelled as "this match".

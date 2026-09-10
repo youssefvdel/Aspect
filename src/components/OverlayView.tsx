@@ -4,6 +4,14 @@ import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
+import {
+  getFlagUrl,
+  rankTooltip,
+  shortAct,
+  formatKd,
+  PARTY_STYLES,
+  byAcsDesc,
+} from '../utils/playerDisplay';
 import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
@@ -65,78 +73,8 @@ export function getDefaultOverlayConfig(): OverlayConfig {
 
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = getDefaultOverlayConfig();
 
-function getFlagUrl(code?: string): string | null {
-  if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
-  let lower = code.toLowerCase();
-  if (lower === 'uk') lower = 'gb';
-  return `https://flagcdn.com/24x18/${lower}.png`;
-}
-
-/** Full MMR picture for a lobby player, surfaced on hover. */
-function rankTooltip(p: LiveMatchPlayer, actLabel?: string): string {
-  const bits: string[] = [];
-  bits.push(p.tier > 0 ? `${p.rank}` : 'Unranked');
-  if (p.rr > 0) bits.push(`${p.rr} RR`);
-  if (p.actGames && p.actGames > 0) {
-    bits.push(`${p.actWins ?? 0}W-${Math.max(0, p.actGames - (p.actWins ?? 0))}L this act`);
-  }
-  if (p.leaderboardRank && p.leaderboardRank > 0) bits.push(`#${p.leaderboardRank} Leaderboard`);
-  if (p.peakTier > 0) bits.push(`Peak ${p.peakRank}${actLabel ? ` (${actLabel})` : ''}`);
-  if (p.isRankHidden) bits.push('Act rank hidden (unmasked)');
-  return bits.join(' • ');
-}
-
-/** "V25 · ACT III" → "V25·III" — fits under a 16px emblem. */
-function shortAct(label?: string): string {
-  if (!label) return '';
-  return label
-    .replace(/ACT\s*/i, '')
-    .replace(/\s*·\s*/g, '·')
-    .trim();
-}
-
-
-
-function formatKd(kd?: number | string): { text: string; color: string } {
-  if (kd == null || kd === '' || kd === 0) return { text: '—', color: 'text-zinc-500' };
-  const num = typeof kd === 'number' ? kd : parseFloat(kd);
-  if (isNaN(num) || num <= 0) return { text: '—', color: 'text-zinc-500' };
-  const text = num.toFixed(2);
-  const color =
-    num >= 1.2
-      ? 'text-emerald-400 font-bold'
-      : num >= 1.0
-      ? 'text-m3-mint font-semibold'
-      : 'text-rose-400 font-medium';
-  return { text, color };
-}
-
-const PARTY_STYLES: Record<number, { border: string; bg: string; dot: string; text: string; badge: string; name: string }> = {
-  1: {
-    border: 'border-l-[3px] border-l-cyan-400',
-    bg: 'bg-cyan-500/10',
-    dot: 'bg-cyan-400',
-    text: 'text-cyan-300',
-    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40',
-    name: 'Party 1',
-  },
-  2: {
-    border: 'border-l-[3px] border-l-amber-400',
-    bg: 'bg-amber-500/10',
-    dot: 'bg-amber-400',
-    text: 'text-amber-300',
-    badge: 'bg-amber-500/20 text-amber-300 border-amber-400/40',
-    name: 'Party 2',
-  },
-  3: {
-    border: 'border-l-[3px] border-l-fuchsia-400',
-    bg: 'bg-fuchsia-500/10',
-    dot: 'bg-fuchsia-400',
-    text: 'text-fuchsia-300',
-    badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40',
-    name: 'Party 3',
-  },
-};
+/* Flag/K-D/party/act helpers live in utils/playerDisplay so the in-app Live
+   Match page renders players identically to the overlay widgets. */
 
 
 
@@ -1113,7 +1051,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[340px] will-change-transform z-10 ${
+          } select-none w-[384px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-1 shadow-2xl'
               : ''
@@ -1161,8 +1099,8 @@ export const OverlayView: React.FC = () => {
                 : 'bg-[#0c0816]/75 border-white/10'
             }`}
           >
-            {/* Header: Map • Mode • Phase */}
-            <div className="flex items-center justify-between px-1">
+            {/* Header: Map • Mode • Phase + live game status */}
+            <div className="flex items-center justify-between px-1 gap-1.5">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-xs font-display font-black text-white truncate">
                   {matchState?.mapName || 'Live Match Status'}
@@ -1173,17 +1111,42 @@ export const OverlayView: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span className="px-1.5 py-0.5 rounded bg-m3-primary/20 text-m3-primary text-[9px] font-mono font-extrabold uppercase shrink-0">
-                {matchState?.phase === 'coregame' ? 'LIVE' : matchState?.phase === 'pregame' ? 'SELECT' : 'PREVIEW'}
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Side we start on — only Riot tells us this before the game */}
+                {matchState?.startingSide && !matchState?.isDeathmatch && (
+                  <span
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-extrabold uppercase border ${
+                      matchState.startingSide === 'Defense'
+                        ? 'bg-m3-mint/15 text-m3-mint border-m3-mint/30'
+                        : 'bg-m3-coral/15 text-m3-coral border-m3-coral/30'
+                    }`}
+                    title={`Starting side: ${matchState.startingSide}`}
+                  >
+                    {matchState.startingSide === 'Defense' ? (
+                      <Shield className="w-2.5 h-2.5" />
+                    ) : (
+                      <Swords className="w-2.5 h-2.5" />
+                    )}
+                    {matchState.startingSide === 'Defense' ? 'DEF' : 'ATK'}
+                  </span>
+                )}
+                <span className="px-1.5 py-0.5 rounded bg-m3-primary/20 text-m3-primary text-[9px] font-mono font-extrabold uppercase shrink-0">
+                  {matchState?.phase === 'coregame' ? 'LIVE' : matchState?.phase === 'pregame' ? 'SELECT' : 'PREVIEW'}
+                </span>
+              </div>
             </div>
 
             {/* Column Titles */}
-            <div className="flex items-center gap-2 px-2 text-[9px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
-              <span className="flex-1">Player</span>
+            <div className="flex items-center gap-1 px-2 text-[9px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
+              <span className="shrink-0 w-5 text-center" title="Tracker Score tier">TS</span>
+              <span className="flex-1 min-w-0">Player</span>
               <span className="shrink-0 w-6 text-center">Rank</span>
               <span className="shrink-0 w-6 text-center">Peak</span>
+              <span className="shrink-0 w-9 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
               <span className="shrink-0 w-8 text-right">K/D</span>
+              <span className="shrink-0 w-9 text-right" title="Act-wide win rate">Win%</span>
+              <span className="shrink-0 w-8 text-right" title="Act-wide headshot %">HS%</span>
+              <span className="shrink-0 w-9 text-right" title="Wins / losses in the last 24 hours">24H</span>
             </div>
 
             {/* Vertical Compact Teams / Player Stack */}
@@ -1938,7 +1901,10 @@ const VerticalSquadColumn: React.FC<{
       <span className={`text-[10px] font-bold uppercase tracking-wider ${tagColor}`}>{title}</span>
       <span className="text-[9px] font-mono text-zinc-400">{players.length}P</span>
     </div>
-    {players.map((p) => {
+    {/* Strongest combat score first — the board reads like the in-game
+        leaderboard. Players with no ACS yet keep their relative order at the
+        bottom rather than being given a fake score. */}
+    {[...players].sort(byAcsDesc).map((p) => {
       const icon = tierIcons[p.tier];
       const peakIcon = tierIcons[p.peakTier];
       const kd = formatKd(p.kd);
@@ -1948,7 +1914,7 @@ const VerticalSquadColumn: React.FC<{
       return (
         <div
           key={p.puuid}
-          className={`flex items-center gap-2 px-2 py-1 rounded-xl border text-xs transition-colors ${
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border text-xs transition-colors ${
             party
               ? `${party.border} ${party.bg} border-white/5`
               : p.isMe
@@ -1956,6 +1922,24 @@ const VerticalSquadColumn: React.FC<{
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
+          {/* Tracker Score tier badge */}
+          <div
+            className="shrink-0 w-5 flex items-center justify-center"
+            title={
+              p.trnScore != null
+                ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
+                : 'Tracker Score unavailable'
+            }
+          >
+            {p.trnScore != null ? (
+              <ScoreBadge tier={scoreTier(p.trnScore).tier} size={17} />
+            ) : (
+              <span className="w-[17px] h-[17px] rounded border border-white/10 bg-white/[0.03] flex items-center justify-center text-[8px] font-mono text-zinc-600">
+                —
+              </span>
+            )}
+          </div>
+
           {/* Agent Icon (with Flag Overlay) */}
           <div className="relative shrink-0">
             {p.agentIcon ? (
@@ -2036,9 +2020,50 @@ const VerticalSquadColumn: React.FC<{
             )}
           </div>
 
+          {/* ACS — the sort key, so it reads first among the numbers */}
+          <div
+            className="shrink-0 w-9 text-right font-mono text-[10px] font-bold"
+            title="Act-wide average combat score"
+          >
+            {p.acs != null ? (
+              <span className={p.acs >= 200 ? 'text-m3-primary' : p.acs >= 150 ? 'text-zinc-200' : 'text-zinc-400'}>
+                {p.acs}
+              </span>
+            ) : (
+              <span className="text-zinc-600">—</span>
+            )}
+          </div>
+
           {/* KD */}
-          <div className="shrink-0 w-8 text-right font-mono text-[10px]" title="K/D Ratio">
+          <div className="shrink-0 w-8 text-right font-mono text-[10px]" title="Act-wide K/D">
             <span className={kd.color}>{kd.text}</span>
+          </div>
+
+          {/* Act-wide win rate */}
+          <div className="shrink-0 w-9 text-right font-mono text-[10px]" title="Act-wide win rate">
+            {p.winPct != null ? (
+              <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
+                {p.winPct.toFixed(0)}%
+              </span>
+            ) : (
+              <span className="text-zinc-600">—</span>
+            )}
+          </div>
+
+          {/* Act-wide headshot % */}
+          <div className="shrink-0 w-8 text-right font-mono text-[10px] text-amber-200/90" title="Act-wide headshot %">
+            {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-zinc-600">—</span>}
+          </div>
+
+          {/* Last 24h W/L */}
+          <div className="shrink-0 w-9 text-right font-mono text-[9px]" title="Wins / losses in the last 24 hours">
+            {p.recentWon != null || p.recentLost != null ? (
+              <span className={(p.recentWon ?? 0) >= (p.recentLost ?? 0) ? 'text-m3-mint' : 'text-rose-400'}>
+                {p.recentWon ?? 0}W-{p.recentLost ?? 0}L
+              </span>
+            ) : (
+              <span className="text-zinc-600">—</span>
+            )}
           </div>
         </div>
       );

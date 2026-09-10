@@ -1240,6 +1240,7 @@ const livePlayerStatsCache = new Map<
     winPct?: number;
     hsPct?: number;
     trnScore?: number;
+    acs?: number;
     recentWon?: number;
     recentLost?: number;
     streak?: number;
@@ -1526,6 +1527,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                   winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
                   hsPct: res?.stats?.hsPct != null ? Math.round(res.stats.hsPct) : undefined,
                   trnScore: res?.stats?.trnScore ? Math.round(res.stats.trnScore) : undefined,
+                  acs: res?.stats?.acs ? Math.round(res.stats.acs) : undefined,
                   country: realCountry,
                   fetchedAt: Date.now(),
                 });
@@ -1589,6 +1591,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         winPct: statsCached?.winPct,
         hsPct: statsCached?.hsPct,
         trnScore: statsCached?.trnScore,
+        acs: statsCached?.acs,
         recentWon: statsCached?.recentWon,
         recentLost: statsCached?.recentLost,
         streak: statsCached?.streak,

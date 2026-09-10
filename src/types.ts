@@ -275,6 +275,7 @@ export interface LiveMatchPlayer {
   winPct?: number;
   hsPct?: number;
   trnScore?: number;
+  acs?: number;
   recentWon?: number;
   recentLost?: number;
   streak?: number;

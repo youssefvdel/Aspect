@@ -84,6 +84,8 @@ const mk = (
     hsPct: 24 + (i % 4),
     // Spread across the tier bands so the badge range is visible in previews.
     trnScore: [880, 690, 520, 410, 940, 610, 760, 330, 830, 560, 700, 470][i % 12],
+    // Also spread across the ACS bands so the ACS sort is visibly working.
+    acs: [268, 191, 142, 118, 305, 176, 224, 96, 251, 133, 288, 165][i % 12],
     recentWon: 3 + (i % 4),
     recentLost: i % 3,
     streak: 2,

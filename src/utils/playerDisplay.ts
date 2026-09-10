@@ -1,0 +1,117 @@
+import type { LiveMatchPlayer } from '../types';
+
+/* Shared player-display helpers.
+   The in-app Live Match page and the in-game overlay widget must present a
+   player identically — same flag resolution, same K/D colour bands, same party
+   colours, same rank tooltip. Keeping one copy here prevents the two surfaces
+   from drifting apart. */
+
+/** Country code → flag image. Rejects Riot's region codes (EU/NA/AP/KR) so we
+ *  never show a flag we don't actually know. */
+export function getFlagUrl(code?: string): string | null {
+  if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
+  let lower = code.toLowerCase();
+  if (lower === 'uk') lower = 'gb';
+  return `https://flagcdn.com/24x18/${lower}.png`;
+}
+
+/** Full MMR picture for a lobby player, surfaced on hover. */
+export function rankTooltip(p: LiveMatchPlayer, actLabel?: string): string {
+  const bits: string[] = [];
+  bits.push(p.tier > 0 ? `${p.rank}` : 'Unranked');
+  if (p.rr > 0) bits.push(`${p.rr} RR`);
+  if (p.actGames && p.actGames > 0) {
+    bits.push(`${p.actWins ?? 0}W-${Math.max(0, p.actGames - (p.actWins ?? 0))}L this act`);
+  }
+  if (p.leaderboardRank && p.leaderboardRank > 0) bits.push(`#${p.leaderboardRank} Leaderboard`);
+  if (p.peakTier > 0) bits.push(`Peak ${p.peakRank}${actLabel ? ` (${actLabel})` : ''}`);
+  if (p.isRankHidden) bits.push('Act rank hidden (unmasked)');
+  return bits.join(' • ');
+}
+
+/** "V25 · ACT III" → "V25·III" — fits under a 16px emblem. */
+export function shortAct(label?: string): string {
+  if (!label) return '';
+  return label
+    .replace(/ACT\s*/i, '')
+    .replace(/\s*·\s*/g, '·')
+    .trim();
+}
+
+/** K/D with the same colour bands everywhere: green ≥1.2, mint ≥1.0, rose below. */
+export function formatKd(kd?: number | string): { text: string; color: string } {
+  if (kd == null || kd === '' || kd === 0) return { text: '—', color: 'text-zinc-500' };
+  const num = typeof kd === 'number' ? kd : parseFloat(kd);
+  if (isNaN(num) || num <= 0) return { text: '—', color: 'text-zinc-500' };
+  const text = num.toFixed(2);
+  const color =
+    num >= 1.2
+      ? 'text-emerald-400 font-bold'
+      : num >= 1.0
+      ? 'text-m3-mint font-semibold'
+      : 'text-rose-400 font-medium';
+  return { text, color };
+}
+
+/** Last-24h record for a player, or null when we have no games to report. */
+export function recentLabel(p: LiveMatchPlayer): { text: string; color: string } | null {
+  const won = p.recentWon ?? 0;
+  const lost = p.recentLost ?? 0;
+  if (won === 0 && lost === 0) return null;
+  const pct = won + lost > 0 ? won / (won + lost) : 0;
+  const color = pct >= 0.5 ? 'text-m3-mint' : 'text-rose-400';
+  return { text: `${won}W-${lost}L`, color };
+}
+
+/** Party colour coding. 0/undefined = solo (no style). */
+export const PARTY_STYLES: Record<
+  number,
+  { border: string; bg: string; dot: string; text: string; badge: string; name: string }
+> = {
+  1: {
+    border: 'border-l-[3px] border-l-cyan-400',
+    bg: 'bg-cyan-500/10',
+    dot: 'bg-cyan-400',
+    text: 'text-cyan-300',
+    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40',
+    name: 'Party 1',
+  },
+  2: {
+    border: 'border-l-[3px] border-l-amber-400',
+    bg: 'bg-amber-500/10',
+    dot: 'bg-amber-400',
+    text: 'text-amber-300',
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-400/40',
+    name: 'Party 2',
+  },
+  3: {
+    border: 'border-l-[3px] border-l-fuchsia-400',
+    bg: 'bg-fuchsia-500/10',
+    dot: 'bg-fuchsia-400',
+    text: 'text-fuchsia-300',
+    badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40',
+    name: 'Party 3',
+  },
+};
+
+/** Which of blue/red is the local player's side, so labels read "Your Team"
+ *  rather than a colour. Deathmatch has no teams at all. */
+export function splitTeams(state: {
+  isDeathmatch: boolean;
+  blueTeam: LiveMatchPlayer[];
+  redTeam: LiveMatchPlayer[];
+}): { yours: LiveMatchPlayer[]; theirs: LiveMatchPlayer[]; isFfa: boolean } {
+  if (state.isDeathmatch) {
+    return { yours: [...state.blueTeam, ...state.redTeam], theirs: [], isFfa: true };
+  }
+  const mineOnBlue = state.blueTeam.some((p) => p.isMe);
+  const mineOnRed = state.redTeam.some((p) => p.isMe);
+  if (mineOnRed && !mineOnBlue) return { yours: state.redTeam, theirs: state.blueTeam, isFfa: false };
+  return { yours: state.blueTeam, theirs: state.redTeam, isFfa: false };
+}
+
+/** Strongest combat score first. Players whose ACS hasn't resolved yet sink to
+ *  the bottom of the board rather than being dropped or shown as a zero. */
+export function byAcsDesc(a: LiveMatchPlayer, b: LiveMatchPlayer): number {
+  return (b.acs ?? -1) - (a.acs ?? -1);
+}
