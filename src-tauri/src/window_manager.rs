@@ -331,6 +331,63 @@ pub fn restore_window(hwnd_val: isize) -> Result<String, String> {
     }
 }
 
+/// Dev debugging aid: reshape the overlay into a normal framed window (and
+/// back) using raw Win32 only — Tauri's set_decorations/set_fullscreen calls
+/// silently no-op on this fullscreen-created window, so they are avoided.
+pub fn set_overlay_windowed(hwnd_val: isize, windowed: bool) -> Result<(), String> {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return Err("Overlay window handle is invalid.".to_string());
+        }
+
+        if windowed {
+            // Framed, interactive, NOT topmost: a regular debuggable window.
+            let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+            let new_style = ((current_style
+                & !0x80000000) // clear WS_POPUP
+                | 0x00C00000  // WS_CAPTION (title bar)
+                | 0x00040000  // WS_THICKFRAME (resizable)
+                | 0x00080000  // WS_SYSMENU
+                | 0x00010000  // WS_MINIMIZEBOX
+                | 0x00020000  // WS_MAXIMIZEBOX
+                | 0x10000000  // WS_VISIBLE
+                | 0x04000000) // WS_CLIPSIBLINGS
+                as i32 as isize;
+            SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
+
+            let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
+                | 0x00080000  // WS_EX_LAYERED (keep web transparency)
+                | 0x00000080; // WS_EX_TOOLWINDOW
+            ex_style &= !(0x00000020 | 0x08000000 | 0x00000008); // eat clicks, activatable, normal z-order
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
+
+            // Center a 1280x800 window on the nearest monitor.
+            let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let (mx, my, mw, mh) = if GetMonitorInfoW(h_mon, &mut mi).as_bool() {
+                let rc = mi.rcMonitor;
+                (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
+            } else {
+                (0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN))
+            };
+            let _ = SetWindowPos(
+                hwnd,
+                HWND_TOP,
+                mx + (mw - 1280) / 2,
+                my + (mh - 800) / 2,
+                1280,
+                800,
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            );
+        }
+        Ok(())
+    }
+}
+
 /// Invalidate the whole overlay window tree so DWM drops any stale surface
 /// regions (white flashes) left behind by style toggles and resolution
 /// switches. The frontend's own repaint hammer covers the web content.

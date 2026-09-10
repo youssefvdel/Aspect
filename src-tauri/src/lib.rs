@@ -355,29 +355,21 @@ fn is_tab_down() -> Result<bool, String> {
 #[tauri::command]
 fn set_overlay_windowed(app: tauri::AppHandle, windowed: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
-        if windowed {
-            let _ = window.set_fullscreen(false);
-            let _ = window.set_decorations(true);
-            let _ = window.set_always_on_top(false);
-            let _ = window.set_size(tauri::LogicalSize::new(1280.0, 800.0));
-            let _ = window.center();
-            #[cfg(windows)]
-            {
-                if let Ok(hwnd) = window.hwnd() {
-                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, false);
-                }
-            }
-        } else {
-            let _ = window.set_decorations(false);
-            let _ = window.set_always_on_top(true);
-            let _ = window.set_fullscreen(true);
-            #[cfg(windows)]
-            {
-                if let Ok(hwnd) = window.hwnd() {
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                if windowed {
+                    let _ = window.show();
+                    let _ = window_manager::set_overlay_windowed(hwnd.0 as isize, true);
+                } else {
                     let clickthrough = !OVERLAY_EDIT_MODE.load(Ordering::Relaxed);
                     let _ = window_manager::setup_overlay_window(hwnd.0 as isize, clickthrough);
                 }
             }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = window.show();
         }
         Ok(())
     } else {
