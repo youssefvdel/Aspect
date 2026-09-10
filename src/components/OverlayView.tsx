@@ -13,17 +13,20 @@ export interface WidgetPos {
 export interface OverlayConfig {
   showRank: boolean;
   showLobby: boolean;
+  showPregame: boolean;
   showKpi: boolean;
   showDisplay: boolean;
   positions: {
     rank: WidgetPos;
     lobby: WidgetPos;
+    pregame: WidgetPos;
     kpi: WidgetPos;
     display: WidgetPos;
   };
   scales: {
     rank: number;
     lobby: number;
+    pregame: number;
     kpi: number;
     display: number;
   };
@@ -32,6 +35,7 @@ export interface OverlayConfig {
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   showRank: true,
   showLobby: true,
+  showPregame: true,
   showKpi: false,
   showDisplay: false,
   positions: {
@@ -39,10 +43,16 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
     display: { x: 300, y: 24 },
     kpi: { x: 24, y: 140 },
     lobby: { x: 16, y: 240 }, // Default position: left-mid
+    // Agent-select panel: centered, wide. Recomputed live in edit mode.
+    pregame: {
+      x: typeof window !== 'undefined' ? Math.max(0, Math.round(window.innerWidth / 2 - 360)) : 500,
+      y: 100,
+    },
   },
   scales: {
     rank: 1.0,
     lobby: 1.0,
+    pregame: 1.0,
     kpi: 1.0,
     display: 1.0,
   },
@@ -156,6 +166,75 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
   },
 ];
 
+const PREVIEW_OPPONENTS: LiveMatchPlayer[] = [
+  {
+    puuid: 'r1',
+    name: 'ReynaMain',
+    tag: 'EUW',
+    team: 'Red',
+    agentId: '',
+    agentName: 'Reyna',
+    agentIcon: '',
+    agentRole: 'Duelist',
+    tier: 23,
+    rank: 'Diamond 3',
+    rr: 51,
+    peakTier: 25,
+    peakRank: 'Ascendant 2',
+    accountLevel: 167,
+    cardId: '',
+    isMe: false,
+    selectionState: 'locked',
+    country: 'ES',
+    region: 'EU',
+    kd: 1.42,
+  },
+  {
+    puuid: 'r2',
+    name: 'Silent',
+    tag: '007',
+    team: 'Red',
+    agentId: '',
+    agentName: 'Selecting…',
+    agentIcon: '',
+    agentRole: '',
+    tier: 20,
+    rank: 'Platinum 3',
+    rr: 12,
+    peakTier: 21,
+    peakRank: 'Diamond 1',
+    accountLevel: 74,
+    cardId: '',
+    isMe: false,
+    selectionState: '',
+    country: 'IT',
+    region: 'EU',
+    kd: 0.98,
+  },
+  {
+    puuid: 'r3',
+    name: 'Headshot',
+    tag: 'HS',
+    team: 'Red',
+    agentId: '',
+    agentName: 'Cypher',
+    agentIcon: '',
+    agentRole: 'Sentinel',
+    tier: 22,
+    rank: 'Diamond 2',
+    rr: 77,
+    peakTier: 24,
+    peakRank: 'Ascendant 1',
+    accountLevel: 198,
+    cardId: '',
+    isMe: false,
+    selectionState: 'selected',
+    country: 'TR',
+    region: 'EU',
+    kd: 1.15,
+  },
+];
+
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
@@ -200,12 +279,14 @@ export const OverlayView: React.FC = () => {
   const displayRef = useRef<HTMLDivElement>(null);
   const kpiRef = useRef<HTMLDivElement>(null);
   const lobbyRef = useRef<HTMLDivElement>(null);
+  const pregameRef = useRef<HTMLDivElement>(null);
 
   const widgetRefs = {
     rank: rankRef,
     display: displayRef,
     kpi: kpiRef,
     lobby: lobbyRef,
+    pregame: pregameRef,
   };
 
   // Sync edit mode and config changes from main app
@@ -440,11 +521,12 @@ export const OverlayView: React.FC = () => {
   };
 
   const isLive = matchState && matchState.phase !== 'idle';
-  // Phase-split visibility: agent select shows team panels outright;
-  // in-match scoreboard renders ONLY while Tab is physically held.
+  // Phase-split visibility: agent select gets its own big centered panel;
+  // the in-match scoreboard renders ONLY while Tab is physically held.
   const isPregame = matchState?.phase === 'pregame';
   const isCoregame = matchState?.phase === 'coregame';
-  const showMatchPanel = isEditMode || isPregame || (isCoregame && tabHeld);
+  const showScorePanel = isEditMode || (isCoregame && tabHeld);
+  const showPregamePanel = isEditMode || isPregame;
   const myPlayer = matchState
     ? [...matchState.blueTeam, ...matchState.redTeam].find((p) => p.isMe)
     : null;
@@ -656,7 +738,7 @@ export const OverlayView: React.FC = () => {
       {/* ============================================================ */}
       {/* WIDGET 4: Match Panel — agent select always on, in-match Tab-peek only */}
       {/* ============================================================ */}
-      {config.showLobby && showMatchPanel && (
+      {config.showLobby && showScorePanel && (
         <div
           ref={lobbyRef}
           onPointerDown={(e) => startDrag('lobby', e)}
@@ -807,9 +889,195 @@ export const OverlayView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* ============================================================ */}
+      {/* WIDGET 5: Agent Select — big centered detailed team panel    */}
+      {/* ============================================================ */}
+      {config.showPregame && showPregamePanel && (
+        <div
+          ref={pregameRef}
+          onPointerDown={(e) => startDrag('pregame', e)}
+          style={{
+            transform: `translate3d(${config.positions.pregame.x}px, ${config.positions.pregame.y}px, 0) scale(${config.scales?.pregame ?? 1.0})`,
+            transformOrigin: 'top left',
+            touchAction: 'none',
+          }}
+          className={`fixed top-0 left-0 pointer-events-auto select-none w-[720px] max-w-[94vw] will-change-transform ${
+            isEditMode
+              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1'
+              : ''
+          }`}
+        >
+          {isEditMode && (
+            <>
+              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
+                <span className="text-[9px] font-mono text-zinc-300">
+                  {Math.round((config.scales?.pregame ?? 1.0) * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('pregame', -0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Decrease size"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('pregame', 0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Increase size"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetScale('pregame');
+                  }}
+                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
+                  title="Reset size to 100%"
+                >
+                  100%
+                </button>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('pregame', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
+          )}
+          <div className="rounded-3xl bg-black/45 backdrop-blur-xl border border-white/10 p-4 shadow-2xl flex flex-col gap-3">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-display font-black text-white truncate">
+                  {isPregame ? matchState?.mapName : 'Agent Select Preview'}
+                </span>
+                {isPregame && matchState?.mode && (
+                  <span className="text-[11px] font-mono text-zinc-400 truncate">• {matchState.mode}</span>
+                )}
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-amber-300/15 text-amber-200 text-[10px] font-mono font-extrabold uppercase shrink-0">
+                {isPregame ? 'Agent Select' : 'Preview'}
+              </span>
+            </div>
+
+            {!isPregame && isEditMode ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <PregameTeamColumn title="Your Team (Preview)" tagColor="text-m3-coral" players={PREVIEW_PLAYERS} tierIcons={tierIcons} />
+                <PregameTeamColumn title="Enemy Team (Preview)" tagColor="text-m3-mint" players={PREVIEW_OPPONENTS} tierIcons={tierIcons} />
+              </div>
+            ) : matchState?.isDeathmatch ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <PregameTeamColumn title="Group 1" tagColor="text-m3-gold" players={matchState.blueTeam} tierIcons={tierIcons} />
+                {matchState.redTeam.length > 0 && (
+                  <PregameTeamColumn title="Group 2" tagColor="text-m3-gold" players={matchState.redTeam} tierIcons={tierIcons} />
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <PregameTeamColumn
+                  title="Your Team"
+                  tagColor="text-m3-coral"
+                  players={matchState?.blueTeam || []}
+                  tierIcons={tierIcons}
+                />
+                <PregameTeamColumn
+                  title="Enemy Team"
+                  tagColor="text-m3-mint"
+                  players={matchState?.redTeam || []}
+                  tierIcons={tierIcons}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const PregameTeamColumn: React.FC<{
+  title: string;
+  tagColor: string;
+  players: LiveMatchPlayer[];
+  tierIcons: Record<number, string>;
+}> = ({ title, tagColor, players, tierIcons }) => (
+  <div className="flex flex-col gap-1.5 rounded-2xl bg-black/25 border border-white/5 p-2.5 pointer-events-none select-none">
+    <div className="flex items-center justify-between px-1">
+      <span className={`text-[11px] font-black uppercase tracking-wider ${tagColor}`}>{title}</span>
+      <span className="text-[10px] font-mono text-zinc-500">{players.length} players</span>
+    </div>
+    {players.map((p) => {
+      const icon = tierIcons[p.tier];
+      const kd = formatKd(p.kd);
+      const locked = (p.selectionState || '').toLowerCase().includes('lock');
+      const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
+      return (
+        <div
+          key={p.puuid}
+          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl border ${
+            p.isMe ? 'bg-purple-950/40 border-purple-500/40' : 'bg-zinc-900/50 border-white/5'
+          }`}
+        >
+          {p.agentIcon ? (
+            <img
+              src={p.agentIcon}
+              alt=""
+              draggable={false}
+              className="w-9 h-9 rounded-xl object-cover shrink-0 border border-white/10 pointer-events-none select-none"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-xs font-black text-zinc-400">
+              ?
+            </div>
+          )}
+          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-bold text-[13px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
+                {p.name}
+              </span>
+              {p.tag && <span className="text-[10px] font-mono text-zinc-500 shrink-0">#{p.tag}</span>}
+              {p.isMe && (
+                <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
+                  You
+                </span>
+              )}
+              <span className="ml-auto flex items-center gap-1 shrink-0 text-[10px] font-mono font-bold">
+                <span className={`w-1.5 h-1.5 rounded-full ${locked ? 'bg-m3-mint' : hasPick ? 'bg-amber-300' : 'bg-zinc-600'}`} />
+                <span className={locked ? 'text-m3-mint' : hasPick ? 'text-amber-200' : 'text-zinc-500'}>
+                  {locked ? 'Locked' : hasPick ? p.agentName : 'Picking…'}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400 min-w-0">
+              {icon && (
+                <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0 pointer-events-none select-none" />
+              )}
+              <span className="font-bold text-purple-200 truncate">{p.rank}</span>
+              <span className="font-bold text-m3-primary shrink-0">{p.rr}RR</span>
+              <span className="truncate">Peak {p.peakRank}</span>
+              <span className={`font-bold shrink-0 ${kd.color}`}>K/D {kd.text}</span>
+              <span className="shrink-0">LVL {p.accountLevel}</span>
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+);
 
 const VerticalSquadColumn: React.FC<{
   title: string;

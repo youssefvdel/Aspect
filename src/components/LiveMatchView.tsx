@@ -35,6 +35,7 @@ export const LiveMatchView: React.FC = () => {
         return {
           ...DEFAULT_OVERLAY_CONFIG,
           ...parsed,
+          showPregame: parsed.showPregame ?? DEFAULT_OVERLAY_CONFIG.showPregame,
           positions: { ...DEFAULT_OVERLAY_CONFIG.positions, ...(parsed.positions || {}) },
         };
       }
@@ -216,6 +217,19 @@ export const LiveMatchView: React.FC = () => {
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Status HUD</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updateOverlayCfg({ ...overlayCfg, showPregame: !overlayCfg.showPregame })}
+                className={`px-2.5 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  overlayCfg.showPregame
+                    ? 'bg-m3-primary/20 border-m3-primary text-m3-primary font-bold'
+                    : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Agent Select</span>
               </button>
 
               <button
