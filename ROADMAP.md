@@ -98,3 +98,37 @@ Until then: the in-game widget shows the real live lobby (ranks, peak, party gro
 ACS/KD/win%/HS% act-wide, last-24h record) sorted by ACS, plus a real
 performance-over-time curve built from completed ranked matches. Nothing on the widget
 may be labelled as "this match".
+
+### "Can we spoof being Overwolf / Blitz to get live data?" — No.
+*Status:* Ruled out. There is no handshake with VALORANT to imitate.
+
+VALORANT never talks to a third-party app. Live data reaches commercial overlays by one
+of two licensed routes, both of which terminate at the *partner's own backend*, not at
+the game:
+
+| Route | Who uses it | How the data actually arrives |
+| --- | --- | --- |
+| Overwolf Game Events Provider | Tracker.gg (an Overwolf app) | Overwolf's licensed pipeline. The `overwolf.games.events.*` API only exists inside the Overwolf runtime, authenticated to its client. |
+| Direct Riot partnership | Blitz.gg (own standalone client, not Overwolf) | Blitz states it "works closely with Riot Games to ensure our app is fully compliant" — Riot serves the data to Blitz. |
+
+Consequences:
+- Impersonating Blitz to Riot = forging a licensed partner's credentials. Detection,
+  account ban, and legal exposure; no legitimate path to obtain the keys.
+- Impersonating an Overwolf app = circumventing Overwolf's auth and app review.
+- Riot's public API is a dead end regardless: VAL-CONTENT-V1, VAL-MATCH-V1,
+  VAL-RANKED-V1, VAL-STATUS-V1 only — **no live/in-progress match endpoint exists**,
+  production keys are gated behind an application process, and Riot's policy bars
+  "personal profiles, scouting tools, guides based on individual players, or
+  personalized data of any kind" unless the player opts in via RSO.
+
+Also worth noting for later: Riot's stated policy above is directly about a feature like
+our lobby scout. Blitz and Tracker.gg both refuse to unmask incognito players; we do.
+That is a real product advantage, but it is also the kind of thing the policy language
+targets, so treat it as an accepted-risk decision to revisit before any public release,
+not as settled.
+
+**Realistic paths, ranked by effort:**
+1. **Screen OCR** — the only standalone route. Capture the HUD/scoreboard read-only.
+2. **Overwolf build** — ship a second target on the Overwolf platform. Needs
+   Overwolf app approval; no Riot approval, as Overwolf holds that.
+3. **Riot production key + app review** — slow, gated, and still no live endpoint.
