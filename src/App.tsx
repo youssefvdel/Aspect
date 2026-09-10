@@ -43,6 +43,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (isOverlay) {
+      document.title = '';
       document.documentElement.style.backgroundColor = 'transparent';
       document.body.style.backgroundColor = 'transparent';
       document.body.classList.add('bg-transparent');

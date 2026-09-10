@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 static AUTO_BORDERLESS_ENABLED: AtomicBool = AtomicBool::new(false);
-static OVERLAY_EDIT_MODE: AtomicBool = AtomicBool::new(false);
+pub static OVERLAY_EDIT_MODE: AtomicBool = AtomicBool::new(false);
 static OVERLAY_WINDOWED: AtomicBool = AtomicBool::new(false);
 use tauri::{
     menu::{Menu, MenuItem},
@@ -234,14 +234,14 @@ fn restore_window_framed(hwnd: isize) -> Result<String, String> {
 fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = window.set_shadow(false);
-        // Show FIRST, strip Win32 chrome SECOND — Tauri's show() re-applies
-        // default styles and wipes WS_EX_TRANSPARENT if we strip beforehand.
+        let clickthrough = !OVERLAY_EDIT_MODE.load(Ordering::Relaxed);
+        let _ = window.set_ignore_cursor_events(clickthrough);
         window.show().map_err(|e| e.to_string())?;
         let _ = window.set_shadow(false);
         #[cfg(windows)]
         {
             if let Ok(hwnd) = window.hwnd() {
-                let _ = window_manager::setup_overlay_window(hwnd.0 as isize, true);
+                let _ = window_manager::setup_overlay_window(hwnd.0 as isize, clickthrough);
             }
         }
         Ok(())
@@ -263,6 +263,7 @@ fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn set_overlay_clickthrough(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
+        let _ = window.set_ignore_cursor_events(enabled);
         #[cfg(windows)]
         {
             if let Ok(hwnd) = window.hwnd() {
@@ -284,18 +285,18 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = window.set_shadow(false);
         if in_edit_mode {
+            let _ = window.set_ignore_cursor_events(false);
             let _ = window.show();
             let _ = window.set_shadow(false);
             #[cfg(windows)]
             {
                 if let Ok(hwnd) = window.hwnd() {
-                    // Editable but never activated: stealing the foreground
-                    // blanks Valorant's top strip (pure white) until refocus.
                     let _ = window_manager::set_overlay_editable(hwnd.0 as isize);
                 }
             }
         } else {
             let _ = window.set_shadow(false);
+            let _ = window.set_ignore_cursor_events(true);
             #[cfg(windows)]
             {
                 if let Ok(hwnd) = window.hwnd() {
@@ -867,6 +868,12 @@ pub fn run() {
                             #[cfg(windows)]
                             if let Ok(hwnd) = overlay.hwnd() {
                                 let _ = window_manager::align_overlay_to_valorant(hwnd.0 as isize);
+                                // Self-heal: if something re-applied default styles
+                                // (opaque layer eating game input), reassert click-through.
+                                if window_manager::overlay_clickthrough_missing(hwnd.0 as isize) {
+                                    let _ = overlay.set_ignore_cursor_events(true);
+                                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, true);
+                                }
                             }
                         }
                     }

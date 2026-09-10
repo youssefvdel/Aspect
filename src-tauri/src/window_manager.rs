@@ -1,4 +1,4 @@
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
@@ -6,13 +6,40 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Graphics::Dwm::{DwmEnableBlurBehindWindow, DWM_BB_ENABLE, DWM_BLURBEHIND};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW,
-    GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible,
-    SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN,
-    SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
-    WINDOW_STYLE, WS_BORDER, WS_CAPTION, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
-    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics,
+    GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
+    IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP,
+    HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
+    WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
+    WS_SYSMENU, WS_THICKFRAME,
 };
+
+#[link(name = "comctl32")]
+extern "system" {
+    fn SetWindowSubclass(
+        hwnd: HWND,
+        pfn_subclass: Option<
+            unsafe extern "system" fn(
+                HWND,
+                u32,
+                WPARAM,
+                LPARAM,
+                usize,
+                usize,
+            ) -> LRESULT,
+        >,
+        u_id_subclass: usize,
+        dw_ref_data: usize,
+    ) -> BOOL;
+
+    fn DefSubclassProc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT;
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
@@ -600,6 +627,94 @@ pub fn is_tab_down() -> bool {
     unsafe { (GetAsyncKeyState(0x09) as u16 & 0x8000) != 0 }
 }
 
+unsafe extern "system" fn overlay_subclass_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    _u_id_subclass: usize,
+    _dw_ref_data: usize,
+) -> LRESULT {
+    match msg {
+        // 1. WM_NCCALCSIZE (0x0083):
+        // Returning 0 when wParam is TRUE indicates that the client area covers the ENTIRE window.
+        // Windows sets titlebar height, non-client borders, and frame margins to 0 pixels.
+        // This eliminates the ~30px ghost titlebar completely!
+        0x0083 => {
+            if wparam.0 != 0 {
+                return LRESULT(0);
+            }
+        }
+        // 2. WM_NCHITTEST (0x0084):
+        // When not actively editing, return HTTRANSPARENT (-1).
+        // Tells Windows mouse hit-testing to ignore this window completely and dispatch
+        // all cursor clicks/events to the window beneath it (Valorant)!
+        0x0084 => {
+            if !crate::OVERLAY_EDIT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+                return LRESULT(-1); // HTTRANSPARENT
+            }
+        }
+        // 3. WM_NCPAINT (0x0085):
+        // Return 0 so DWM never attempts to render non-client frame/borders.
+        0x0085 => return LRESULT(0),
+        // 4. WM_NCACTIVATE (0x0086):
+        // Return 1 so Windows never repaints the titlebar on focus change.
+        0x0086 => return LRESULT(1),
+        // 5. WM_ERASEBKGND (0x0014):
+        // Return 1 so GDI never paints a white background before DirectX composites.
+        0x0014 => return LRESULT(1),
+        _ => {}
+    }
+    DefSubclassProc(hwnd, msg, wparam, lparam)
+}
+
+pub fn install_overlay_subclass(top_hwnd: HWND) {
+    unsafe {
+        let _ = SetWindowSubclass(top_hwnd, Some(overlay_subclass_proc), 0x7001, 0);
+        let _ = EnumChildWindows(top_hwnd, Some(enum_child_subclass_proc), LPARAM(0));
+    }
+}
+
+unsafe extern "system" fn enum_child_subclass_proc(child: HWND, _lparam: LPARAM) -> BOOL {
+    unsafe {
+        let _ = SetWindowSubclass(child, Some(overlay_subclass_proc), 0x7002, 0);
+        BOOL(1)
+    }
+}
+
+pub fn make_child_windows_clickthrough(top_hwnd: HWND, clickthrough: bool) {
+    unsafe {
+        let _ = EnumChildWindows(
+            top_hwnd,
+            Some(enum_child_clickthrough_proc),
+            LPARAM(if clickthrough { 1 } else { 0 }),
+        );
+    }
+}
+
+unsafe extern "system" fn enum_child_clickthrough_proc(child: HWND, lparam: LPARAM) -> BOOL {
+    unsafe {
+        let clickthrough = lparam.0 != 0;
+        let mut ex = GetWindowLongPtrW(child, GWL_EXSTYLE) as u32;
+        if clickthrough {
+            ex |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
+        } else {
+            ex &= !0x00000020;
+        }
+        SetWindowLongPtrW(child, GWL_EXSTYLE, ex as isize);
+        let _ = SetWindowPos(
+            child,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+        );
+        BOOL(1)
+    }
+}
+
 pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
     unsafe {
         let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
@@ -632,6 +747,8 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
 
         // 3. Strip all DWM borders & shadows
         strip_all_dwm_borders(hwnd);
+        install_overlay_subclass(hwnd);
+        make_child_windows_clickthrough(hwnd, clickthrough);
 
         // 4. Align strictly to Valorant window rect
         let (x, y, width, height) = overlay_target_rect(hwnd);
@@ -685,6 +802,8 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
         strip_all_dwm_borders(hwnd);
+        install_overlay_subclass(hwnd);
+        make_child_windows_clickthrough(hwnd, false);
 
         let (x, y, width, height) = overlay_target_rect(hwnd);
 
@@ -702,6 +821,20 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
         redraw_all(hwnd);
 
         Ok(())
+    }
+}
+
+/// True when the visible overlay lost its click-through flag — i.e. something
+/// re-applied default styles after our setup, leaving an opaque layer that
+/// eats game input. The daemon heals exactly this case, nothing else.
+pub fn overlay_clickthrough_missing(hwnd_val: isize) -> bool {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return false;
+        }
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        ex & 0x00000020 == 0 // WS_EX_TRANSPARENT
     }
 }
 
@@ -736,6 +869,8 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
 
         // Strip DWM borders
         strip_all_dwm_borders(hwnd);
+        install_overlay_subclass(hwnd);
+        make_child_windows_clickthrough(hwnd, clickthrough);
 
         // Synchronize position to Valorant if running
         let (x, y, width, height) = overlay_target_rect(hwnd);
