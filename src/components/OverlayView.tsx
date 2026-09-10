@@ -21,6 +21,12 @@ export interface OverlayConfig {
     kpi: WidgetPos;
     display: WidgetPos;
   };
+  scales: {
+    rank: number;
+    lobby: number;
+    kpi: number;
+    display: number;
+  };
 }
 
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
@@ -33,6 +39,12 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
     display: { x: 300, y: 24 },
     kpi: { x: 24, y: 140 },
     lobby: { x: 16, y: 240 }, // Default position: left-mid
+  },
+  scales: {
+    rank: 1.0,
+    lobby: 1.0,
+    kpi: 1.0,
+    display: 1.0,
   },
 };
 
@@ -164,6 +176,7 @@ export const OverlayView: React.FC = () => {
           ...DEFAULT_OVERLAY_CONFIG,
           ...parsed,
           positions: { ...DEFAULT_OVERLAY_CONFIG.positions, ...(parsed.positions || {}) },
+          scales: { ...DEFAULT_OVERLAY_CONFIG.scales, ...(parsed.scales || {}) },
         };
       }
     } catch {}
@@ -269,7 +282,8 @@ export const OverlayView: React.FC = () => {
       curY = clampedY;
 
       if (targetEl) {
-        targetEl.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0)`;
+        const sc = config.scales?.[key] ?? 1.0;
+        targetEl.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${sc})`;
       }
     };
 
@@ -285,6 +299,83 @@ export const OverlayView: React.FC = () => {
           positions: {
             ...prev.positions,
             [key]: { x: Math.round(curX), y: Math.round(curY) },
+          },
+        };
+        saveConfig(next);
+        return next;
+      });
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp, { passive: false });
+  };
+
+  const changeScale = (key: keyof OverlayConfig['positions'], delta: number) => {
+    setConfig((prev) => {
+      const cur = prev.scales?.[key] ?? 1.0;
+      const nextScale = Math.max(0.6, Math.min(1.6, Number((cur + delta).toFixed(2))));
+      const next = {
+        ...prev,
+        scales: {
+          ...(prev.scales || DEFAULT_OVERLAY_CONFIG.scales),
+          [key]: nextScale,
+        },
+      };
+      saveConfig(next);
+      return next;
+    });
+  };
+
+  const resetScale = (key: keyof OverlayConfig['positions']) => {
+    setConfig((prev) => {
+      const next = {
+        ...prev,
+        scales: {
+          ...(prev.scales || DEFAULT_OVERLAY_CONFIG.scales),
+          [key]: 1.0,
+        },
+      };
+      saveConfig(next);
+      return next;
+    });
+  };
+
+  const startResize = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
+    if (!isEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetEl = widgetRefs[key].current;
+    const initialScale = config.scales?.[key] ?? 1.0;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let currentScale = initialScale;
+
+    const onPointerMove = (moveEv: PointerEvent) => {
+      moveEv.preventDefault();
+      const dx = moveEv.clientX - startX;
+      const dy = moveEv.clientY - startY;
+      const delta = (dx + dy) / 350;
+      const nextScale = Math.max(0.6, Math.min(1.6, Number((initialScale + delta).toFixed(2))));
+      currentScale = nextScale;
+
+      if (targetEl) {
+        const pos = config.positions[key] || { x: 16, y: 240 };
+        targetEl.style.transform = `translate3d(${pos.x}px, ${pos.y}px, 0) scale(${nextScale})`;
+      }
+    };
+
+    const onPointerUp = (upEv: PointerEvent) => {
+      upEv.preventDefault();
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+
+      setConfig((prev) => {
+        const next = {
+          ...prev,
+          scales: {
+            ...(prev.scales || DEFAULT_OVERLAY_CONFIG.scales),
+            [key]: currentScale,
           },
         };
         saveConfig(next);
@@ -319,7 +410,8 @@ export const OverlayView: React.FC = () => {
           ref={rankRef}
           onPointerDown={(e) => startDrag('rank', e)}
           style={{
-            transform: `translate3d(${config.positions.rank.x}px, ${config.positions.rank.y}px, 0)`,
+            transform: `translate3d(${config.positions.rank.x}px, ${config.positions.rank.y}px, 0) scale(${config.scales?.rank ?? 1.0})`,
+            transformOrigin: 'top left',
             touchAction: 'none',
           }}
           className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
@@ -328,6 +420,58 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
+          {isEditMode && (
+            <>
+              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
+                <span className="text-[9px] font-mono text-zinc-300">
+                  {Math.round((config.scales?.rank ?? 1.0) * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('rank', -0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Decrease size"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('rank', 0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Increase size"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetScale('rank');
+                  }}
+                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
+                  title="Reset size to 100%"
+                >
+                  100%
+                </button>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('rank', e)}
+                className="absolute -bottom-1 -right-1 w-4 h-4 rounded-br-xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[10px] text-zinc-950 font-bold select-none shadow-sm z-10"
+                title="Drag to resize widget"
+              >
+                ↘
+              </div>
+            </>
+          )}
           <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3">
             {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
               <img
@@ -369,7 +513,8 @@ export const OverlayView: React.FC = () => {
           ref={displayRef}
           onPointerDown={(e) => startDrag('display', e)}
           style={{
-            transform: `translate3d(${config.positions.display.x}px, ${config.positions.display.y}px, 0)`,
+            transform: `translate3d(${config.positions.display.x}px, ${config.positions.display.y}px, 0) scale(${config.scales?.display ?? 1.0})`,
+            transformOrigin: 'top left',
             touchAction: 'none',
           }}
           className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
@@ -378,6 +523,15 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startResize('display', e)}
+              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-br-lg bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[9px] text-zinc-950 font-bold select-none shadow-sm z-10"
+              title="Drag to resize widget"
+            >
+              ↘
+            </div>
+          )}
           <div className="rounded-xl bg-black/35 backdrop-blur-md border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white">
             <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
             <span>{displayTag}</span>
@@ -393,7 +547,8 @@ export const OverlayView: React.FC = () => {
           ref={kpiRef}
           onPointerDown={(e) => startDrag('kpi', e)}
           style={{
-            transform: `translate3d(${config.positions.kpi.x}px, ${config.positions.kpi.y}px, 0)`,
+            transform: `translate3d(${config.positions.kpi.x}px, ${config.positions.kpi.y}px, 0) scale(${config.scales?.kpi ?? 1.0})`,
+            transformOrigin: 'top left',
             touchAction: 'none',
           }}
           className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
@@ -402,6 +557,15 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startResize('kpi', e)}
+              className="absolute -bottom-1 -right-1 w-4 h-4 rounded-br-xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[10px] text-zinc-950 font-bold select-none shadow-sm z-10"
+              title="Drag to resize widget"
+            >
+              ↘
+            </div>
+          )}
           <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono">
             <div className="flex flex-col">
               <span className="text-[9px] uppercase tracking-wider text-zinc-400">Wins</span>
@@ -429,7 +593,8 @@ export const OverlayView: React.FC = () => {
           ref={lobbyRef}
           onPointerDown={(e) => startDrag('lobby', e)}
           style={{
-            transform: `translate3d(${config.positions.lobby.x}px, ${config.positions.lobby.y}px, 0)`,
+            transform: `translate3d(${config.positions.lobby.x}px, ${config.positions.lobby.y}px, 0) scale(${config.scales?.lobby ?? 1.0})`,
+            transformOrigin: 'top left',
             touchAction: 'none',
           }}
           className={`fixed top-0 left-0 pointer-events-auto select-none w-[325px] will-change-transform ${
@@ -438,6 +603,58 @@ export const OverlayView: React.FC = () => {
               : ''
           }`}
         >
+          {isEditMode && (
+            <>
+              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
+                <span className="text-[9px] font-mono text-zinc-300">
+                  {Math.round((config.scales?.lobby ?? 1.0) * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('lobby', -0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Decrease size"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeScale('lobby', 0.1);
+                  }}
+                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
+                  title="Increase size"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetScale('lobby');
+                  }}
+                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
+                  title="Reset size to 100%"
+                >
+                  100%
+                </button>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('lobby', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
+          )}
           <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-2.5 shadow-2xl flex flex-col gap-2">
             {/* Header: Map • Mode • Phase */}
             <div className="flex items-center justify-between px-1">
