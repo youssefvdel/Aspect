@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 static AUTO_BORDERLESS_ENABLED: AtomicBool = AtomicBool::new(false);
+static OVERLAY_EDIT_MODE: AtomicBool = AtomicBool::new(false);
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -265,10 +266,48 @@ fn set_overlay_clickthrough(app: tauri::AppHandle, enabled: bool) -> Result<(), 
             }
         }
         let _ = window.set_ignore_cursor_events(enabled);
+        if !enabled {
+            let _ = window.set_focus();
+        }
         Ok(())
     } else {
         Err("Overlay window not found".to_string())
     }
+}
+
+#[tauri::command]
+fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<(), String> {
+    OVERLAY_EDIT_MODE.store(in_edit_mode, Ordering::Relaxed);
+    if let Some(window) = app.get_webview_window("overlay") {
+        if in_edit_mode {
+            let _ = window.show();
+            #[cfg(windows)]
+            {
+                if let Ok(hwnd) = window.hwnd() {
+                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, false);
+                }
+            }
+            let _ = window.set_ignore_cursor_events(false);
+            let _ = window.set_focus();
+        } else {
+            #[cfg(windows)]
+            {
+                if let Ok(hwnd) = window.hwnd() {
+                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, true);
+                }
+            }
+            let _ = window.set_ignore_cursor_events(true);
+        }
+        let _ = app.emit("overlay-edit-mode-changed", in_edit_mode);
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn get_overlay_edit_mode() -> Result<bool, String> {
+    Ok(OVERLAY_EDIT_MODE.load(Ordering::Relaxed))
 }
 
 #[tauri::command]
@@ -673,6 +712,28 @@ pub fn run() {
                 }
             });
 
+            // Auto In-Game Overlay Daemon:
+            // Shows overlay automatically when Valorant game window is present,
+            // and hides it when Valorant exits (unless the user is actively customizing HUD in Edit Mode).
+            let auto_overlay_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    if OVERLAY_EDIT_MODE.load(Ordering::Relaxed) {
+                        continue;
+                    }
+                    let valorant_present = window_manager::find_valorant_game_window().is_some();
+                    if let Some(overlay) = auto_overlay_handle.get_webview_window("overlay") {
+                        let is_vis = overlay.is_visible().unwrap_or(false);
+                        if valorant_present && !is_vis {
+                            let _ = show_overlay(auto_overlay_handle.clone());
+                        } else if !valorant_present && is_vis {
+                            let _ = hide_overlay(auto_overlay_handle.clone());
+                        }
+                    }
+                }
+            });
+
             // Automated working set trimmer to keep RAM consumption minimal across host and WebView2 child tree
             std::thread::spawn(|| {
                 loop {
@@ -770,6 +831,8 @@ pub fn run() {
             show_overlay,
             hide_overlay,
             set_overlay_clickthrough,
+            set_overlay_edit_mode,
+            get_overlay_edit_mode,
             is_overlay_visible,
             get_valorant_configs,
             update_valorant_config,

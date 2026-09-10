@@ -1,10 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  Shield,
   EyeOff,
   Lock,
-  Edit3,
   Check,
   Sliders,
   Move,
@@ -12,23 +9,42 @@ import {
   Users,
   BarChart2,
   Tv,
+  RotateCcw,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
 import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
-import { hideOverlay, setOverlayClickthrough, fetchDisplayInfo } from '../utils/ipc';
+import { hideOverlay, setOverlayEditMode, getOverlayEditMode, fetchDisplayInfo } from '../utils/ipc';
+import { listen } from '@tauri-apps/api/event';
 
-interface WidgetConfig {
+interface WidgetPos {
+  x: number;
+  y: number;
+}
+
+interface OverlayConfig {
   showRank: boolean;
   showLobby: boolean;
   showKpi: boolean;
   showDisplay: boolean;
+  positions: {
+    rank: WidgetPos;
+    lobby: WidgetPos;
+    kpi: WidgetPos;
+    display: WidgetPos;
+  };
 }
 
-const DEFAULT_CONFIG: WidgetConfig = {
+const DEFAULT_CONFIG: OverlayConfig = {
   showRank: true,
   showLobby: true,
   showKpi: false,
   showDisplay: false,
+  positions: {
+    rank: { x: 24, y: 24 },
+    display: { x: 300, y: 24 },
+    kpi: { x: 24, y: 220 },
+    lobby: { x: 120, y: 90 },
+  },
 };
 
 export const OverlayView: React.FC = () => {
@@ -37,32 +53,50 @@ export const OverlayView: React.FC = () => {
   const [profile, setProfile] = useState<TrackerProfile | null>(null);
   const [displayTag, setDisplayTag] = useState<string>('2088×1440 @ 260Hz • 1.45:1');
 
-  // Widget settings
-  const [isEditMode, setIsEditMode] = useState(true);
-  const [widgets, setWidgets] = useState<WidgetConfig>(() => {
+  // Edit mode state (syncs with backend and main window)
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+
+  // Widget config + positions (persisted)
+  const [config, setConfig] = useState<OverlayConfig>(() => {
     try {
-      const saved = localStorage.getItem('aspect_overlay_widgets_v1');
-      return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
-    } catch {
-      return DEFAULT_CONFIG;
-    }
+      const saved = localStorage.getItem('aspect_overlay_cfg_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_CONFIG,
+          ...parsed,
+          positions: { ...DEFAULT_CONFIG.positions, ...(parsed.positions || {}) },
+        };
+      }
+    } catch {}
+    return DEFAULT_CONFIG;
   });
 
-  const saveWidgets = (next: WidgetConfig) => {
-    setWidgets(next);
+  const saveConfig = (next: OverlayConfig) => {
+    setConfig(next);
     try {
-      localStorage.setItem('aspect_overlay_widgets_v1', JSON.stringify(next));
+      localStorage.setItem('aspect_overlay_cfg_v2', JSON.stringify(next));
     } catch {}
   };
 
-  // Poll live match state ONLY when visible
+  // Sync edit mode from backend / events
+  useEffect(() => {
+    getOverlayEditMode().then((m) => setIsEditMode(m)).catch(() => {});
+    const unlisten = listen<boolean>('overlay-edit-mode-changed', (event) => {
+      setIsEditMode(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
+  // Poll live match data ONLY when visible
   useEffect(() => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
     fetchDisplayInfo().then((info) => {
       setDisplayTag(`${info.current_width}×${info.current_height} @ ${info.current_hz}Hz`);
     }).catch(() => {});
 
-    // Profile data for Rank widget
     detectLocalAccount().then(async (acc) => {
       const reg = await detectRegion();
       const prof = await fetchMmrDirect(reg, acc.game_name, acc.tagline);
@@ -81,7 +115,7 @@ export const OverlayView: React.FC = () => {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVis);
     }
-    const id = setInterval(tick, 5000);
+    const id = setInterval(tick, 4500);
     return () => {
       clearInterval(id);
       if (typeof document !== 'undefined') {
@@ -90,12 +124,72 @@ export const OverlayView: React.FC = () => {
     };
   }, []);
 
-  // Update Win32 clickthrough based on edit mode
-  // Edit mode = interactive (click-through disabled so user can drag)
-  // Play mode = click-through enabled (mouse clicks pass 100% into Valorant)
-  useEffect(() => {
-    setOverlayClickthrough(!isEditMode).catch(() => {});
-  }, [isEditMode]);
+  // Dragging mechanics: direct, lag-free pointer drag
+  const draggingRef = useRef<{
+    key: keyof OverlayConfig['positions'];
+    startX: number;
+    startY: number;
+    initX: number;
+    initY: number;
+  } | null>(null);
+
+  const startDrag = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
+    if (!isEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const current = config.positions[key] || { x: 24, y: 24 };
+    draggingRef.current = {
+      key,
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: current.x,
+      initY: current.y,
+    };
+
+    const onPointerMove = (moveEv: PointerEvent) => {
+      if (!draggingRef.current) return;
+      const dx = moveEv.clientX - draggingRef.current.startX;
+      const dy = moveEv.clientY - draggingRef.current.startY;
+      const newX = Math.max(4, Math.min(window.innerWidth - 60, draggingRef.current.initX + dx));
+      const newY = Math.max(4, Math.min(window.innerHeight - 60, draggingRef.current.initY + dy));
+
+      setConfig((prev) => ({
+        ...prev,
+        positions: {
+          ...prev.positions,
+          [draggingRef.current!.key]: { x: Math.round(newX), y: Math.round(newY) },
+        },
+      }));
+    };
+
+    const onPointerUp = () => {
+      draggingRef.current = null;
+      try {
+        const latest = localStorage.getItem('aspect_overlay_cfg_v2');
+        void latest;
+      } catch {}
+      setConfig((latest) => {
+        try {
+          localStorage.setItem('aspect_overlay_cfg_v2', JSON.stringify(latest));
+        } catch {}
+        return latest;
+      });
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('mousemove', onPointerMove as unknown as EventListener);
+      window.removeEventListener('mouseup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('mousemove', onPointerMove as unknown as EventListener);
+    window.addEventListener('mouseup', onPointerUp);
+  };
+
+  const handleExitEditMode = async () => {
+    setIsEditMode(false);
+    await setOverlayEditMode(false);
+  };
 
   const isLive = matchState && matchState.phase !== 'idle';
   const myPlayer = matchState
@@ -104,299 +198,351 @@ export const OverlayView: React.FC = () => {
 
   return (
     <div
-      className={`w-screen h-screen select-none overflow-hidden p-4 sm:p-6 flex flex-col justify-between font-sans transition-colors ${
+      className={`fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans transition-colors ${
         isEditMode
-          ? 'bg-black/35 pointer-events-auto ring-4 ring-m3-primary/30 ring-inset'
+          ? 'bg-black/45 pointer-events-auto ring-4 ring-m3-primary/40 ring-inset'
           : 'bg-transparent pointer-events-none'
       }`}
     >
       {/* Top Floating Control Bar */}
-      <div className="flex items-center justify-between gap-3 w-full max-w-6xl mx-auto pointer-events-auto">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 w-full max-w-5xl px-4 z-50 pointer-events-auto">
         {isEditMode ? (
-          /* Edit Mode Toolbar */
-          <div className="w-full flex items-center justify-between p-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-m3-primary/50 shadow-2xl flex-wrap gap-2">
+          /* Edit Mode Floating Bar */
+          <div className="w-full flex items-center justify-between p-2.5 rounded-2xl bg-zinc-950/95 backdrop-blur-2xl border border-m3-primary/60 shadow-2xl flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-m3-primary text-m3-on-primary text-xs font-bold uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-m3-primary text-m3-on-primary text-xs font-bold uppercase tracking-wider shadow-sm">
                 <Sliders className="w-3.5 h-3.5" />
                 <span>HUD Edit Mode</span>
               </span>
-              <span className="text-xs text-zinc-300 font-medium hidden sm:inline">
-                Drag widgets to reposition anywhere on your screen.
+              <span className="text-xs text-zinc-300 font-medium hidden md:inline">
+                Drag any widget by its header to position it on your screen.
               </span>
             </div>
 
             {/* Widget Toggles */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
-                onClick={() => saveWidgets({ ...widgets, showRank: !widgets.showRank })}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
-                  widgets.showRank
-                    ? 'bg-m3-primary/20 border-m3-primary text-m3-primary'
-                    : 'bg-zinc-900 border-white/10 text-zinc-400'
+                type="button"
+                onClick={() => saveConfig({ ...config, showRank: !config.showRank })}
+                className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showRank
+                    ? 'bg-m3-primary/25 border-m3-primary text-m3-primary'
+                    : 'bg-zinc-900 border-white/10 text-zinc-400 hover:bg-zinc-800'
                 }`}
               >
-                <Trophy className="w-3 h-3" />
-                <span>Rank</span>
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Rank & RR</span>
               </button>
 
               <button
-                onClick={() => saveWidgets({ ...widgets, showLobby: !widgets.showLobby })}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
-                  widgets.showLobby
-                    ? 'bg-m3-primary/20 border-m3-primary text-m3-primary'
-                    : 'bg-zinc-900 border-white/10 text-zinc-400'
+                type="button"
+                onClick={() => saveConfig({ ...config, showLobby: !config.showLobby })}
+                className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showLobby
+                    ? 'bg-m3-primary/25 border-m3-primary text-m3-primary'
+                    : 'bg-zinc-900 border-white/10 text-zinc-400 hover:bg-zinc-800'
                 }`}
               >
-                <Users className="w-3 h-3" />
-                <span>Lobby</span>
+                <Users className="w-3.5 h-3.5" />
+                <span>Lobby Roster</span>
               </button>
 
               <button
-                onClick={() => saveWidgets({ ...widgets, showKpi: !widgets.showKpi })}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
-                  widgets.showKpi
-                    ? 'bg-m3-primary/20 border-m3-primary text-m3-primary'
-                    : 'bg-zinc-900 border-white/10 text-zinc-400'
+                type="button"
+                onClick={() => saveConfig({ ...config, showKpi: !config.showKpi })}
+                className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showKpi
+                    ? 'bg-m3-primary/25 border-m3-primary text-m3-primary'
+                    : 'bg-zinc-900 border-white/10 text-zinc-400 hover:bg-zinc-800'
                 }`}
               >
-                <BarChart2 className="w-3 h-3" />
+                <BarChart2 className="w-3.5 h-3.5" />
                 <span>Stats</span>
               </button>
 
               <button
-                onClick={() => saveWidgets({ ...widgets, showDisplay: !widgets.showDisplay })}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
-                  widgets.showDisplay
-                    ? 'bg-m3-primary/20 border-m3-primary text-m3-primary'
-                    : 'bg-zinc-900 border-white/10 text-zinc-400'
+                type="button"
+                onClick={() => saveConfig({ ...config, showDisplay: !config.showDisplay })}
+                className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showDisplay
+                    ? 'bg-m3-primary/25 border-m3-primary text-m3-primary'
+                    : 'bg-zinc-900 border-white/10 text-zinc-400 hover:bg-zinc-800'
                 }`}
               >
-                <Tv className="w-3 h-3" />
-                <span>Res</span>
+                <Tv className="w-3.5 h-3.5" />
+                <span>Res Tag</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => saveConfig(DEFAULT_CONFIG)}
+                className="w-7 h-7 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-400 flex items-center justify-center cursor-pointer"
+                title="Reset Default Positions"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Lock / Exit Edit Mode */}
+            {/* Lock / Play Mode Button */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsEditMode(false)}
-                className="h-7 px-3.5 rounded-xl bg-m3-mint text-zinc-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer hover:bg-m3-mint/90 shadow-md"
+                type="button"
+                onClick={handleExitEditMode}
+                className="h-7 px-3.5 rounded-xl bg-m3-mint text-zinc-950 text-xs font-black flex items-center gap-1.5 cursor-pointer hover:bg-m3-mint/90 shadow-md transition-transform active:scale-95"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Lock & Play</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => hideOverlay()}
-                className="w-7 h-7 rounded-xl bg-zinc-800 hover:bg-red-500/80 text-white flex items-center justify-center cursor-pointer"
-                title="Hide Overlay"
+                className="w-7 h-7 rounded-xl bg-zinc-900 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
+                title="Close Overlay"
               >
                 <EyeOff className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
-        ) : (
-          /* Play Mode Minimal Badge */
-          <div className="w-full flex items-center justify-between pointer-events-none">
-            <div className="flex items-center gap-2 pointer-events-auto">
-              {/* Unlock Edit Mode Chip */}
-              <button
-                onClick={() => setIsEditMode(true)}
-                className="px-2.5 py-1 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/10 text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5 cursor-pointer shadow-xl transition-all"
-                title="Unlock Edit Mode to move or customize widgets"
-              >
-                <Edit3 className="w-3 h-3 text-m3-primary" />
-                <span>Edit HUD</span>
-              </button>
-
-              <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-m3-mint/30 text-[10px] font-mono font-bold text-m3-mint flex items-center gap-1">
-                <Shield className="w-3 h-3" />
-                <span>Pass-Through Active</span>
-              </span>
-            </div>
-
-            <button
-              onClick={() => hideOverlay()}
-              className="h-6 px-2 rounded-full bg-black/60 hover:bg-red-500/80 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer pointer-events-auto"
-            >
-              <EyeOff className="w-3 h-3" />
-              <span>Hide</span>
-            </button>
-          </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Draggable Widgets Workspace */}
-      <div className="relative flex-1 w-full h-full min-h-0 pointer-events-none my-2">
-        {/* WIDGET 1: Rank & RR Widget */}
-        {widgets.showRank && (
-          <motion.div
-            drag={isEditMode}
-            dragMomentum={false}
-            className={`absolute top-4 left-4 pointer-events-auto ${
-              isEditMode ? 'cursor-move ring-2 ring-m3-primary/60 ring-dashed p-1 rounded-3xl' : ''
-            }`}
-          >
-            <div className="rounded-2xl bg-black/85 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3">
-              {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
-                <img
-                  src={tierIcons[myPlayer?.tier ?? profile?.tier ?? 0]}
-                  alt=""
-                  className="w-10 h-10 object-contain shrink-0 drop-shadow-md"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-zinc-800 shrink-0" />
-              )}
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-display font-black text-sm text-white tracking-tight leading-tight">
-                    {myPlayer?.rank || profile?.rank || 'Unrated'}
-                  </span>
-                  <span className="text-xs font-mono font-extrabold text-m3-primary">
-                    {myPlayer?.rr ?? profile?.rr ?? 0} RR
-                  </span>
-                </div>
-                <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
-                  Peak: <strong className="text-zinc-200">{myPlayer?.peakRank || profile?.peak || '—'}</strong>
-                  {profile && (
-                    <span className="ml-1.5 text-m3-mint">
-                      ({profile.wins}W / {profile.games - profile.wins}L)
-                    </span>
-                  )}
-                </div>
-              </div>
-              {isEditMode && <Move className="w-3.5 h-3.5 text-m3-primary opacity-60 ml-2" />}
+      {/* ============================================================ */}
+      {/* WIDGET 1: Player Rank & RR                                  */}
+      {/* ============================================================ */}
+      {config.showRank && (
+        <div
+          style={{
+            left: `${config.positions.rank.x}px`,
+            top: `${config.positions.rank.y}px`,
+            position: 'absolute',
+          }}
+          className={`pointer-events-auto select-none touch-none ${
+            isEditMode ? 'ring-2 ring-m3-primary/70 ring-dashed p-1 rounded-3xl bg-black/40' : ''
+          }`}
+        >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startDrag('rank', e)}
+              className="flex items-center justify-between px-2 py-1 bg-m3-primary/30 rounded-t-2xl cursor-move text-[10px] font-bold text-m3-primary"
+            >
+              <span className="flex items-center gap-1">
+                <Move className="w-3 h-3" /> Drag Rank
+              </span>
             </div>
-          </motion.div>
-        )}
-
-        {/* WIDGET 2: Display & Stretched Tag */}
-        {widgets.showDisplay && (
-          <motion.div
-            drag={isEditMode}
-            dragMomentum={false}
-            className={`absolute top-4 right-4 pointer-events-auto ${
-              isEditMode ? 'cursor-move ring-2 ring-m3-primary/60 ring-dashed p-1 rounded-2xl' : ''
+          )}
+          <div
+            onPointerDown={(e) => isEditMode && startDrag('rank', e)}
+            onMouseDown={(e) => isEditMode && startDrag('rank', e as unknown as React.PointerEvent)}
+            style={{ touchAction: 'none' }}
+            className={`rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3 ${
+              isEditMode ? 'cursor-move' : ''
             }`}
           >
-            <div className="rounded-xl bg-black/85 backdrop-blur-xl border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white">
-              <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
-              <span>{displayTag}</span>
-              {isEditMode && <Move className="w-3 h-3 text-m3-primary opacity-60 ml-1" />}
-            </div>
-          </motion.div>
-        )}
-
-        {/* WIDGET 3: Performance KPI */}
-        {widgets.showKpi && profile && (
-          <motion.div
-            drag={isEditMode}
-            dragMomentum={false}
-            className={`absolute bottom-4 left-4 pointer-events-auto ${
-              isEditMode ? 'cursor-move ring-2 ring-m3-primary/60 ring-dashed p-1 rounded-2xl' : ''
-            }`}
-          >
-            <div className="rounded-2xl bg-black/85 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono">
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase tracking-wider text-zinc-400">Wins</span>
-                <span className="text-m3-mint font-bold">{profile.wins}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase tracking-wider text-zinc-400">Matches</span>
-                <span className="text-white font-bold">{profile.games}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase tracking-wider text-zinc-400">Win Rate</span>
-                <span className="text-purple-300 font-bold">
-                  {profile.games > 0 ? `${Math.round((profile.wins / profile.games) * 100)}%` : '—'}
+            {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
+              <img
+                src={tierIcons[myPlayer?.tier ?? profile?.tier ?? 0]}
+                alt=""
+                className="w-10 h-10 object-contain shrink-0 drop-shadow-md"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-zinc-800 shrink-0" />
+            )}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="font-display font-black text-sm text-white tracking-tight leading-tight">
+                  {myPlayer?.rank || profile?.rank || 'Unrated'}
+                </span>
+                <span className="text-xs font-mono font-extrabold text-m3-primary">
+                  {myPlayer?.rr ?? profile?.rr ?? 0} RR
                 </span>
               </div>
-              {isEditMode && <Move className="w-3.5 h-3.5 text-m3-primary opacity-60 ml-1" />}
-            </div>
-          </motion.div>
-        )}
-
-        {/* WIDGET 4: Live Match Lobby Radar */}
-        {widgets.showLobby && isLive && (
-          <motion.div
-            drag={isEditMode}
-            dragMomentum={false}
-            className={`absolute top-20 left-1/2 -translate-x-1/2 w-full max-w-4xl pointer-events-auto ${
-              isEditMode ? 'cursor-move ring-2 ring-m3-primary/60 ring-dashed p-1.5 rounded-3xl' : ''
-            }`}
-          >
-            <div className="rounded-3xl bg-black/90 backdrop-blur-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2">
-              <div className="flex items-center justify-between px-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-display font-extrabold text-white">
-                    {matchState.mapName} • {matchState.mode}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-m3-primary/20 text-m3-primary text-[10px] font-mono font-bold">
-                    {matchState.phase === 'coregame' ? 'LIVE' : 'AGENT SELECT'}
-                  </span>
-                </div>
-                {isEditMode && (
-                  <span className="text-[10px] font-mono text-m3-primary flex items-center gap-1">
-                    <Move className="w-3 h-3" /> Drag to move
+              <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                Peak: <strong className="text-zinc-200">{myPlayer?.peakRank || profile?.peak || '—'}</strong>
+                {profile && (
+                  <span className="ml-1.5 text-m3-mint">
+                    ({profile.wins}W / {profile.games - profile.wins}L)
                   </span>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {matchState.isDeathmatch ? (
-                  <>
+      {/* ============================================================ */}
+      {/* WIDGET 2: Display & Stretched Tag                           */}
+      {/* ============================================================ */}
+      {config.showDisplay && (
+        <div
+          style={{
+            left: `${config.positions.display.x}px`,
+            top: `${config.positions.display.y}px`,
+            position: 'absolute',
+          }}
+          className={`pointer-events-auto select-none touch-none ${
+            isEditMode ? 'ring-2 ring-m3-primary/70 ring-dashed p-1 rounded-2xl bg-black/40' : ''
+          }`}
+        >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startDrag('display', e)}
+              className="flex items-center justify-between px-2 py-0.5 bg-m3-primary/30 rounded-t-xl cursor-move text-[9px] font-bold text-m3-primary"
+            >
+              <span className="flex items-center gap-1">
+                <Move className="w-2.5 h-2.5" /> Drag Res
+              </span>
+            </div>
+          )}
+          <div
+            onPointerDown={(e) => isEditMode && startDrag('display', e)}
+            onMouseDown={(e) => isEditMode && startDrag('display', e as unknown as React.PointerEvent)}
+            style={{ touchAction: 'none' }}
+            className={`rounded-xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white ${
+              isEditMode ? 'cursor-move' : ''
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
+            <span>{displayTag}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* WIDGET 3: Performance KPI                                   */}
+      {/* ============================================================ */}
+      {config.showKpi && profile && (
+        <div
+          style={{
+            left: `${config.positions.kpi.x}px`,
+            top: `${config.positions.kpi.y}px`,
+            position: 'absolute',
+          }}
+          className={`pointer-events-auto select-none touch-none ${
+            isEditMode ? 'ring-2 ring-m3-primary/70 ring-dashed p-1 rounded-3xl bg-black/40' : ''
+          }`}
+        >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startDrag('kpi', e)}
+              className="flex items-center justify-between px-2 py-0.5 bg-m3-primary/30 rounded-t-xl cursor-move text-[9px] font-bold text-m3-primary"
+            >
+              <span className="flex items-center gap-1">
+                <Move className="w-2.5 h-2.5" /> Drag Stats
+              </span>
+            </div>
+          )}
+          <div
+            onPointerDown={(e) => isEditMode && startDrag('kpi', e)}
+            onMouseDown={(e) => isEditMode && startDrag('kpi', e as unknown as React.PointerEvent)}
+            style={{ touchAction: 'none' }}
+            className={`rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono ${
+              isEditMode ? 'cursor-move' : ''
+            }`}
+          >
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Wins</span>
+              <span className="text-m3-mint font-bold">{profile.wins}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Matches</span>
+              <span className="text-white font-bold">{profile.games}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Win Rate</span>
+              <span className="text-purple-300 font-bold">
+                {profile.games > 0 ? `${Math.round((profile.wins / profile.games) * 100)}%` : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* WIDGET 4: Live Match Lobby Radar                            */}
+      {/* ============================================================ */}
+      {config.showLobby && isLive && (
+        <div
+          style={{
+            left: `${config.positions.lobby.x}px`,
+            top: `${config.positions.lobby.y}px`,
+            position: 'absolute',
+          }}
+          className={`pointer-events-auto select-none touch-none w-full max-w-3xl ${
+            isEditMode ? 'ring-2 ring-m3-primary/70 ring-dashed p-1 rounded-3xl bg-black/40' : ''
+          }`}
+        >
+          {isEditMode && (
+            <div
+              onPointerDown={(e) => startDrag('lobby', e)}
+              className="flex items-center justify-between px-3 py-1 bg-m3-primary/30 rounded-t-2xl cursor-move text-[10px] font-bold text-m3-primary"
+            >
+              <span className="flex items-center gap-1.5">
+                <Move className="w-3.5 h-3.5" /> Drag Lobby Radar
+              </span>
+              <span className="text-xs font-mono">{matchState.mapName}</span>
+            </div>
+          )}
+          <div
+            onPointerDown={(e) => isEditMode && startDrag('lobby', e)}
+            onMouseDown={(e) => isEditMode && startDrag('lobby', e as unknown as React.PointerEvent)}
+            style={{ touchAction: 'none' }}
+            className={`rounded-3xl bg-zinc-950/90 backdrop-blur-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2 ${isEditMode ? 'cursor-move' : ''}`}>
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-display font-extrabold text-white">
+                  {matchState.mapName} • {matchState.mode}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-m3-primary/20 text-m3-primary text-[10px] font-mono font-bold">
+                  {matchState.phase === 'coregame' ? 'LIVE' : 'AGENT SELECT'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {matchState.isDeathmatch ? (
+                <>
+                  <CompactSquadColumn
+                    title="Deathmatch (Group 1)"
+                    tagColor="text-m3-gold"
+                    players={matchState.blueTeam}
+                    tierIcons={tierIcons}
+                  />
+                  <CompactSquadColumn
+                    title="Deathmatch (Group 2)"
+                    tagColor="text-m3-gold"
+                    players={matchState.redTeam}
+                    tierIcons={tierIcons}
+                  />
+                </>
+              ) : (
+                <>
+                  <CompactSquadColumn
+                    title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                    tagColor="text-m3-coral"
+                    players={matchState.blueTeam}
+                    tierIcons={tierIcons}
+                  />
+                  {matchState.phase === 'coregame' ? (
                     <CompactSquadColumn
-                      title="Deathmatch (Group 1)"
-                      tagColor="text-m3-gold"
-                      players={matchState.blueTeam}
-                      tierIcons={tierIcons}
-                    />
-                    <CompactSquadColumn
-                      title="Deathmatch (Group 2)"
-                      tagColor="text-m3-gold"
+                      title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                      tagColor="text-m3-mint"
                       players={matchState.redTeam}
                       tierIcons={tierIcons}
                     />
-                  </>
-                ) : (
-                  <>
-                    <CompactSquadColumn
-                      title={`Attackers ${matchState.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
-                      tagColor="text-m3-coral"
-                      players={matchState.blueTeam}
-                      tierIcons={tierIcons}
-                    />
-                    {matchState.phase === 'coregame' ? (
-                      <CompactSquadColumn
-                        title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
-                        tagColor="text-m3-mint"
-                        players={matchState.redTeam}
-                        tierIcons={tierIcons}
-                      />
-                    ) : (
-                      <div className="rounded-2xl bg-zinc-900/60 border border-white/5 p-4 flex flex-col items-center justify-center text-center">
-                        <Lock className="w-5 h-5 text-zinc-500 mb-1" />
-                        <span className="text-xs font-semibold text-zinc-300">Enemy Team Hidden</span>
-                        <span className="text-[10px] text-zinc-500">Visible on match start</span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <div className="rounded-2xl bg-zinc-900/60 border border-white/5 p-4 flex flex-col items-center justify-center text-center">
+                      <Lock className="w-5 h-5 text-zinc-500 mb-1" />
+                      <span className="text-xs font-semibold text-zinc-300">Enemy Team Hidden</span>
+                      <span className="text-[10px] text-zinc-500">Visible on match start</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Footer Info */}
-      <div className="w-full max-w-6xl mx-auto flex items-center justify-between text-[10px] text-zinc-500 pointer-events-none">
-        <span>Aspect In-Game HUD</span>
-        {isEditMode ? (
-          <span className="text-m3-primary font-semibold">Click "Lock & Play" to enable pass-through mode</span>
-        ) : (
-          <span>Click "Edit HUD" anytime to customize</span>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

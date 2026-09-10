@@ -6,7 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
     GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, SetWindowLongPtrW,
     SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN,
-    SWP_FRAMECHANGED, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
+    SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
     WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
     WS_SYSMENU, WS_THICKFRAME,
 };
@@ -390,11 +390,23 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
 
         let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         if clickthrough {
-            ex_style |= 0x00000020;
+            ex_style |= 0x00000020; // WS_EX_TRANSPARENT (clicks pass through)
+            ex_style |= 0x08000000; // WS_EX_NOACTIVATE (never steal focus)
         } else {
-            ex_style &= !0x00000020;
+            ex_style &= !0x00000020; // Allow mouse clicks & dragging
+            ex_style &= !0x08000000; // Allow activation for editing
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+        );
         Ok(())
     }
 }

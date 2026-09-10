@@ -5,16 +5,20 @@ import {
   Shield,
   Radio,
   Lock,
+  Edit3,
+  Check,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
-import { showOverlay, hideOverlay, isOverlayVisible } from '../utils/ipc';
+import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode } from '../utils/ipc';
+import { listen } from '@tauri-apps/api/event';
 
 export const LiveMatchView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [inEditMode, setInEditMode] = useState(false);
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -29,6 +33,15 @@ export const LiveMatchView: React.FC = () => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
     loadState();
     isOverlayVisible().then(setOverlayOpen).catch(() => {});
+    getOverlayEditMode().then(setInEditMode).catch(() => {});
+
+    const unlisten = listen<boolean>('overlay-edit-mode-changed', (event) => {
+      setInEditMode(event.payload);
+      if (event.payload) setOverlayOpen(true);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
   }, [loadState]);
 
   // Always automatically sync live match state in the background
@@ -44,10 +57,21 @@ export const LiveMatchView: React.FC = () => {
     if (isVis) {
       await hideOverlay();
       setOverlayOpen(false);
+      if (inEditMode) {
+        await setOverlayEditMode(false);
+        setInEditMode(false);
+      }
     } else {
       await showOverlay();
       setOverlayOpen(true);
     }
+  };
+
+  const handleToggleEditMode = async () => {
+    const next = !inEditMode;
+    await setOverlayEditMode(next);
+    setInEditMode(next);
+    setOverlayOpen(true);
   };
 
   const isLive = matchState && matchState.phase !== 'idle';
@@ -90,15 +114,27 @@ export const LiveMatchView: React.FC = () => {
           </button>
 
           <button
+            onClick={handleToggleEditMode}
+            className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              inEditMode
+                ? 'bg-m3-mint text-zinc-950 border-transparent shadow-md'
+                : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-primary/40 text-m3-primary'
+            }`}
+          >
+            {inEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+            <span>{inEditMode ? 'Lock HUD (Play Mode)' : 'Edit In-Game HUD'}</span>
+          </button>
+
+          <button
             onClick={handleToggleOverlay}
             className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
               overlayOpen
                 ? 'bg-m3-coral/15 border-m3-coral/40 text-m3-coral hover:bg-m3-coral/25'
-                : 'bg-m3-primary text-m3-on-primary border-transparent hover:bg-m3-primary/90'
+                : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-outline-subtle text-m3-on-surface'
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>{overlayOpen ? 'Close In-Game Overlay' : 'Open In-Game Overlay'}</span>
+            <span>{overlayOpen ? 'Close Overlay' : 'Open Overlay'}</span>
           </button>
         </div>
       </div>

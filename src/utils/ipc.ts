@@ -245,6 +245,16 @@ export async function setOverlayClickthrough(enabled: boolean): Promise<void> {
   await invoke('set_overlay_clickthrough', { enabled });
 }
 
+export async function setOverlayEditMode(inEditMode: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('set_overlay_edit_mode', { inEditMode });
+}
+
+export async function getOverlayEditMode(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return await invoke<boolean>('get_overlay_edit_mode');
+}
+
 export async function isOverlayVisible(): Promise<boolean> {
   if (!isTauri()) return false;
   return await invoke<boolean>('is_overlay_visible');
