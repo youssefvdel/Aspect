@@ -274,6 +274,7 @@ export interface LiveMatchPlayer {
   streak?: number;
   partyId?: string;
   partyIndex?: number; // 0 = solo, 1 = party 1, 2 = party 2...
+  isIncognito?: boolean;
 }
 
 export interface LiveMatchState {

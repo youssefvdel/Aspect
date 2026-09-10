@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus, Trophy, EyeOff, Swords, Clock } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
@@ -34,7 +34,10 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   positions: {
     lobby: { x: 20, y: 180 },
     pregame: { x: 20, y: 100 },
-    topAgents: { x: 20, y: 440 },
+    topAgents: {
+      x: typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 380) : 1520,
+      y: typeof window !== 'undefined' ? Math.max(20, window.innerHeight - 300) : 800,
+    },
   },
   scales: {
     lobby: 1.0,
@@ -42,6 +45,18 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
     topAgents: 1.0,
   },
 };
+
+function getCountryFlag(code?: string): string | null {
+  if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
+  const upper = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(upper)) return null;
+  try {
+    const codePoints = upper.split('').map((c) => 127397 + c.charCodeAt(0));
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return null;
+  }
+}
 
 
 
@@ -224,6 +239,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     streak: 0,
     selectionState: 'selected',
     partyIndex: 0,
+    isIncognito: true,
   },
   {
     puuid: 'p4',
@@ -893,7 +909,7 @@ export const OverlayView: React.FC = () => {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span className="text-m3-gold font-bold">⭐</span>
+                  <Trophy className="w-3.5 h-3.5 text-m3-gold" />
                   <span>Top Agents</span>
                 </span>
                 <span
@@ -1161,13 +1177,23 @@ export const OverlayView: React.FC = () => {
               <div className="flex items-center gap-2">
                 {matchState?.startingSide && (
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-extrabold uppercase shrink-0 border ${
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono font-extrabold uppercase shrink-0 border ${
                       matchState.startingSide === 'Defense'
                         ? 'bg-m3-mint/15 text-m3-mint border-m3-mint/30'
                         : 'bg-m3-coral/15 text-m3-coral border-m3-coral/30'
                     }`}
                   >
-                    {matchState.startingSide === 'Defense' ? '🛡️ Starting Defense' : '⚔️ Starting Attack'}
+                    {matchState.startingSide === 'Defense' ? (
+                      <>
+                        <Shield className="w-3 h-3 text-m3-mint" />
+                        <span>Starting Defense</span>
+                      </>
+                    ) : (
+                      <>
+                        <Swords className="w-3 h-3 text-m3-coral" />
+                        <span>Starting Attack</span>
+                      </>
+                    )}
                   </span>
                 )}
                 <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-[9px] font-mono font-bold uppercase shrink-0">
@@ -1252,7 +1278,7 @@ export const OverlayView: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-m3-gold font-black text-xs">⭐</span>
+                <Trophy className="w-3.5 h-3.5 text-m3-gold" />
                 <span className="font-display font-black text-white text-xs tracking-wider uppercase">
                   Your Top Agents
                 </span>
@@ -1375,6 +1401,7 @@ const PregameTeamColumn: React.FC<{
           const locked = (p.selectionState || '').toLowerCase().includes('lock');
           const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
           const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+          const countryFlag = getCountryFlag(p.country);
 
           return (
             <div
@@ -1416,6 +1443,24 @@ const PregameTeamColumn: React.FC<{
                         You
                       </span>
                     )}
+                    {p.isIncognito && (
+                      <span
+                        className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7px] font-mono font-bold uppercase shrink-0"
+                        title="Name Hidden in Valorant (Unmasked by Recon)"
+                      >
+                        <EyeOff className="w-2.5 h-2.5" />
+                        Hidden
+                      </span>
+                    )}
+                    {countryFlag && p.country && (
+                      <span
+                        className="flex items-center gap-0.5 px-1 py-px rounded bg-white/5 border border-white/10 text-[8px] font-mono text-zinc-300 font-bold shrink-0"
+                        title={`Country: ${p.country}`}
+                      >
+                        <span className="text-[10px] leading-none">{countryFlag}</span>
+                        <span>{p.country}</span>
+                      </span>
+                    )}
                     {party && (
                       <span
                         className={`px-1 py-px rounded text-[7px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
@@ -1427,9 +1472,15 @@ const PregameTeamColumn: React.FC<{
                   </div>
                   <span className="text-[8px] font-mono font-semibold">
                     {locked ? (
-                      <span className="text-m3-mint">✓ {p.agentName}</span>
+                      <span className="flex items-center gap-1 text-m3-mint">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        {p.agentName}
+                      </span>
                     ) : hasPick ? (
-                      <span className="text-amber-300">⏳ {p.agentName}</span>
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <Clock className="w-2.5 h-2.5" />
+                        {p.agentName}
+                      </span>
                     ) : (
                       <span className="text-zinc-500">Picking…</span>
                     )}
@@ -1521,6 +1572,7 @@ const VerticalSquadColumn: React.FC<{
       const peakIcon = tierIcons[p.peakTier];
       const kd = formatKd(p.kd);
       const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+      const countryFlag = getCountryFlag(p.country);
 
       return (
         <div
@@ -1558,6 +1610,23 @@ const VerticalSquadColumn: React.FC<{
             {p.isMe && (
               <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
                 You
+              </span>
+            )}
+            {p.isIncognito && (
+              <span
+                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7px] font-mono font-bold uppercase shrink-0"
+                title="Name Hidden in Valorant (Unmasked by Recon)"
+              >
+                <EyeOff className="w-2.5 h-2.5" />
+              </span>
+            )}
+            {countryFlag && p.country && (
+              <span
+                className="flex items-center gap-0.5 px-1 py-px rounded bg-white/5 border border-white/10 text-[8px] font-mono text-zinc-300 font-bold shrink-0"
+                title={`Country: ${p.country}`}
+              >
+                <span className="text-[9px] leading-none">{countryFlag}</span>
+                <span>{p.country}</span>
               </span>
             )}
             {party && (

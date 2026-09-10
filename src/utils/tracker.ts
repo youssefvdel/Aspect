@@ -1033,6 +1033,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       accountLevel: number;
       cardId: string;
       selectionState?: string;
+      isIncognito?: boolean;
     }
 
     const rawPlayers: RawPlayer[] = [];
@@ -1045,6 +1046,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           characterId: p.CharacterID || '',
           accountLevel: p.PlayerIdentity?.AccountLevel || 0,
           cardId: p.PlayerIdentity?.PlayerCardID || '',
+          isIncognito: !!(p.PlayerIdentity?.Incognito),
         });
       }
     } else if (phase === 'pregame') {
@@ -1059,6 +1061,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               accountLevel: p.PlayerIdentity?.AccountLevel || 0,
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
+              isIncognito: !!(p.PlayerIdentity?.Incognito),
             });
           }
         }
@@ -1075,6 +1078,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               accountLevel: p.PlayerIdentity?.AccountLevel || 0,
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
+              isIncognito: !!(p.PlayerIdentity?.Incognito),
             });
           }
         }
@@ -1091,6 +1095,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               accountLevel: p.PlayerIdentity?.AccountLevel || 0,
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
+              isIncognito: !!(p.PlayerIdentity?.Incognito),
             });
           }
         }
@@ -1188,19 +1193,25 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           .then(({ fetchTrnActStats }) => {
             fetchTrnActStats(resolved.name, resolved.tag)
               .then((res) => {
+                const realCountry =
+                  res?.countryCode &&
+                  res.countryCode.length === 2 &&
+                  !['EU', 'NA', 'AP', 'KR'].includes(res.countryCode.toUpperCase())
+                    ? res.countryCode.toUpperCase()
+                    : undefined;
+
                 livePlayerStatsCache.set(p.puuid, {
                   kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
                   winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
                   hsPct: res?.stats?.hsPct != null ? Math.round(res.stats.hsPct) : undefined,
                   recentWon: res?.stats?.wins,
                   recentLost: res?.stats?.losses,
-                  country: res?.countryCode || region.toUpperCase(),
+                  country: realCountry,
                   fetchedAt: Date.now(),
                 });
               })
               .catch(() => {
                 livePlayerStatsCache.set(p.puuid, {
-                  country: region.toUpperCase(),
                   fetchedAt: Date.now(),
                 });
               });
@@ -1229,13 +1240,14 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         isMe: p.puuid === ent.puuid,
         selectionState: p.selectionState,
         region: region.toUpperCase(),
-        country: statsCached?.country || region.toUpperCase(),
+        country: statsCached?.country,
         kd: statsCached?.kd,
         winPct: statsCached?.winPct,
         hsPct: statsCached?.hsPct,
         recentWon: statsCached?.recentWon,
         recentLost: statsCached?.recentLost,
         streak: statsCached?.streak,
+        isIncognito: p.isIncognito ?? false,
       };
 
       if (targetTeam === 'Blue') {
