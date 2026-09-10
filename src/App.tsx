@@ -5,6 +5,7 @@ import { TopBar } from './components/TopBar';
 import { UtilityView } from './components/UtilityView';
 import { SettingsView } from './components/SettingsView';
 import { TrackerView } from './components/TrackerView';
+import { DevDashboard } from './components/DevDashboard';
 import { OverlayView } from './components/OverlayView';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
@@ -24,6 +25,7 @@ import {
   checkAppUpdates,
 } from './utils/ipc';
 import { listen } from '@tauri-apps/api/event';
+import { IS_DEV } from './utils/devTools';
 
 export const App: React.FC = () => {
   const isOverlay = React.useMemo(() => {
@@ -131,6 +133,7 @@ export const App: React.FC = () => {
       if (e.key === '5') setCurrentTab('valorant');
       if (e.key === '6') setCurrentTab('overview');
       if (e.key === '7') setCurrentTab('matches');
+      if (e.key === '0' && IS_DEV) setCurrentTab('dev');
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -305,6 +308,10 @@ export const App: React.FC = () => {
               >
                 {(currentTab === 'overview' || currentTab === 'matches') && (
                   <TrackerView initialSubTab={currentTab === 'matches' ? 'matches' : 'overview'} />
+                )}
+
+                {currentTab === 'dev' && IS_DEV && (
+                  <DevDashboard />
                 )}
 
                 {(currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless') && (

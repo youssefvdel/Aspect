@@ -6,10 +6,12 @@ import {
   Keyboard,
   Sparkles,
   LayoutDashboard,
+  FlaskConical,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 import { TrackerMini } from './TrackerMini';
 import { APP_VERSION, appVersion } from '../utils/version';
+import { IS_DEV } from '../utils/devTools';
 
 interface SidebarTab {
   id: TabType;
@@ -59,6 +61,16 @@ const SETTINGS_TABS: SidebarTab[] = [
     label: 'Settings',
     shortcut: '3',
     icon: Settings,
+  },
+];
+
+/* Dev-only playground — strip-mined from release by the IS_DEV gate below. */
+const DEV_TABS: SidebarTab[] = [
+  {
+    id: 'dev',
+    label: 'Dev Dashboard',
+    shortcut: '0',
+    icon: FlaskConical,
   },
 ];
 
@@ -214,6 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, true)}
           {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, false)}
           {renderGroup({ title: 'Settings', tabs: SETTINGS_TABS }, false)}
+          {IS_DEV && renderGroup({ title: 'Dev', tabs: DEV_TABS }, false)}
         </div>
       </div>
 

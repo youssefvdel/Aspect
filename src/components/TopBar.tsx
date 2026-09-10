@@ -1,4 +1,4 @@
-import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, LayoutDashboard } from 'lucide-react';
+import { Sliders, Eye, Cpu, Layout, Settings, Wand2, Crosshair, Sparkles, FileCode2, LayoutDashboard, FlaskConical } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 
 interface TopBarProps {
@@ -69,6 +69,11 @@ const TAB_METADATA: Record<
     title: 'Valorant Tracker',
     description: 'Overview, match history, performance, agents, and maps — live from Riot + TRN',
     icon: LayoutDashboard,
+  },
+  dev: {
+    title: 'Dev Dashboard',
+    description: 'Dev-builds only — simulators, IPC smoke tests, backend event log',
+    icon: FlaskConical,
   },
 };
 

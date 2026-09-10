@@ -231,7 +231,8 @@ export type TabType =
   | 'settings'
   | 'valorant'
   | 'overview'
-  | 'matches';
+  | 'matches'
+  | 'dev';
 
 export interface UpdateInfo {
   has_update: boolean;

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isDevTabHeld } from './devTools';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, GpuSettingsReport, WindowInfo, ConfigFileInfo, QuickShortcut, MonitorDevice, UpdateInfo } from '../types';
 import { APP_VERSION } from './version';
 
@@ -261,6 +262,7 @@ export async function isOverlayVisible(): Promise<boolean> {
 }
 
 export async function isTabDown(): Promise<boolean> {
+  if (isDevTabHeld()) return true;
   if (!isTauri()) return false;
   try {
     return await invoke<boolean>('is_tab_down');

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lock, RefreshCw } from 'lucide-react';
+import { Check, Gamepad2, Lock, RefreshCw } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
@@ -100,7 +100,7 @@ const PLAYLISTS = [
 ];
 
 export const Overview: React.FC = () => {
-  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, ready, banner, setBanner, refresh } =
+  const { profile, seasonNames, seasonOrder, tierIcons, agentInfo, agg, trn, trnAgents, trnPrev, isLoading, ready, clientClosed, banner, setBanner, refresh } =
     useTrackerData();
 
   const [playlist, setPlaylist] = useState('competitive');
@@ -176,6 +176,29 @@ export const Overview: React.FC = () => {
   const legPct = hitTotal > 0 ? ((S?.legHits ?? 0) / hitTotal) * 100 : 0;
 
   if (!ready) {
+    if (clientClosed) {
+      return (
+        <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8 flex items-center justify-center">
+          <div className="rounded-3xl bg-m3-surface-container border border-m3-outline-subtle p-8 flex flex-col items-center text-center gap-3 max-w-sm shadow-m3-1">
+            <span className="w-14 h-14 rounded-3xl bg-m3-primary-container/50 border border-m3-primary/30 flex items-center justify-center">
+              <Gamepad2 className="w-7 h-7 text-m3-primary" />
+            </span>
+            <h3 className="font-display font-black text-lg text-m3-on-surface">Riot Client is closed</h3>
+            <p className="text-xs text-m3-outline leading-relaxed">
+              The tracker reads live data from your local Riot session. Open Riot Client or Valorant, then refresh.
+            </p>
+            <button
+              onClick={refresh}
+              disabled={isLoading}
+              className="h-9 px-5 rounded-xl bg-m3-primary text-m3-on-primary text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50 hover:brightness-110"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
         <OverviewSkeletons />

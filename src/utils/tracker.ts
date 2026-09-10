@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { LiveMatchPlayer, LiveMatchState, LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
+import { getDevMockMatch, isDevNoClient } from './devTools';
 
 /* Keyless tracker: everything comes straight from Riot using the local
    client's own session. No API keys, no third party. Needs Riot Client open.
@@ -12,6 +13,7 @@ import { isTauri } from './ipc';
 
 /** Logged-in Riot account from the local client. Throws when the client is closed. */
 export async function detectLocalAccount(): Promise<LocalRiotAccount> {
+  if (isDevNoClient()) throw new Error('Auto-detect failed — is the Riot Client open?');
   if (!isTauri()) throw new Error('Auto-detect needs the desktop app.');
   try {
     const acc = await invoke<LocalRiotAccount>('detect_local_account');
@@ -798,6 +800,10 @@ const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: numbe
 const livePlayerStatsCache = new Map<string, { kd?: number; country?: string; fetchedAt: number }>();
 
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
+  // Dev dashboard simulator: canned match without Riot open (dev builds only).
+  const devMock = getDevMockMatch();
+  if (devMock) return devMock;
+
   const idleState: LiveMatchState = {
     phase: 'idle',
     matchId: '',

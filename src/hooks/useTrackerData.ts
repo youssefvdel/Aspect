@@ -33,6 +33,7 @@ export interface TrackerData {
   detailsTotal: number;
   isLoading: boolean;
   ready: boolean;
+  clientClosed: boolean;
   banner: string | null;
   setBanner: (m: string | null) => void;
   refresh: () => Promise<void>;
@@ -60,6 +61,7 @@ export function useTrackerData(): TrackerData {
   const [detailsReady, setDetailsReady] = useState(0);
   const [detailsTotal, setDetailsTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [clientClosed, setClientClosed] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const autoTried = useRef(false);
 
@@ -68,6 +70,18 @@ export function useTrackerData(): TrackerData {
     setBanner(null);
     setTrnDone(false);
     setDetailsDone(false);
+    // Fail fast with a clear state when Riot isn't running — no infinite skeletons.
+    try {
+      await detectLocalAccount();
+      setClientClosed(false);
+    } catch {
+      setClientClosed(true);
+      setBanner('Riot Client is closed — open Riot Client or Valorant, then hit Refresh.');
+      setTrnDone(true);
+      setDetailsDone(true);
+      setIsLoading(false);
+      return;
+    }
     try {
       const region = await detectRegion();
       let accName = '';
@@ -166,5 +180,5 @@ export function useTrackerData(): TrackerData {
 
   const ready = !isLoading && profile !== null && trnDone && detailsDone;
 
-  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, banner, setBanner, refresh };
+  return { profile, games, queueById, mapById, seasonNames, seasonOrder, tierIcons, agentInfo, weapons, agg, trn, trnAgents, trnMaps, trnPrev, detailsById, detailsReady, detailsTotal, isLoading, ready, clientClosed, banner, setBanner, refresh };
 }
