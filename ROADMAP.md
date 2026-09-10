@@ -119,6 +119,38 @@ inside the existing process — **no Overwolf, no sidecar, no second runtime.**
 read-only local sources. Only whole-lobby KDA needs the OCR layer, and that is the last
 piece, not the first.
 
+### GPU / display scaling settings were reporting memory, not reality
+*Status:* Fixed — the report now reads the machine.
+
+`get_gpu_settings_report()` used to return `enabled: saved.<flag>`, where `saved` is
+Recon's own `%LOCALAPPDATA%\TrueStretchStudio\gpu_settings.json`. It never inspected the
+machine, so it echoed whatever Recon last wrote. If the driver ignored or reset the
+value, the app still showed a green "enabled" — which is exactly what an AMD user
+reported (Recon said on, AMD Software said off).
+
+Two concrete defects, both verified on this box:
+
+1. **Inverted scaling value.** Windows stores scaling per display path as a DWORD at
+   `HKLM\...\Control\GraphicsDrivers\Configuration\<monitor>\00\00\Scaling`, documented as
+   `1 = maintain display scaling, 2 = centre image, 3 = scale full screen,
+   4 = maintain aspect ratio` (Intel's own guidance, corroborated by the CRU forum and
+   StackOverflow). The module wrote **4** while labelling the row *"Full-Screen Hardware
+   Scaling (0 Black Bars)"* — it requested black bars. Live read confirmed every display
+   sat at `0x4`. Now writes **3**, via named constants.
+2. **Unverifiable claims presented as fact.** AMD/Intel `Dal*` / `ScaleOption` values are
+   driver-owned. ToastyX (CRU) notes driver settings live under
+   `Class\{4d36e968-…}\####` and its `DAL3_DATA` subtrees, and AMD documents GPU Scaling
+   as an **AMD Software** setting — the `DalGpuScaling`-style names have no public
+   documentation (a quoted search returns no real hits). So a write there proves nothing.
+   `GpuSettingItem` now carries `verified` + `detail`: only `full_screen_scaling` (WDDM)
+   and `low_latency_scanout` (DWM `DirectFlipEnabled`) are read back and marked VERIFIED;
+   the rest report UNVERIFIED with the exact key and value found. The header counter reads
+   "N verified · M requested · T total" instead of "M / T Active".
+
+Rule for this module: **never display a state we have not read back.** If a value cannot
+be observed (vendor-managed), say so and link the user to the vendor panel — do not
+assert it.
+
 ### "Can we spoof being Overwolf / Blitz to get live data?" — No.
 *Status:* Ruled out. There is no handshake with VALORANT to imitate.
 

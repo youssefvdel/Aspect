@@ -48,6 +48,8 @@ const mockGpuSettings: GpuSettingsReport = {
       name: 'Full-Screen Hardware Scaling (0 Black Bars)',
       description: 'Forces RTX hardware display pipe to stretch custom 1.45:1 resolutions to panel borders with zero black bars.',
       enabled: true,
+      verified: false,
+      detail: 'Sample value — this is the offline mock, not your machine.',
       badge: 'Win32 CCD • Full-Screen',
     },
     {
@@ -55,6 +57,8 @@ const mockGpuSettings: GpuSettingsReport = {
       name: 'Perform Scaling on: GPU',
       description: 'Offloads image expansion to RTX hardware scanout pipeline instead of monitor display scalar.',
       enabled: true,
+      verified: false,
+      detail: 'Sample value — this is the offline mock, not your machine.',
       badge: 'NVIDIA Hardware Scaler',
     },
     {
@@ -62,6 +66,8 @@ const mockGpuSettings: GpuSettingsReport = {
       name: 'Override Scaling Mode Set by Games & Programs',
       description: 'Forces driver-level stretched scanout over in-game letterbox enforcement (sets bShouldLetterbox=False).',
       enabled: true,
+      verified: false,
+      detail: 'Sample value — this is the offline mock, not your machine.',
       badge: 'Driver Scanout Priority',
     },
     {
@@ -69,6 +75,8 @@ const mockGpuSettings: GpuSettingsReport = {
       name: 'Ultra-Low Latency Direct Scanout Engine',
       description: 'Bypasses DWM windowed presentation buffer, enabling 0.0 ms DirectFlip scanout with zero delay.',
       enabled: true,
+      verified: false,
+      detail: 'Sample value — this is the offline mock, not your machine.',
       badge: 'DirectFlip Scanout',
     },
     {
@@ -76,6 +84,8 @@ const mockGpuSettings: GpuSettingsReport = {
       name: 'Bypass Integer Scaling Aspect Lock',
       description: 'Prevents fixed-pixel integer scaling clamps, allowing arbitrary golden-ratio custom resolutions.',
       enabled: true,
+      verified: false,
+      detail: 'Sample value — this is the offline mock, not your machine.',
       badge: 'Uncapped Aspect Ratio',
     },
   ],

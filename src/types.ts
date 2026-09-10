@@ -34,6 +34,11 @@ export interface GpuSettingItem {
   name: string;
   description: string;
   enabled: boolean;
+  /** True only when the value was read back from the machine and matches the
+   *  claim. Vendor-managed settings we cannot observe report false. */
+  verified: boolean;
+  /** Exactly what was found, e.g. "Windows reports: maintain aspect ratio". */
+  detail: string;
   badge: string;
 }
 

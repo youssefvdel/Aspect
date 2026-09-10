@@ -8,6 +8,83 @@ use winreg::RegKey;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/* Windows display scaling is stored per display path as a DWORD at
+   HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration\<monitor>\00\00
+   and is the only scaling value Windows itself honours. Documented values
+   (Intel's own guidance, corroborated by the CRU forum and StackOverflow —
+   see ROADMAP.md):
+       1 = maintain display scaling
+       2 = centre image
+       3 = scale full screen  (stretch — fills the panel)
+       4 = maintain aspect ratio (pillar/letterbox bars)
+   This module previously wrote 4 while labelling the row
+   "Full-Screen Hardware Scaling (0 Black Bars)", i.e. it requested the exact
+   opposite of what it claimed. Stretched must be 3. */
+const WDDM_SCALING_FULLSCREEN: u32 = 3;
+const WDDM_SCALING_ASPECT: u32 = 4;
+
+/// Human label for a WDDM `Scaling` value.
+fn scaling_label(v: u32) -> &'static str {
+    match v {
+        1 => "maintain display scaling",
+        2 => "centre image",
+        3 => "scale full screen",
+        4 => "maintain aspect ratio",
+        _ => "unknown",
+    }
+}
+
+/// The scaling mode Windows actually has set for the active display path.
+///
+/// Ground truth: read back from the registry rather than trusting our own
+/// saved intent. Windows keeps the value under the monitor's `00\00` path; the
+/// active entry is the one carrying `PrimSurfSize.cx`.
+fn read_active_windows_scaling() -> Option<(u32, String)> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let root = hklm
+        .open_subkey_with_flags(
+            r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration",
+            KEY_READ,
+        )
+        .ok()?;
+
+    let mut best: Option<(u32, String)> = None;
+    for mon in root.enum_keys().filter_map(|k| k.ok()) {
+        // Skip the non-display helper keys.
+        if mon.eq_ignore_ascii_case("Properties") || mon.eq_ignore_ascii_case("Connectivity") {
+            continue;
+        }
+        let Ok(mon_key) = root.open_subkey_with_flags(&mon, KEY_READ) else {
+            continue;
+        };
+        for idx in mon_key.enum_keys().filter_map(|k| k.ok()) {
+            let Ok(idx_key) = mon_key.open_subkey_with_flags(&idx, KEY_READ) else {
+                continue;
+            };
+            for sub in idx_key.enum_keys().filter_map(|k| k.ok()) {
+                let Ok(path) = idx_key.open_subkey_with_flags(&sub, KEY_READ) else {
+                    continue;
+                };
+                let Ok(scaling) = path.get_value::<u32, _>("Scaling") else {
+                    continue;
+                };
+                // An active path records its surface size. Prefer the largest.
+                let cx: u32 = path.get_value("PrimSurfSize.cx").unwrap_or(0);
+                let label = format!("{}\\{}\\{}", mon, idx, sub);
+                match &best {
+                    Some((_, prev)) if cx == 0 && !prev.is_empty() => {}
+                    _ => {
+                        if best.as_ref().map(|(_, p)| p.is_empty()).unwrap_or(true) || cx > 0 {
+                            best = Some((scaling, label));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    best
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GpuVendor {
     Nvidia,
@@ -29,6 +106,12 @@ pub struct GpuSettingItem {
     pub name: String,
     pub description: String,
     pub enabled: bool,
+    /// True only when the value was read back from the machine and matches the
+    /// claim. Vendor-managed settings we cannot observe report false, so the UI
+    /// can say "unverified" instead of asserting a state the driver owns.
+    pub verified: bool,
+    /// Exactly what was found, e.g. "Windows reports: maintain aspect ratio".
+    pub detail: String,
     pub badge: String,
 }
 
@@ -194,9 +277,167 @@ pub fn detect_gpu() -> GpuInfo {
     }
 }
 
+
+fn read_hklm_dword(path: &str, name: &str) -> Option<u32> {
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(path, KEY_READ)
+        .ok()?
+        .get_value::<u32, _>(name)
+        .ok()
+}
+
+fn read_hkcu_dword(path: &str, name: &str) -> Option<u32> {
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags(path, KEY_READ)
+        .ok()?
+        .get_value::<u32, _>(name)
+        .ok()
+}
+
+/// First present value among `candidates` on any display adapter key.
+/// Returns (value name, value) so the caller can name its own evidence.
+fn read_vendor_dword(candidates: &[&str]) -> Option<(String, u32)> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+    let class_key = hklm.open_subkey_with_flags(class_path, KEY_READ).ok()?;
+    for i in 0..16 {
+        let sub_name = format!("{:04}", i);
+        let Ok(sub_key) = class_key.open_subkey_with_flags(&sub_name, KEY_READ) else {
+            continue;
+        };
+        for name in candidates {
+            if let Ok(v) = sub_key.get_value::<u32, _>(*name) {
+                return Some(((*name).to_string(), v));
+            }
+        }
+    }
+    None
+}
+
+/// Is any NVIDIA driver display-database connector entry present?
+fn nvidia_connector_count() -> usize {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base = r"SYSTEM\CurrentControlSet\Services
+vlddmkm\State\DisplayDatabase";
+    match hklm.open_subkey_with_flags(base, KEY_READ) {
+        Ok(k) => k
+            .enum_keys()
+            .filter_map(|x| x.ok())
+            .filter(|n| n.starts_with("CONNECTOR_"))
+            .count(),
+        Err(_) => 0,
+    }
+}
+
+/// Evaluate one setting against the live machine.
+/// Returns (enabled, verified, human detail).
+fn eval_setting(
+    id: &str,
+    saved: &SavedGpuSettings,
+    wddm: &Option<(u32, String)>,
+) -> (bool, bool, String) {
+    match id {
+        // The only scaling value Windows itself honours — fully verifiable.
+        "full_screen_scaling" => match wddm {
+            Some((v, path)) => (
+                *v == WDDM_SCALING_FULLSCREEN,
+                true,
+                format!("Windows reports \"{}\" ({}) on {}", scaling_label(*v), v, short_path(path)),
+            ),
+            None => (
+                false,
+                false,
+                r"No WDDM scaling value found in GraphicsDrivers\Configuration".into(),
+            ),
+        },
+        "gpu_scaling_engine" => {
+            if let Some((name, v)) = read_vendor_dword(&["DalGpuScaling", "ScaleOption"]) {
+                (
+                    v != 0,
+                    false,
+                    format!("Driver key {}={} (reported by Radeon/Intel driver store, not verified live)", name, v),
+                )
+            } else if nvidia_connector_count() > 0 {
+                (
+                    saved.gpu_scaling_engine,
+                    false,
+                    "NVIDIA manages scaling internally (nvlddmkm DisplayDatabase); not readable as a toggle".into(),
+                )
+            } else {
+                (false, false, "No vendor GPU-scaling value present on this machine".into())
+            }
+        }
+        "override_game_scaling" => {
+            if let Some((name, v)) = read_vendor_dword(&["DalEnableModeBypass", "DisableLetterboxing"]) {
+                (v != 0, false, format!("Driver key {}={}", name, v))
+            } else {
+                (
+                    saved.override_game_scaling,
+                    false,
+                    "No vendor override key present — game config letterbox flags are set directly".into(),
+                )
+            }
+        }
+        "low_latency_scanout" => {
+            let v = read_hklm_dword(r"SOFTWARE\Microsoft\Windows\DWM", "DirectFlipEnabled")
+                .or_else(|| read_hkcu_dword(r"Software\Microsoft\Windows\DWM", "DirectFlipEnabled"));
+            match v {
+                Some(v) => (v != 0, true, format!(r"DWM\DirectFlipEnabled={}", v)),
+                None => (false, true, "DirectFlipEnabled is not set (DWM default)".into()),
+            }
+        }
+        "integer_scaling_bypass" => {
+            if let Some((name, v)) = read_vendor_dword(&["DalIntegerScaling", "MaintainAspectRatio"]) {
+                (
+                    v == 0,
+                    false,
+                    format!("Driver key {}={} (0 = integer scaling off / stretch allowed)", name, v),
+                )
+            } else {
+                (false, false, "No vendor integer-scaling value present".into())
+            }
+        }
+        _ => (false, false, "Unknown setting".into()),
+    }
+}
+
+/// Trim the long monitor instance path down to something a human can read.
+fn short_path(p: &str) -> String {
+    let parts: Vec<&str> = p.split('\\').collect();
+    if parts.len() >= 3 {
+        let mon = parts[0];
+        let head: String = mon.chars().take(24).collect();
+        format!(
+            "{}…{}\\{}",
+            head,
+            parts[parts.len() - 2],
+            parts[parts.len() - 1]
+        )
+    } else {
+        p.to_string()
+    }
+}
+
 pub fn get_gpu_settings_report() -> GpuSettingsReport {
     let gpu_info = detect_gpu();
     let saved = load_saved_gpu_settings();
+    // Read the machine, not our own memory. `saved` is only used as a fallback
+    // for values that genuinely cannot be observed.
+    let wddm = read_active_windows_scaling();
+    let ids = [
+        "full_screen_scaling",
+        "gpu_scaling_engine",
+        "override_game_scaling",
+        "low_latency_scanout",
+        "integer_scaling_bypass",
+    ];
+    let mut ev: std::collections::HashMap<&str, (bool, bool, String)> = std::collections::HashMap::new();
+    for id in ids {
+        ev.insert(id, eval_setting(id, &saved, &wddm));
+    }
+    let f = |id: &str| -> (bool, bool, String) {
+        ev.get(id).cloned().unwrap_or((false, false, String::new()))
+    };
 
     let settings = match gpu_info.vendor {
         GpuVendor::Nvidia => vec![
@@ -204,35 +445,45 @@ pub fn get_gpu_settings_report() -> GpuSettingsReport {
                 id: "full_screen_scaling".into(),
                 name: "Full-Screen Hardware Scaling (0 Black Bars)".into(),
                 description: "Forces RTX hardware display pipe to stretch custom 1.45:1 resolutions to panel borders with zero black bars.".into(),
-                enabled: saved.full_screen_scaling,
+                enabled: f("full_screen_scaling").0,
+                verified: f("full_screen_scaling").1,
+                detail: f("full_screen_scaling").2,
                 badge: "Win32 CCD • Full-Screen".into(),
             },
             GpuSettingItem {
                 id: "gpu_scaling_engine".into(),
                 name: "Perform Scaling on: GPU".into(),
                 description: "Offloads image expansion to RTX hardware scanout pipeline instead of monitor display scalar.".into(),
-                enabled: saved.gpu_scaling_engine,
+                enabled: f("gpu_scaling_engine").0,
+                verified: f("gpu_scaling_engine").1,
+                detail: f("gpu_scaling_engine").2,
                 badge: "NVIDIA Hardware Scaler".into(),
             },
             GpuSettingItem {
                 id: "override_game_scaling".into(),
                 name: "Override Scaling Mode Set by Games & Programs".into(),
                 description: "Forces driver-level stretched scanout over in-game letterbox enforcement (sets bShouldLetterbox=False).".into(),
-                enabled: saved.override_game_scaling,
+                enabled: f("override_game_scaling").0,
+                verified: f("override_game_scaling").1,
+                detail: f("override_game_scaling").2,
                 badge: "Driver Scanout Priority".into(),
             },
             GpuSettingItem {
                 id: "low_latency_scanout".into(),
                 name: "Ultra-Low Latency Direct Scanout Engine".into(),
                 description: "Bypasses DWM windowed presentation buffer, enabling 0.0 ms DirectFlip scanout with zero delay.".into(),
-                enabled: saved.low_latency_scanout,
+                enabled: f("low_latency_scanout").0,
+                verified: f("low_latency_scanout").1,
+                detail: f("low_latency_scanout").2,
                 badge: "DirectFlip Scanout".into(),
             },
             GpuSettingItem {
                 id: "integer_scaling_bypass".into(),
                 name: "Bypass Integer Scaling Aspect Lock".into(),
                 description: "Prevents fixed-pixel integer scaling clamps, allowing arbitrary golden-ratio custom resolutions.".into(),
-                enabled: saved.integer_scaling_bypass,
+                enabled: f("integer_scaling_bypass").0,
+                verified: f("integer_scaling_bypass").1,
+                detail: f("integer_scaling_bypass").2,
                 badge: "Uncapped Aspect Ratio".into(),
             },
         ],
@@ -241,35 +492,45 @@ pub fn get_gpu_settings_report() -> GpuSettingsReport {
                 id: "full_screen_scaling".into(),
                 name: "AMD Full Panel Scaling (0 Black Bars)".into(),
                 description: "Stretches custom resolutions to panel borders with zero black pillarbox bars.".into(),
-                enabled: saved.full_screen_scaling,
+                enabled: f("full_screen_scaling").0,
+                verified: f("full_screen_scaling").1,
+                detail: f("full_screen_scaling").2,
                 badge: "AMD Full Panel".into(),
             },
             GpuSettingItem {
                 id: "gpu_scaling_engine".into(),
                 name: "Radeon GPU Scaling Engine".into(),
                 description: "Enforces Radeon GPU hardware scaling over monitor display timing.".into(),
-                enabled: saved.gpu_scaling_engine,
+                enabled: f("gpu_scaling_engine").0,
+                verified: f("gpu_scaling_engine").1,
+                detail: f("gpu_scaling_engine").2,
                 badge: "Adrenalin Hardware".into(),
             },
             GpuSettingItem {
                 id: "override_game_scaling".into(),
                 name: "Override In-Game Scaling & Letterboxing".into(),
                 description: "Prevents game engines from enforcing black letterbox borders on stretched modes.".into(),
-                enabled: saved.override_game_scaling,
+                enabled: f("override_game_scaling").0,
+                verified: f("override_game_scaling").1,
+                detail: f("override_game_scaling").2,
                 badge: "Driver Priority".into(),
             },
             GpuSettingItem {
                 id: "low_latency_scanout".into(),
                 name: "Radeon Anti-Lag Direct Scanout Engine".into(),
                 description: "Bypasses desktop composition buffers for direct zero-latency frame scanout.".into(),
-                enabled: saved.low_latency_scanout,
+                enabled: f("low_latency_scanout").0,
+                verified: f("low_latency_scanout").1,
+                detail: f("low_latency_scanout").2,
                 badge: "Anti-Lag Scanout".into(),
             },
             GpuSettingItem {
                 id: "integer_scaling_bypass".into(),
                 name: "Integer Scaling Restriction Bypass".into(),
                 description: "Disables integer scaling lock to permit smooth 1.45:1 golden ratio expansion.".into(),
-                enabled: saved.integer_scaling_bypass,
+                enabled: f("integer_scaling_bypass").0,
+                verified: f("integer_scaling_bypass").1,
+                detail: f("integer_scaling_bypass").2,
                 badge: "Smooth Stretch".into(),
             },
         ],
@@ -278,35 +539,45 @@ pub fn get_gpu_settings_report() -> GpuSettingsReport {
                 id: "full_screen_scaling".into(),
                 name: "Intel Stretched Display Scaling (0 Black Bars)".into(),
                 description: "Expands custom 1.45:1 stretched resolutions across 100% of panel area.".into(),
-                enabled: saved.full_screen_scaling,
+                enabled: f("full_screen_scaling").0,
+                verified: f("full_screen_scaling").1,
+                detail: f("full_screen_scaling").2,
                 badge: "Intel Stretched".into(),
             },
             GpuSettingItem {
                 id: "gpu_scaling_engine".into(),
                 name: "Intel Graphics Hardware Scaler".into(),
                 description: "Routes display stretching through Intel Xe display engine circuitry.".into(),
-                enabled: saved.gpu_scaling_engine,
+                enabled: f("gpu_scaling_engine").0,
+                verified: f("gpu_scaling_engine").1,
+                detail: f("gpu_scaling_engine").2,
                 badge: "Xe Scaler".into(),
             },
             GpuSettingItem {
                 id: "override_game_scaling".into(),
                 name: "Override Application Scaling Restrictions".into(),
                 description: "Bypasses in-game letterboxing enforcement and disables aspect ratio constraints.".into(),
-                enabled: saved.override_game_scaling,
+                enabled: f("override_game_scaling").0,
+                verified: f("override_game_scaling").1,
+                detail: f("override_game_scaling").2,
                 badge: "Bypass Letterbox".into(),
             },
             GpuSettingItem {
                 id: "low_latency_scanout".into(),
                 name: "Intel Low-Latency Scanout Engine".into(),
                 description: "Eliminates DWM letterbox buffer and forces hardware flip presentation.".into(),
-                enabled: saved.low_latency_scanout,
+                enabled: f("low_latency_scanout").0,
+                verified: f("low_latency_scanout").1,
+                detail: f("low_latency_scanout").2,
                 badge: "DirectFlip".into(),
             },
             GpuSettingItem {
                 id: "integer_scaling_bypass".into(),
                 name: "Maintain Aspect Ratio Override".into(),
                 description: "Turns off aspect ratio lock to allow full horizontal stretched scanout.".into(),
-                enabled: saved.integer_scaling_bypass,
+                enabled: f("integer_scaling_bypass").0,
+                verified: f("integer_scaling_bypass").1,
+                detail: f("integer_scaling_bypass").2,
                 badge: "Fill Panel".into(),
             },
         ],
@@ -315,35 +586,45 @@ pub fn get_gpu_settings_report() -> GpuSettingsReport {
                 id: "full_screen_scaling".into(),
                 name: "Full-Screen Hardware Scaling (0 Black Bars)".into(),
                 description: "Applies Win32 CCD stretched scaling and sets driver registry scaling to Full-Screen (4).".into(),
-                enabled: saved.full_screen_scaling,
+                enabled: f("full_screen_scaling").0,
+                verified: f("full_screen_scaling").1,
+                detail: f("full_screen_scaling").2,
                 badge: "Win32 CCD".into(),
             },
             GpuSettingItem {
                 id: "gpu_scaling_engine".into(),
                 name: "GPU Hardware Scaling Engine".into(),
                 description: "Enforces GPU display pipe timing instead of display monitor scalar.".into(),
-                enabled: saved.gpu_scaling_engine,
+                enabled: f("gpu_scaling_engine").0,
+                verified: f("gpu_scaling_engine").1,
+                detail: f("gpu_scaling_engine").2,
                 badge: "GPU Scanout".into(),
             },
             GpuSettingItem {
                 id: "override_game_scaling".into(),
                 name: "Override Scaling Mode Set by Games & Programs".into(),
                 description: "Sets bShouldLetterbox=False across all game config files and overrides DXGI scaling.".into(),
-                enabled: saved.override_game_scaling,
+                enabled: f("override_game_scaling").0,
+                verified: f("override_game_scaling").1,
+                detail: f("override_game_scaling").2,
                 badge: "Game Bypass".into(),
             },
             GpuSettingItem {
                 id: "low_latency_scanout".into(),
                 name: "Ultra-Low Latency Direct Scanout Engine".into(),
                 description: "Configures DWM direct flip queue for zero scanout latency.".into(),
-                enabled: saved.low_latency_scanout,
+                enabled: f("low_latency_scanout").0,
+                verified: f("low_latency_scanout").1,
+                detail: f("low_latency_scanout").2,
                 badge: "DirectFlip".into(),
             },
             GpuSettingItem {
                 id: "integer_scaling_bypass".into(),
                 name: "Bypass Fixed Aspect Ratio Restrictions".into(),
                 description: "Disables aspect ratio locks to allow custom stretched resolutions to fill the panel.".into(),
-                enabled: saved.integer_scaling_bypass,
+                enabled: f("integer_scaling_bypass").0,
+                verified: f("integer_scaling_bypass").1,
+                detail: f("integer_scaling_bypass").2,
                 badge: "Fill Panel".into(),
             },
         ],
@@ -420,7 +701,7 @@ pub fn apply_single_gpu_setting(id: &str, value: bool) -> Result<GpuSettingsRepo
             // Set global WDDM scaling in GraphicsDrivers\Configuration
             let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
             if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
-                apply_scaling_recursive(&config_root, if value { 4 } else { 2 });
+                apply_scaling_recursive(&config_root, if value { WDDM_SCALING_FULLSCREEN } else { 2 });
             }
         }
         "gpu_scaling_engine" => {
@@ -467,7 +748,7 @@ pub fn apply_single_gpu_setting(id: &str, value: bool) -> Result<GpuSettingsRepo
             saved.integer_scaling_bypass = value;
             let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
             if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
-                apply_scaling_recursive(&config_root, 4);
+                apply_scaling_recursive(&config_root, WDDM_SCALING_FULLSCREEN);
             }
 
             apply_to_all_gpu_adapters(|desc, prov, sub_key| {
@@ -573,7 +854,7 @@ pub fn auto_configure_all_gpu_settings() -> Result<(String, GpuSettingsReport), 
     // 4. Set global WDDM scaling in GraphicsDrivers\Configuration
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     if let Ok(config_root) = hklm.open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration", KEY_READ | KEY_SET_VALUE) {
-        apply_scaling_recursive(&config_root, 4);
+        apply_scaling_recursive(&config_root, WDDM_SCALING_FULLSCREEN);
     }
 
     // 5. Configure all GPU adapter keys (NVIDIA, AMD, Intel)

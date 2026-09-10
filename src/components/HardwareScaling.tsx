@@ -180,7 +180,8 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
               </h3>
             </div>
             <span className="text-[10px] text-m3-primary font-mono font-semibold px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle">
-              {settingsList.filter((s) => s.enabled).length} / {settingsList.length} Active
+              {settingsList.filter((s) => s.verified && s.enabled).length} verified ·{' '}
+              {settingsList.filter((s) => s.enabled).length} requested · {settingsList.length} total
             </span>
           </div>
 
@@ -207,7 +208,24 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
                       <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-m3-surface-container-lowest border border-m3-outline-subtle text-m3-on-surface-variant">
                         {setting.badge}
                       </span>
+                      {/* Never claim a state we did not read back. */}
+                      {setting.verified ? (
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border border-m3-mint/40 bg-m3-mint/15 text-m3-mint">
+                          VERIFIED
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border border-amber-400/40 bg-amber-400/10 text-amber-400"
+                          title="Recon cannot read this value back from the driver — the vendor controls it"
+                        >
+                          UNVERIFIED
+                        </span>
+                      )}
                     </div>
+                    {/* Exactly what was found on the machine. */}
+                    <p className="text-[10px] text-m3-on-surface-variant leading-snug mt-0.5 break-words">
+                      {setting.detail}
+                    </p>
                   </div>
                 </div>
 
