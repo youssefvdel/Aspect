@@ -71,6 +71,20 @@ function getFlagUrl(code?: string): string | null {
   return `https://flagcdn.com/24x18/${lower}.png`;
 }
 
+/** Full MMR picture for a lobby player, surfaced on hover. */
+function rankTooltip(p: LiveMatchPlayer): string {
+  const bits: string[] = [];
+  bits.push(p.tier > 0 ? `${p.rank}` : 'Unranked');
+  if (p.rr > 0) bits.push(`${p.rr} RR`);
+  if (p.actGames && p.actGames > 0) {
+    bits.push(`${p.actWins ?? 0}W-${Math.max(0, p.actGames - (p.actWins ?? 0))}L this act`);
+  }
+  if (p.leaderboardRank && p.leaderboardRank > 0) bits.push(`#${p.leaderboardRank} Leaderboard`);
+  if (p.peakTier > 0) bits.push(`Peak ${p.peakRank}`);
+  if (p.isRankHidden) bits.push('Act rank hidden (unmasked)');
+  return bits.join(' • ');
+}
+
 
 
 function formatKd(kd?: number | string): { text: string; color: string } {
@@ -1519,7 +1533,7 @@ const PregameTeamColumn: React.FC<{
       {/* Table Column Headers: Agent, Player, Rank (Icon), Peak (Icon), K/D, Win%, HS%, Recent */}
       <div className="grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
         <span>Player</span>
-        <span className="text-center">Rank</span>
+        <span className="text-center">Rank·RR</span>
         <span className="text-center">Peak</span>
         <span className="text-right">K/D</span>
         <span className="text-right">Win%</span>
@@ -1629,12 +1643,18 @@ const PregameTeamColumn: React.FC<{
                 </div>
               </div>
 
-              {/* Current Rank (Icon only) */}
-              <div className="flex items-center justify-center" title={`Rank: ${p.rank}${p.rr ? ` • ${p.rr}RR` : ''}`}>
+              {/* Current Rank emblem + live RR */}
+              <div className="flex flex-col items-center justify-center leading-none" title={rankTooltip(p)}>
                 {icon ? (
                   <img src={icon} alt="" draggable={false} className="w-5 h-5 object-contain shrink-0" />
                 ) : (
                   <span className="text-[10px] font-mono text-zinc-500">—</span>
+                )}
+                {p.rr > 0 && (
+                  <span className="text-[8px] font-mono font-bold text-m3-primary mt-0.5">
+                    {p.rr}
+                    <span className="text-[6px] text-zinc-500 ml-px">RR</span>
+                  </span>
                 )}
               </div>
 
@@ -1797,12 +1817,15 @@ const VerticalSquadColumn: React.FC<{
             )}
           </div>
 
-          {/* Current Rank (Icon only) */}
-          <div className="flex items-center justify-center w-6 shrink-0" title={`Rank: ${p.rank} (${p.rr} RR)`}>
+          {/* Current Rank emblem + live RR */}
+          <div className="flex flex-col items-center justify-center w-7 shrink-0 leading-none" title={rankTooltip(p)}>
             {icon ? (
               <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0" />
             ) : (
               <span className="text-[10px] font-mono text-zinc-500">—</span>
+            )}
+            {p.rr > 0 && (
+              <span className="text-[7px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
             )}
           </div>
 

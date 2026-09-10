@@ -976,7 +976,19 @@ export const glzHostFor = (region: string): string => {
   return map[r] ?? 'glz-eu-1.eu.a.pvp.net';
 };
 
-const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: number; fetchedAt: number }>();
+const liveMmrCache = new Map<
+  string,
+  {
+    tier: number;
+    rr: number;
+    peakTier: number;
+    actWins?: number;
+    actGames?: number;
+    leaderboardRank?: number;
+    isRankHidden?: boolean;
+    fetchedAt: number;
+  }
+>();
 
 /* ------------------------------------------------------------------ *
  * LAST-24H WIN/LOSS TRACKER
@@ -1343,7 +1355,18 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const nameMap = await resolvePlayerNames(puuids, region);
 
     // Fetch MMRs only for players not already cached within the last 15 minutes
-    const mmrMap = new Map<string, { tier: number; rr: number; peakTier: number }>();
+    const mmrMap = new Map<
+      string,
+      {
+        tier: number;
+        rr: number;
+        peakTier: number;
+        actWins?: number;
+        actGames?: number;
+        leaderboardRank?: number;
+        isRankHidden?: boolean;
+      }
+    >();
     const missingMmr = puuids.filter((p) => {
       const cached = liveMmrCache.get(p);
       if (cached && Date.now() - cached.fetchedAt < 15 * 60 * 1000) {
@@ -1363,10 +1386,29 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               const j = await riotGet(shard, `/mmr/v1/players/${p}`);
               const latest = j?.LatestCompetitiveUpdate ?? {};
               const tierId = Number(latest?.TierAfterUpdate ?? 0);
-              const rr = Number(latest?.RankedRatingAfterUpdate ?? 0);
               const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+              // Current-act row carries the LIVE RR; LatestCompetitiveUpdate only
+              // holds the value as of the last ranked game.
+              const curSeasonId = String(latest?.SeasonID ?? '').toLowerCase();
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const cur = (Object.entries(seasons) as [string, any][]).find(
+                ([id]) => id.toLowerCase() === curSeasonId
+              )?.[1];
+              const rr =
+                cur?.RankedRating != null
+                  ? Number(cur.RankedRating)
+                  : Number(latest?.RankedRatingAfterUpdate ?? 0);
               const peak = Math.max(tierId, extractPeakTier(seasons));
-              const val = { tier: tierId, rr, peakTier: peak, fetchedAt: Date.now() };
+              const val = {
+                tier: tierId,
+                rr,
+                peakTier: peak,
+                actWins: Number(cur?.NumberOfWins ?? 0),
+                actGames: Number(cur?.NumberOfGames ?? 0),
+                leaderboardRank: Number(cur?.LeaderboardRank ?? 0),
+                isRankHidden: !!j?.IsActRankBadgeHidden,
+                fetchedAt: Date.now(),
+              };
               liveMmrCache.set(p, val);
               mmrMap.set(p, val);
             } catch {
@@ -1487,6 +1529,10 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         rr: mmr.rr,
         peakTier: mmr.peakTier,
         peakRank: mmr.peakTier > 0 ? tierName(mmr.peakTier) : '—',
+        actWins: mmr.actWins,
+        actGames: mmr.actGames,
+        leaderboardRank: mmr.leaderboardRank,
+        isRankHidden: mmr.isRankHidden,
         accountLevel: p.accountLevel,
         cardId: p.cardId,
         isMe: p.puuid === ent.puuid,

@@ -260,6 +260,10 @@ export interface LiveMatchPlayer {
   rr: number;
   peakTier: number;
   peakRank: string;
+  actWins?: number;
+  actGames?: number;
+  leaderboardRank?: number;
+  isRankHidden?: boolean;
   accountLevel: number;
   cardId: string;
   isMe: boolean;
