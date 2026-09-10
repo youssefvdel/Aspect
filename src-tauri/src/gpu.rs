@@ -21,7 +21,6 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
    "Full-Screen Hardware Scaling (0 Black Bars)", i.e. it requested the exact
    opposite of what it claimed. Stretched must be 3. */
 const WDDM_SCALING_FULLSCREEN: u32 = 3;
-const WDDM_SCALING_ASPECT: u32 = 4;
 
 /// Human label for a WDDM `Scaling` value.
 fn scaling_label(v: u32) -> &'static str {

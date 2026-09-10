@@ -43,6 +43,13 @@ export function trnCooldownRemainingMs(): number {
   return Math.max(0, trnCooldownUntil - Date.now());
 }
 
+/** Reset cooldown so an explicit user retry fires immediately. */
+export function resetTrnCooldown(): void {
+  trnCooldownStep = 0;
+  trnCooldownUntil = 0;
+  trnNextSlot = 0;
+}
+
 async function trnGet(path: string): Promise<unknown> {
   if (!isTauri()) throw new Error('TRN needs the desktop app.');
 

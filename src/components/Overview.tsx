@@ -7,6 +7,7 @@ import {
   fetchTrnActStats,
   fetchTrnAgents,
   trnCooldownRemainingMs,
+  resetTrnCooldown,
   type TrnActStats,
   type TrnAgentStat,
 } from '../utils/trn';
@@ -341,7 +342,10 @@ export const Overview: React.FC = () => {
             </span>
           </div>
           <button
-            onClick={() => setReloadKey((k) => k + 1)}
+            onClick={() => {
+              resetTrnCooldown();
+              setReloadKey((k) => k + 1);
+            }}
             className="shrink-0 px-2.5 py-1 rounded-lg bg-m3-coral/20 hover:bg-m3-coral/30 border border-m3-coral/40 text-m3-coral font-bold cursor-pointer transition-colors"
           >
             Retry
