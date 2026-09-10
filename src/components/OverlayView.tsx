@@ -517,6 +517,16 @@ export const OverlayView: React.FC = () => {
       className="fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans pointer-events-none"
       style={{ backgroundColor: 'transparent' }}
     >
+      {/* Edit Mode Full-Screen Dark Dimmer Backdrop: darkens the screen for focused editing */}
+      {isEditMode && (
+        <div
+          className="fixed inset-0 pointer-events-auto bg-black/65 backdrop-blur-[2px] transition-opacity duration-200 z-0"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+          }}
+        />
+      )}
+
       {/* ZERO top bars. ZERO bottom footers. ZERO perimeter rings. Pure in-game transparency. */}
 
       {/* ============================================================ */}
@@ -766,7 +776,13 @@ export const OverlayView: React.FC = () => {
               </div>
             </>
           )}
-          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-2.5 shadow-2xl flex flex-col gap-2">
+          <div
+            className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-2 transition-all ${
+              isEditMode
+                ? 'bg-zinc-900/95 backdrop-blur-2xl border-white/25 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/20'
+                : 'bg-black/35 backdrop-blur-md border-white/10'
+            }`}
+          >
             {/* Header: Map • Mode • Phase */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -903,7 +919,13 @@ export const OverlayView: React.FC = () => {
               </div>
             </>
           )}
-          <div className="rounded-3xl bg-black/45 backdrop-blur-xl border border-white/10 p-4 shadow-2xl flex flex-col gap-3">
+          <div
+            className={`rounded-3xl border p-4 shadow-2xl flex flex-col gap-3 transition-all ${
+              isEditMode
+                ? 'bg-zinc-900/95 backdrop-blur-2xl border-white/25 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/20'
+                : 'bg-black/45 backdrop-blur-xl border-white/10'
+            }`}
+          >
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="font-display font-black text-white truncate">
