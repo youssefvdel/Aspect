@@ -1,6 +1,7 @@
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HRGN, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    GetMonitorInfoW, MonitorFromWindow, RedrawWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -330,6 +331,20 @@ pub fn restore_window(hwnd_val: isize) -> Result<String, String> {
     }
 }
 
+/// Invalidate the whole overlay window tree so DWM drops any stale surface
+/// regions (white flashes) left behind by style toggles and resolution
+/// switches. The frontend's own repaint hammer covers the web content.
+fn redraw_all(hwnd: HWND) {
+    unsafe {
+        let _ = RedrawWindow(
+            hwnd,
+            None,
+            None::<HRGN>,
+            RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN,
+        );
+    }
+}
+
 #[link(name = "dwmapi")]
 extern "system" {
     fn DwmSetWindowAttribute(
@@ -483,6 +498,8 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
 
+        redraw_all(hwnd);
+
         Ok(())
     }
 }
@@ -530,6 +547,9 @@ pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
             height,
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
+
+        redraw_all(hwnd);
+
         Ok(())
     }
 }
@@ -577,6 +597,9 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
             height,
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
+
+        redraw_all(hwnd);
+
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
 import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
@@ -275,6 +275,7 @@ export const OverlayView: React.FC = () => {
   };
 
   // Direct element references for GPU hardware-accelerated zero-lag dragging
+  const rootRef = useRef<HTMLDivElement>(null);
   const rankRef = useRef<HTMLDivElement>(null);
   const displayRef = useRef<HTMLDivElement>(null);
   const kpiRef = useRef<HTMLDivElement>(null);
@@ -289,20 +290,40 @@ export const OverlayView: React.FC = () => {
     pregame: pregameRef,
   };
 
+  // DWM/WebView2 can keep a stale white surface region after Win32 style
+  // toggles or resolution switches (Chromium never repaints undamaged
+  // transparent areas). Hiding + reflowing the root forces a full re-raster,
+  // discarding the stale pixels. Costs one invisible frame.
+  const forceRepaint = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.style.display = 'none';
+      void el.offsetHeight;
+      el.style.display = '';
+    });
+  }, []);
+
   // Sync edit mode and config changes from main app
   useEffect(() => {
     getOverlayEditMode().then(setIsEditMode).catch(() => {});
     const unlistenEdit = listen<boolean>('overlay-edit-mode-changed', (event) => {
       setIsEditMode(event.payload);
+      forceRepaint();
     });
     const unlistenCfg = listen<OverlayConfig>('overlay-config-changed', (event) => {
       setConfig(event.payload);
     });
+    // Resolution switches realloc DWM surfaces — repaint once it settles.
+    const unlistenDisp = listen<unknown>('display-mode-changed', () => {
+      setTimeout(forceRepaint, 350);
+    });
     return () => {
       unlistenEdit.then((fn) => fn()).catch(() => {});
       unlistenCfg.then((fn) => fn()).catch(() => {});
+      unlistenDisp.then((fn) => fn()).catch(() => {});
     };
-  }, []);
+  }, [forceRepaint]);
 
   // Poll live match data ONLY when visible; idle backs off to ~1/3 rate
   // (agent select lasts ~60s+, so a 13s worst-case detect delay is fine).
@@ -533,6 +554,7 @@ export const OverlayView: React.FC = () => {
 
   return (
     <div
+      ref={rootRef}
       onDragStart={(e) => e.preventDefault()}
       className="fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans pointer-events-none"
       style={{ backgroundColor: 'transparent' }}
