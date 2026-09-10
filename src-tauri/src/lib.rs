@@ -238,7 +238,6 @@ fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
                 let _ = window_manager::setup_overlay_window(hwnd.0 as isize, true);
             }
         }
-        let _ = window.set_ignore_cursor_events(true);
         window.show().map_err(|e| e.to_string())?;
         Ok(())
     } else {
@@ -265,7 +264,6 @@ fn set_overlay_clickthrough(app: tauri::AppHandle, enabled: bool) -> Result<(), 
                 let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, enabled);
             }
         }
-        let _ = window.set_ignore_cursor_events(enabled);
         if !enabled {
             let _ = window.set_focus();
         }
@@ -287,7 +285,6 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
                     let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, false);
                 }
             }
-            let _ = window.set_ignore_cursor_events(false);
             let _ = window.set_focus();
         } else {
             #[cfg(windows)]
@@ -296,7 +293,6 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
                     let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, true);
                 }
             }
-            let _ = window.set_ignore_cursor_events(true);
         }
         let _ = app.emit("overlay-edit-mode-changed", in_edit_mode);
         Ok(())
@@ -729,6 +725,11 @@ pub fn run() {
                             let _ = show_overlay(auto_overlay_handle.clone());
                         } else if !valorant_present && is_vis {
                             let _ = hide_overlay(auto_overlay_handle.clone());
+                        } else if valorant_present && is_vis {
+                            #[cfg(windows)]
+                            if let Ok(hwnd) = overlay.hwnd() {
+                                let _ = window_manager::align_overlay_to_valorant(hwnd.0 as isize);
+                            }
                         }
                     }
                 }

@@ -3,12 +3,12 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
-    GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, SetWindowLongPtrW,
-    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN,
-    SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
-    WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
-    WS_SYSMENU, WS_THICKFRAME,
+    EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW,
+    GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible,
+    SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN,
+    SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
+    WINDOW_STYLE, WS_BORDER, WS_CAPTION, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
+    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -112,14 +112,14 @@ pub fn is_valorant_game_window(_hwnd: HWND, title: &str, class_name: &str) -> bo
         return false;
     }
 
-    // 2. Valorant's real game client is an Unreal Engine 4 window ("UnrealWindow").
+    // 2. Valorant's real game client is an Unreal Engine 4 window ("UnrealWindow" or "VALORANTUnrealWindow").
     // Third-party trackers and Electron wrappers are NEVER "UnrealWindow".
-    if class_name == "UnrealWindow" {
+    if class_name == "UnrealWindow" || class_name == "VALORANTUnrealWindow" || class_name.contains("UnrealWindow") {
         return lower == "valorant" || lower.starts_with("valorant");
     }
 
     // 3. Fallback: exact match on title "VALORANT" if class_name is unavailable
-    lower == "valorant"
+    lower == "valorant" || lower.starts_with("valorant")
 }
 
 #[allow(dead_code)]
@@ -329,6 +329,107 @@ pub fn restore_window(hwnd_val: isize) -> Result<String, String> {
     }
 }
 
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmSetWindowAttribute(
+        hwnd: HWND,
+        dw_attribute: u32,
+        pv_attribute: *const std::ffi::c_void,
+        cb_attribute: u32,
+    ) -> windows::core::HRESULT;
+}
+
+pub fn strip_all_dwm_borders(hwnd: HWND) {
+    unsafe {
+        // 1. Prevent Windows 11 rounded corners from drawing white pixels in corners
+        let do_not_round: u32 = 1; // DWMWCP_DONOTROUND
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            33, // DWMWA_WINDOW_CORNER_PREFERENCE
+            &do_not_round as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+
+        // 2. Strictly prohibit DWM from drawing any window border or frame
+        let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            34, // DWMWA_BORDER_COLOR
+            &color_none as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+    }
+}
+
+pub fn get_valorant_or_screen_rect(hwnd: HWND) -> (i32, i32, i32, i32) {
+    unsafe {
+        if let Some(val) = find_valorant_game_window() {
+            let val_hwnd = HWND(val.hwnd as *mut std::ffi::c_void);
+            let mut rect = RECT::default();
+            if GetWindowRect(val_hwnd, &mut rect).is_ok() {
+                let w = rect.right - rect.left;
+                let h = rect.bottom - rect.top;
+                if w > 100 && h > 100 {
+                    return (rect.left, rect.top, w, h);
+                }
+            }
+        }
+
+        let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(h_mon, &mut mi).as_bool() {
+            let rc = mi.rcMonitor;
+            (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
+        } else {
+            let cx = GetSystemMetrics(SM_CXSCREEN);
+            let cy = GetSystemMetrics(SM_CYSCREEN);
+            (0, 0, cx, cy)
+        }
+    }
+}
+
+pub fn align_overlay_to_valorant(hwnd_val: isize) -> Result<(), String> {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return Err("Overlay window handle is invalid.".to_string());
+        }
+
+        if let Some(val) = find_valorant_game_window() {
+            let val_hwnd = HWND(val.hwnd as *mut std::ffi::c_void);
+            let mut val_rect = RECT::default();
+            if GetWindowRect(val_hwnd, &mut val_rect).is_ok() {
+                let w = val_rect.right - val_rect.left;
+                let h = val_rect.bottom - val_rect.top;
+                if w > 100 && h > 100 {
+                    let mut cur_rect = RECT::default();
+                    if GetWindowRect(hwnd, &mut cur_rect).is_ok() {
+                        if cur_rect.left != val_rect.left
+                            || cur_rect.top != val_rect.top
+                            || (cur_rect.right - cur_rect.left) != w
+                            || (cur_rect.bottom - cur_rect.top) != h
+                        {
+                            let _ = SetWindowPos(
+                                hwnd,
+                                HWND_TOPMOST,
+                                val_rect.left,
+                                val_rect.top,
+                                w,
+                                h,
+                                SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
     unsafe {
         let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
@@ -338,42 +439,31 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
 
         // 1. Strip ALL standard window decorations, frames, and captions so zero title bar renders
         let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let mut style = WINDOW_STYLE(current_style);
-        style &= !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_BORDER);
-        style |= WS_POPUP;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, style.0 as isize);
+        let new_style = ((current_style
+            & !(0x00C00000 | 0x00040000 | 0x00010000 | 0x00020000 | 0x00080000 | 0x00800000))
+            | 0x80000000  // WS_POPUP
+            | 0x10000000  // WS_VISIBLE
+            | 0x04000000) // WS_CLIPSIBLINGS
+            as i32 as isize;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
         // 2. Configure extended styles
-        // WS_EX_TRANSPARENT: 0x00000020 (mouse clicks pass through)
-        // WS_EX_LAYERED:     0x00080000 (transparency support)
-        // WS_EX_NOACTIVATE:  0x08000000 (never steal focus from Valorant)
-        // WS_EX_TOPMOST:     0x00000008 (stay above fullscreen game)
-        // WS_EX_TOOLWINDOW:  0x00000080 (hide from Alt+Tab switcher)
-        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        ex_style |= 0x00080000 | 0x00000008 | 0x00000080;
+        let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
+            | 0x00080000  // WS_EX_LAYERED
+            | 0x00000008  // WS_EX_TOPMOST
+            | 0x00000080; // WS_EX_TOOLWINDOW
         if clickthrough {
-            ex_style |= 0x00000020 | 0x08000000;
+            ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
             ex_style &= !(0x00000020 | 0x08000000);
         }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
 
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+        // 3. Strip all DWM borders & shadows
+        strip_all_dwm_borders(hwnd);
 
-        // Match primary display bounds
-        let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        let mut mi = MONITORINFO {
-            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-
-        let (x, y, width, height) = if GetMonitorInfoW(h_mon, &mut mi).as_bool() {
-            let rc = mi.rcMonitor;
-            (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
-        } else {
-            let cx = GetSystemMetrics(SM_CXSCREEN);
-            let cy = GetSystemMetrics(SM_CYSCREEN);
-            (0, 0, cx, cy)
-        };
+        // 4. Align strictly to Valorant window rect
+        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
 
         let _ = SetWindowPos(
             hwnd,
@@ -382,7 +472,7 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
             y,
             width,
             height,
-            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
 
         Ok(())
@@ -396,32 +486,41 @@ pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Resul
             return Err("Overlay window handle is invalid.".to_string());
         }
 
-        // Always strip caption and force WS_POPUP
+        // Always strip caption and force WS_POPUP with 64-bit sign extension
         let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let mut style = WINDOW_STYLE(current_style);
-        style &= !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_BORDER);
-        style |= WS_POPUP;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, style.0 as isize);
+        let new_style = ((current_style
+            & !(0x00C00000 | 0x00040000 | 0x00010000 | 0x00020000 | 0x00080000 | 0x00800000))
+            | 0x80000000  // WS_POPUP
+            | 0x10000000  // WS_VISIBLE
+            | 0x04000000) // WS_CLIPSIBLINGS
+            as i32 as isize;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
 
-        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        ex_style |= 0x00080000 | 0x00000008 | 0x00000080;
+        let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
+            | 0x00080000  // WS_EX_LAYERED
+            | 0x00000008  // WS_EX_TOPMOST
+            | 0x00000080; // WS_EX_TOOLWINDOW
         if clickthrough {
-            ex_style |= 0x00000020; // WS_EX_TRANSPARENT (clicks pass through)
-            ex_style |= 0x08000000; // WS_EX_NOACTIVATE (never steal focus)
+            ex_style |= 0x00000020 | 0x08000000; // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         } else {
-            ex_style &= !0x00000020; // Allow mouse clicks & dragging
-            ex_style &= !0x08000000; // Allow activation for editing
+            ex_style &= !(0x00000020 | 0x08000000); // Allow mouse clicks & dragging
         }
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
+
+        // Strip DWM borders
+        strip_all_dwm_borders(hwnd);
+
+        // Synchronize position to Valorant if running
+        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
 
         let _ = SetWindowPos(
             hwnd,
             HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            x,
+            y,
+            width,
+            height,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
         Ok(())
     }
