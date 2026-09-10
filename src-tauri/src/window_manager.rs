@@ -1,6 +1,6 @@
-use windows::Win32::Foundation::{BOOL, HRGN, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromWindow, RedrawWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    GetMonitorInfoW, MonitorFromWindow, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
@@ -336,10 +336,12 @@ pub fn restore_window(hwnd_val: isize) -> Result<String, String> {
 /// switches. The frontend's own repaint hammer covers the web content.
 fn redraw_all(hwnd: HWND) {
     unsafe {
+        // Null region handle by value: Option<HRGN> does not implement
+        // Param<HRGN> under the mixed windows-core versions in this graph.
         let _ = RedrawWindow(
             hwnd,
             None,
-            None::<HRGN>,
+            HRGN(std::ptr::null_mut()),
             RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN,
         );
     }
