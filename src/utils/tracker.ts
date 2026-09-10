@@ -977,6 +977,197 @@ export const glzHostFor = (region: string): string => {
 };
 
 const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: number; fetchedAt: number }>();
+
+/* ------------------------------------------------------------------ *
+ * LAST-24H WIN/LOSS TRACKER
+ * Riot's local match-history endpoint resolves for ANY puuid (not just
+ * the signed-in account), and every entry carries GameStartTime. We keep
+ * a compact per-match result table (matchId → { puuid: 1|0 }) instead of
+ * full match details, so hundreds of matches cost only a few KB.
+ * ------------------------------------------------------------------ */
+const MATCH_RESULTS_KEY = 'recon_match_results_v1';
+
+let matchResultTable: Record<string, Record<string, 1 | 0>> | null = null;
+
+function loadResultTable(): Record<string, Record<string, 1 | 0>> {
+  if (matchResultTable) return matchResultTable;
+  try {
+    const raw = localStorage.getItem(MATCH_RESULTS_KEY);
+    matchResultTable = raw ? (JSON.parse(raw) as Record<string, Record<string, 1 | 0>>) : {};
+  } catch {
+    matchResultTable = {};
+  }
+  return matchResultTable;
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+function persistResultTable(): void {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      const table = loadResultTable();
+      const ids = Object.keys(table);
+      // Bound growth: keep the 400 most recently touched matches.
+      if (ids.length > 400) {
+        for (const id of ids.slice(0, ids.length - 400)) delete table[id];
+      }
+      localStorage.setItem(MATCH_RESULTS_KEY, JSON.stringify(table));
+    } catch {}
+  }, 1500);
+}
+
+/** Global gate: Riot's local API dislikes bursts, and match-details is heavy. */
+const DETAIL_CONCURRENCY = 6;
+let detailActive = 0;
+const detailQueue: Array<() => void> = [];
+async function withDetailSlot<R>(fn: () => Promise<R>): Promise<R> {
+  if (detailActive >= DETAIL_CONCURRENCY) {
+    await new Promise<void>((resolve) => detailQueue.push(resolve));
+  }
+  detailActive++;
+  try {
+    return await fn();
+  } finally {
+    detailActive--;
+    const next = detailQueue.shift();
+    if (next) next();
+  }
+}
+
+/** Compact W/L lookup for one match+player. Returns 1 win, 0 loss, null unknown. */
+async function fetchLiteMatchResult(
+  region: string,
+  matchId: string,
+  puuid: string
+): Promise<1 | 0 | null> {
+  const table = loadResultTable();
+  const known = table[matchId]?.[puuid];
+  if (known !== undefined) return known;
+  return withDetailSlot(async () => {
+    // Re-check inside the slot: another caller may have filled it while we queued.
+    const fresh = loadResultTable()[matchId]?.[puuid];
+    if (fresh !== undefined) return fresh;
+    try {
+      const j = await riotGet(shardFor(region), `/match-details/v1/matches/${matchId}`);
+      const scores: Record<string, number> = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const t of (Array.isArray(j?.teams) ? j.teams : []) as any[]) {
+        scores[normTeam(t?.teamId)] = Number(t?.roundsWon ?? 0);
+      }
+      const row: Record<string, 1 | 0> = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const p of (Array.isArray(j?.players) ? j.players : []) as any[]) {
+        const sub = String(p?.subject ?? '');
+        if (!sub) continue;
+        const tm = normTeam(p?.teamId);
+        const opp = Object.keys(scores).find((k) => k !== tm);
+        const mine = scores[tm] ?? 0;
+        const theirs = opp ? scores[opp] ?? 0 : 0;
+        row[sub] = mine > theirs ? 1 : 0;
+      }
+      if (Object.keys(row).length === 0) return null;
+      loadResultTable()[matchId] = row;
+      persistResultTable();
+      return row[puuid] ?? null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+/** Run an async mapper over items with a hard concurrency cap. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      out[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+export interface Recent24hRecord {
+  won: number;
+  lost: number;
+  /** Most recent results, newest first — used for the streak badge. */
+  streak: number;
+  streakIsWin: boolean;
+  fetchedAt: number;
+}
+
+const recent24hCache = new Map<string, Recent24hRecord>();
+const recent24hInflight = new Map<string, Promise<Recent24hRecord>>();
+
+/**
+ * Real win/loss record for a player over the last 24 hours, newest match first.
+ * Only matches actually started within the window are counted.
+ */
+export async function fetchPlayer24hRecord(
+  puuid: string,
+  region: string
+): Promise<Recent24hRecord> {
+  const empty: Recent24hRecord = { won: 0, lost: 0, streak: 0, streakIsWin: false, fetchedAt: Date.now() };
+  if (!puuid) return empty;
+  const cached = recent24hCache.get(puuid);
+  if (cached && Date.now() - cached.fetchedAt < 10 * 60 * 1000) return cached;
+  // The overlay polls every few seconds — never stack duplicate work per player.
+  const running = recent24hInflight.get(puuid);
+  if (running) return running;
+
+  const task = (async (): Promise<Recent24hRecord> => {
+    try {
+      const j = await riotGet(
+        shardFor(region),
+        `/match-history/v1/history/${puuid}?startIndex=0&endIndex=20`
+      );
+      const cutoff = Date.now() - 24 * 3600 * 1000;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recent = ((Array.isArray(j?.History) ? j.History : []) as any[])
+        .map((h) => ({ id: String(h?.MatchID ?? ''), at: Number(h?.GameStartTime ?? 0) }))
+        .filter((h) => h.id && h.at >= cutoff)
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 20);
+
+      if (recent.length === 0) {
+        recent24hCache.set(puuid, empty);
+        return empty;
+      }
+
+      const results = await mapLimit(recent, 4, (m) => fetchLiteMatchResult(region, m.id, puuid));
+      let won = 0;
+      let lost = 0;
+      // results[] follows `recent` order = newest first
+      const played = results.filter((r): r is 1 | 0 => r === 0 || r === 1);
+      for (const r of played) {
+        if (r === 1) won++;
+        else lost++;
+      }
+      let streak = 0;
+      const streakIsWin = played.length > 0 && played[0] === 1;
+      for (const r of played) {
+        const isWin = r === 1;
+        if (isWin === streakIsWin) streak++;
+        else break;
+      }
+      const record: Recent24hRecord = { won, lost, streak, streakIsWin, fetchedAt: Date.now() };
+      recent24hCache.set(puuid, record);
+      return record;
+    } catch {
+      recent24hCache.set(puuid, empty);
+      return empty;
+    } finally {
+      recent24hInflight.delete(puuid);
+    }
+  })();
+
+  recent24hInflight.set(puuid, task);
+  return task;
+}
+
 const livePlayerStatsCache = new Map<
   string,
   {
@@ -986,6 +1177,7 @@ const livePlayerStatsCache = new Map<
     recentWon?: number;
     recentLost?: number;
     streak?: number;
+    streakIsWin?: boolean;
     country?: string;
     fetchedAt: number;
   }
@@ -1228,21 +1420,40 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                     ? res.countryCode.toUpperCase()
                     : undefined;
 
+                const prev = livePlayerStatsCache.get(p.puuid);
                 livePlayerStatsCache.set(p.puuid, {
+                  ...prev,
                   kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
                   winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
                   hsPct: res?.stats?.hsPct != null ? Math.round(res.stats.hsPct) : undefined,
-                  recentWon: res?.stats?.wins,
-                  recentLost: res?.stats?.losses,
                   country: realCountry,
                   fetchedAt: Date.now(),
                 });
               })
               .catch(() => {
                 livePlayerStatsCache.set(p.puuid, {
+                  ...livePlayerStatsCache.get(p.puuid),
                   fetchedAt: Date.now(),
                 });
               });
+          })
+          .catch(() => {});
+      }
+
+      // Last-24h record — Riot local history works for ANY puuid, so every
+      // player in the lobby gets a real 24-hour win/loss line.
+      const cached24h = livePlayerStatsCache.get(p.puuid);
+      if (Date.now() - (cached24h?.fetchedAt ?? 0) > 10 * 60 * 1000) {
+        fetchPlayer24hRecord(p.puuid, region)
+          .then((rec) => {
+            livePlayerStatsCache.set(p.puuid, {
+              ...livePlayerStatsCache.get(p.puuid),
+              recentWon: rec.won,
+              recentLost: rec.lost,
+              streak: rec.streak,
+              streakIsWin: rec.streakIsWin,
+              fetchedAt: Date.now(),
+            });
           })
           .catch(() => {});
       }
@@ -1275,6 +1486,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         recentWon: statsCached?.recentWon,
         recentLost: statsCached?.recentLost,
         streak: statsCached?.streak,
+        streakIsWin: statsCached?.streakIsWin,
         isIncognito: p.isIncognito ?? false,
       };
 

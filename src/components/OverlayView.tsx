@@ -1524,7 +1524,7 @@ const PregameTeamColumn: React.FC<{
         <span className="text-right">K/D</span>
         <span className="text-right">Win%</span>
         <span className="text-right">HS%</span>
-        <span className="text-right">Recent</span>
+        <span className="text-right">24H</span>
       </div>
 
       {/* Teammate Rows */}
@@ -1672,16 +1672,28 @@ const PregameTeamColumn: React.FC<{
                 )}
               </div>
 
-              {/* Recent (W/L and Streak) */}
-              <div className="flex flex-col items-end leading-none font-mono" title="Recent Record & Streak">
-                {p.recentWon != null && p.recentLost != null ? (
+              {/* Last 24h record (W/L) + current streak */}
+              <div
+                className="flex flex-col items-end leading-none font-mono"
+                title={`Last 24 hours: ${p.recentWon ?? 0}W - ${p.recentLost ?? 0}L${
+                  p.streak && p.streak > 0 ? ` • ${p.streak} ${p.streakIsWin ? 'win' : 'loss'} streak` : ''
+                }`}
+              >
+                {p.recentWon != null || p.recentLost != null ? (
                   <>
-                    <span className="text-[9px] font-bold text-white">
-                      {p.recentWon}W - {p.recentLost}L
+                    <span className="text-[9px] font-bold">
+                      <span className={p.recentWon ? 'text-m3-mint' : 'text-zinc-500'}>{p.recentWon ?? 0}W</span>
+                      <span className="text-zinc-600"> - </span>
+                      <span className={p.recentLost ? 'text-rose-400' : 'text-zinc-500'}>{p.recentLost ?? 0}L</span>
                     </span>
-                    {p.streak && p.streak > 0 ? (
-                      <span className="text-[8px] text-m3-mint font-bold mt-0.5">
-                        {p.streak}W Strk
+                    {p.streak && p.streak > 1 ? (
+                      <span
+                        className={`text-[8px] font-bold mt-0.5 ${
+                          p.streakIsWin ? 'text-m3-mint' : 'text-rose-400'
+                        }`}
+                      >
+                        {p.streak}
+                        {p.streakIsWin ? 'W' : 'L'} Strk
                       </span>
                     ) : null}
                   </>
