@@ -39,3 +39,28 @@
    - Modern landing page (Next.js / Astro / Vite) showcasing features, download links, auto-updater feed, and live community stats.
 7. **Mobile Companion App**
    - Live lobby inspect on phone, custom crosshair vault, store checker, and remote notifications when match is found.
+
+---
+
+## 3. Deferred / Backlog
+
+### MMR Signal (raw MMR is not obtainable)
+*Status:* Deferred by Youssef — lower priority than the current widget work.
+
+**Verified finding (do not re-litigate):** Riot does **not** expose the hidden/raw MMR
+number that sits behind your rank. Confirmed two ways:
+1. Scanned the full live `/mmr/v1/players/{puuid}` payload for any key matching
+   `mmr|rating|elo|skill` — the only hits are `RankedRating` (= RR, 0-100 inside your
+   current tier) and the `LatestCompetitiveUpdate` before/after deltas.
+2. The official endpoint schema (`valapidocs.techchrism.me`, `PlayerMMR.ts`) enumerates
+   every field the response can contain, and there is no MMR field. Riot removed it.
+
+**So the UI must never claim to show raw MMR.** What we already surface instead:
+live RR under the rank emblem, act W/L, leaderboard rank, peak act, per-map/per-agent records.
+
+**If we ever build this**, the only honest option is an **MMR Signal** — a clearly
+labelled *estimate*, not a number we pretend is Riot's. Basis: RR swing size and the
+performance-bonus component of `/mmr/v1/players/{puuid}/competitiveupdates` (endpoint
+verified live, returns 20 matches). Large gains signal MMR above your visible rank;
+small gains signal MMR below it. Render as `MMR ↑ above rank` / `MMR ~ at rank` /
+`MMR ↓ below rank`, never as a raw value.
