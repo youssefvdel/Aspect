@@ -1178,17 +1178,25 @@ const recent24hInflight = new Map<string, Promise<Recent24hRecord>>();
 /**
  * Real win/loss record for a player over the last 24 hours, newest match first.
  * Only matches actually started within the window are counted.
+ *
+ * `queue` scopes the record to one Riot queue id ("competitive", "swiftplay",
+ * "deathmatch", …). Without it a competitive lobby would show a player's
+ * Swiftplay and Deathmatch games mixed in, which is meaningless next to their
+ * rank. Riot's history rows each carry `QueueID`, so the filter is exact.
  */
 export async function fetchPlayer24hRecord(
   puuid: string,
-  region: string
+  region: string,
+  queue?: string
 ): Promise<Recent24hRecord> {
   const empty: Recent24hRecord = { won: 0, lost: 0, streak: 0, streakIsWin: false, fetchedAt: Date.now() };
   if (!puuid) return empty;
-  const cached = recent24hCache.get(puuid);
+  // Scope the cache per queue — two lobbies can otherwise poison each other.
+  const key = queue ? `${puuid}:${queue}` : puuid;
+  const cached = recent24hCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < 10 * 60 * 1000) return cached;
   // The overlay polls every few seconds — never stack duplicate work per player.
-  const running = recent24hInflight.get(puuid);
+  const running = recent24hInflight.get(key);
   if (running) return running;
 
   const task = (async (): Promise<Recent24hRecord> => {
@@ -1196,8 +1204,10 @@ export async function fetchPlayer24hRecord(
       const cutoff = Date.now() - 24 * 3600 * 1000;
       // Riot caps this endpoint at ~25 rows per request, so page through until
       // the oldest row falls outside the 24h window (heavy grinders).
-      const entries: { id: string; at: number }[] = [];
-      for (let page = 0; page < 3; page++) {
+      // Paging continues past the window: a page may be entirely the wrong
+      // queue, so we cannot stop at the first out-of-window row alone.
+      const entries: { id: string; at: number; queue: string }[] = [];
+      for (let page = 0; page < 5; page++) {
         const start = page * 20;
         const j = await riotGet(
           shardFor(region),
@@ -1207,6 +1217,7 @@ export async function fetchPlayer24hRecord(
         const rows = ((Array.isArray(j?.History) ? j.History : []) as any[]).map((h) => ({
           id: String(h?.MatchID ?? ''),
           at: Number(h?.GameStartTime ?? 0),
+          queue: String(h?.QueueID ?? ''),
         }));
         if (rows.length === 0) break;
         entries.push(...rows);
@@ -1215,11 +1226,11 @@ export async function fetchPlayer24hRecord(
       }
 
       const recent = entries
-        .filter((h) => h.id && h.at >= cutoff)
+        .filter((h) => h.id && h.at >= cutoff && (!queue || h.queue === queue))
         .sort((a, b) => b.at - a.at);
 
       if (recent.length === 0) {
-        recent24hCache.set(puuid, empty);
+        recent24hCache.set(key, empty);
         return empty;
       }
 
@@ -1240,17 +1251,17 @@ export async function fetchPlayer24hRecord(
         else break;
       }
       const record: Recent24hRecord = { won, lost, streak, streakIsWin, fetchedAt: Date.now() };
-      recent24hCache.set(puuid, record);
+      recent24hCache.set(key, record);
       return record;
     } catch {
-      recent24hCache.set(puuid, empty);
+      recent24hCache.set(key, empty);
       return empty;
     } finally {
-      recent24hInflight.delete(puuid);
+      recent24hInflight.delete(key);
     }
   })();
 
-  recent24hInflight.set(puuid, task);
+  recent24hInflight.set(key, task);
   return task;
 }
 
@@ -1270,6 +1281,36 @@ const livePlayerStatsCache = new Map<
     fetchedAt: number;
   }
 >();
+
+/**
+ * Queue id of the match the player is currently in ("competitive", "swiftplay",
+ * "deathmatch", …), or '' when not in one.
+ *
+ * Read from the local presence blob, which is the only source that tells
+ * Competitive apart from Unrated — both share one ModeID in the core-game
+ * payload, so the payload alone cannot scope the stats correctly. Ignored while
+ * in menus, where the blob keeps the queue id of the last match played.
+ */
+export async function fetchLiveQueueId(): Promise<string> {
+  try {
+    if (!isTauri()) return '';
+    const ent = await getEntitlements();
+    const raw = await invoke<string>('local_presences');
+    const presences: { puuid?: string; private?: string }[] = JSON.parse(raw)?.presences ?? [];
+    const me = presences.find(
+      (p) => String(p?.puuid ?? '').toLowerCase() === ent.puuid.toLowerCase()
+    );
+    if (!me?.private) return '';
+    const blob = JSON.parse(decodeBase64Utf8(String(me.private)));
+    const md = blob?.matchPresenceData ?? {};
+    const loop = String(md?.sessionLoopState ?? '').toUpperCase();
+    // PREGAME = agent select, INGAME = playing. Anything else is a stale value.
+    if (loop !== 'PREGAME' && loop !== 'INGAME') return '';
+    return String(md?.queueId ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
 
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
   // Dev dashboard simulator: canned match without Riot open (dev builds only).
@@ -1298,6 +1339,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const glz = glzHostFor(region);
     const shard = shardFor(region);
     const data = await gameData();
+    // Queue being played — scopes the per-player 24h record to the same mode.
+    const liveQueue = await fetchLiveQueueId();
 
     let phase: 'idle' | 'pregame' | 'coregame' = 'idle';
     let matchId = '';
@@ -1564,10 +1607,12 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       }
 
       // Last-24h record — Riot local history works for ANY puuid, so every
-      // player in the lobby gets a real 24-hour win/loss line.
+      // player in the lobby gets a real 24-hour win/loss line. Scoped to the
+      // queue being played, so a ranked lobby never shows Swiftplay/Deathmatch
+      // games in the column.
       const cached24h = livePlayerStatsCache.get(p.puuid);
       if (Date.now() - (cached24h?.fetchedAt ?? 0) > 10 * 60 * 1000) {
-        fetchPlayer24hRecord(p.puuid, region)
+        fetchPlayer24hRecord(p.puuid, region, liveQueue)
           .then((rec) => {
             livePlayerStatsCache.set(p.puuid, {
               ...livePlayerStatsCache.get(p.puuid),
@@ -1640,6 +1685,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       mapName,
       mode: modeName,
       isDeathmatch,
+      queueId: liveQueue,
       startingSide,
       blueTeam,
       redTeam,

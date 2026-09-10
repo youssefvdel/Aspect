@@ -94,6 +94,33 @@ export const PARTY_STYLES: Record<
   },
 };
 
+/** Human label for a Riot queue id — captions the queue-scoped columns so a
+ *  "24H — Ranked" column can't be mistaken for all modes. */
+export function queueLabel(queueId?: string): string {
+  switch ((queueId ?? '').toLowerCase()) {
+    case 'competitive':
+      return 'Ranked';
+    case 'unrated':
+      return 'Unrated';
+    case 'swiftplay':
+      return 'Swiftplay';
+    case 'quickbomb':
+      return 'Swiftplay';
+    case 'deathmatch':
+      return 'Deathmatch';
+    case 'spikerush':
+      return 'Spike Rush';
+    case 'ggteam':
+      return 'Escalation';
+    case 'onefa':
+      return 'Replication';
+    case 'snowball':
+      return 'Snowball Fight';
+    default:
+      return '';
+  }
+}
+
 /** Which of blue/red is the local player's side, so labels read "Your Team"
  *  rather than a colour. Deathmatch has no teams at all. */
 export function splitTeams(state: {

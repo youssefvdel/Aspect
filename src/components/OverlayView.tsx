@@ -11,6 +11,7 @@ import {
   formatKd,
   PARTY_STYLES,
   byAcsDesc,
+  queueLabel,
 } from '../utils/playerDisplay';
 import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
@@ -1270,8 +1271,15 @@ export const OverlayView: React.FC = () => {
                 <span className="font-display font-black text-white text-xs tracking-wider uppercase">
                   {matchState?.mapName || 'Ascent'} • Team Scout
                 </span>
-                {matchState?.mode && (
-                  <span className="text-[10px] font-mono text-zinc-400 truncate">• {matchState.mode}</span>
+                {/* Precise queue when Riot tells us (Competitive vs Unrated share
+                    a ModeID, so `mode` alone can't distinguish them). */}
+                {(queueLabel(matchState?.queueId) || matchState?.mode) && (
+                  <span
+                    className="text-[10px] font-mono text-zinc-400 truncate"
+                    title={matchState?.queueId ? `Queue: ${matchState.queueId}` : undefined}
+                  >
+                    • {queueLabel(matchState?.queueId) || matchState?.mode}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -1308,6 +1316,7 @@ export const OverlayView: React.FC = () => {
               players={yourTeam}
               tierIcons={tierIcons}
               seasons={seasonNames}
+              queueId={matchState?.queueId}
             />
           </div>
         </div>
@@ -1670,7 +1679,10 @@ const PregameTeamColumn: React.FC<{
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
   seasons?: Record<string, string>;
-}> = ({ players, tierIcons, seasons }) => {
+  /** Queue being played — captions the 24H column so it reads as mode-scoped. */
+  queueId?: string;
+}> = ({ players, tierIcons, seasons, queueId }) => {
+  const scope = queueLabel(queueId);
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
       {/* Table Column Headers: Score badge, Agent, Player, Rank, Peak, K/D, Win%, HS%, Recent */}
@@ -1682,7 +1694,9 @@ const PregameTeamColumn: React.FC<{
         <span className="text-right">K/D</span>
         <span className="text-right">Win%</span>
         <span className="text-right">HS%</span>
-        <span className="text-right">24H</span>
+        <span className="text-right" title={scope ? `Wins / losses in the last 24 hours — ${scope} games only` : 'Wins / losses in the last 24 hours'}>
+          {scope ? `24H ${scope}` : '24H'}
+        </span>
       </div>
 
       {/* Teammate Rows */}

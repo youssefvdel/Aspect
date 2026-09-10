@@ -25,6 +25,7 @@ import {
   PARTY_STYLES,
   splitTeams,
   byAcsDesc,
+  queueLabel,
 } from '../utils/playerDisplay';
 import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
@@ -236,6 +237,7 @@ export const LiveMatchView: React.FC = () => {
           players={teams.yours}
           tierIcons={tierIcons}
           seasonNames={seasonNames}
+          queueId={matchState?.queueId}
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -245,6 +247,7 @@ export const LiveMatchView: React.FC = () => {
             players={teams.yours}
             tierIcons={tierIcons}
             seasonNames={seasonNames}
+            queueId={matchState?.queueId}
           />
 
           {matchState.phase === 'coregame' ? (
@@ -254,6 +257,7 @@ export const LiveMatchView: React.FC = () => {
               players={teams.theirs}
               tierIcons={tierIcons}
               seasonNames={seasonNames}
+              queueId={matchState?.queueId}
             />
           ) : (
             <div className="p-4 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-center text-xs text-m3-outline flex items-center justify-center gap-2">
@@ -345,8 +349,11 @@ const PlayerTable: React.FC<{
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
   seasonNames: Record<string, string>;
-}> = ({ title, accent, players, tierIcons, seasonNames }) => {
+  /** Queue being played — captions the Last-24h column so it reads mode-scoped. */
+  queueId?: string;
+}> = ({ title, accent, players, tierIcons, seasonNames, queueId }) => {
   const a = ACCENTS[accent] ?? ACCENTS.primary;
+  const scope = queueLabel(queueId);
 
   return (
     <section
@@ -378,7 +385,12 @@ const PlayerTable: React.FC<{
         <span className="text-right" title="Act-wide K/D (Riot exposes no live kill data)">K/D</span>
         <span className="text-right" title="Act-wide win rate">Win%</span>
         <span className="text-right" title="Act-wide headshot %">HS%</span>
-        <span className="text-right" title="Wins/losses in the last 24 hours">Last 24h</span>
+        <span
+          className="text-right"
+          title={scope ? `Wins/losses in the last 24 hours — ${scope} games only` : 'Wins/losses in the last 24 hours'}
+        >
+          {scope ? `24h ${scope}` : 'Last 24h'}
+        </span>
         <span className="text-right">Lvl</span>
       </div>
 
