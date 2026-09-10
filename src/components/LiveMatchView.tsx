@@ -16,7 +16,6 @@ import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
-import { PerformanceTrend, buildPerformanceSeries } from './PerformanceTrend';
 import {
   getFlagUrl,
   rankTooltip,
@@ -52,14 +51,7 @@ export const LiveMatchView: React.FC = () => {
   const [inEditMode, setInEditMode] = useState(false);
 
   // Act labels for the peak-act caption under the peak emblem.
-  const { seasonNames, detailsById, profile } = useTrackerData();
-
-  // Recent ranked form. This is history, so it lives ONLY on the app page —
-  // the in-game widget must show the current game and nothing else.
-  const perfSeries = useMemo(
-    () => buildPerformanceSeries(detailsById ?? {}, profile?.puuid ?? ''),
-    [detailsById, profile?.puuid]
-  );
+  const { seasonNames } = useTrackerData();
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -218,23 +210,6 @@ export const LiveMatchView: React.FC = () => {
       {/* Match status strip — what Riot actually tells us about the live game. */}
       {isLive && matchState && (
         <MatchStatusStrip state={matchState} partyGroups={partyGroups} />
-      )}
-
-      {/* Riot exposes no in-match combat stats, so current-game performance
-          cannot be charted. This panel is explicitly the player's recent ranked
-          form, kept on the app page and clearly labelled as history. */}
-      {perfSeries.length >= 2 && (
-        <section className="rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle px-3.5 py-2.5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-m3-outline">
-              Recent form · ranked
-            </span>
-            <span className="text-[9px] font-mono text-m3-outline">
-              not live — Riot publishes no in-match stats
-            </span>
-          </div>
-          <PerformanceTrend points={perfSeries} metric="acs" width={640} height={56} />
-        </section>
       )}
 
       {/* Main Content Area */}
