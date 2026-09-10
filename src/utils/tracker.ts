@@ -135,6 +135,49 @@ export function readCachedTrackerSnapshot(): CachedTrackerSnapshot | null {
 }
 
 
+export interface CachedSidebarMini {
+  name: string;
+  tag: string;
+  rank: string;
+  rr: number;
+  peak: string;
+  icon: string;
+  peakIcon: string;
+  avatarUrl: string;
+  bannerUrl: string;
+  countryCode: string;
+  level: number;
+  puuid?: string;
+  savedAt?: number;
+}
+
+const SIDEBAR_MINI_PREFIX = 'recon_sidebar_mini_v1';
+
+export function readCachedSidebarMini(puuid?: string): CachedSidebarMini | null {
+  try {
+    const p = puuid || readCachedAccount()?.puuid;
+    if (p) {
+      const raw = localStorage.getItem(`${SIDEBAR_MINI_PREFIX}:${p.toLowerCase()}`);
+      if (raw) return JSON.parse(raw);
+    }
+    const legacy = localStorage.getItem(SIDEBAR_MINI_PREFIX);
+    return legacy ? JSON.parse(legacy) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedSidebarMini(mini: CachedSidebarMini, puuid?: string): void {
+  try {
+    const toStore = { ...mini, savedAt: Date.now() };
+    const p = puuid || mini.puuid || readCachedAccount()?.puuid;
+    if (p) {
+      localStorage.setItem(`${SIDEBAR_MINI_PREFIX}:${p.toLowerCase()}`, JSON.stringify(toStore));
+    }
+    localStorage.setItem(SIDEBAR_MINI_PREFIX, JSON.stringify(toStore));
+  } catch {}
+}
+
 /** Tier id → name fallback when only the number arrives. */
 export const tierName = (id: number): string => {
   if (!Number.isFinite(id)) return '—';

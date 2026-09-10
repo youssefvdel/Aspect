@@ -1,5 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { detectLocalAccount, detectRegion, fetchCardArt, fetchIdentityDirect, fetchMmrDirect, gameData, isRiotClientRunning, readCachedAccount, readCachedTrackerSnapshot } from '../utils/tracker';
+import {
+  detectLocalAccount,
+  detectRegion,
+  fetchCardArt,
+  fetchIdentityDirect,
+  fetchMmrDirect,
+  gameData,
+  isRiotClientRunning,
+  readCachedAccount,
+  readCachedSidebarMini,
+  readCachedTrackerSnapshot,
+  writeCachedSidebarMini,
+} from '../utils/tracker';
 import { fetchTrnActStats } from '../utils/trn';
 
 interface Mini {
@@ -40,7 +52,11 @@ const TrackerMiniSkeleton: React.FC = () => (
 /** Compact TRN-style player profile card docked in the app sidebar. */
 export const TrackerMini: React.FC = () => {
   const [mini, setMini] = useState<Mini | null>(() => {
-    // Cached identity + rank paint instantly; the live fetch replaces it.
+    // 1. Full cached sidebar mini (banner, avatar, rank icons, level) paints instantly
+    const cachedMini = readCachedSidebarMini();
+    if (cachedMini?.name) return cachedMini;
+
+    // 2. Fallback to basic account + profile if full mini hasn't been saved yet
     const acc = readCachedAccount();
     const snap = readCachedTrackerSnapshot();
     if (!acc && !snap?.profile) return null;
@@ -59,7 +75,7 @@ export const TrackerMini: React.FC = () => {
       level: 0,
     };
   });
-  const [loading, setLoading] = useState(() => !readCachedAccount());
+  const [loading, setLoading] = useState(() => !readCachedAccount() && !readCachedSidebarMini());
 
   useEffect(() => {
     let live = true;
@@ -99,7 +115,7 @@ export const TrackerMini: React.FC = () => {
           (cardMatch ? `https://media.valorant-api.com/playercards/${cardMatch[1]}/wideart.png` : '');
 
         if (!live) return;
-        setMini({
+        const fullMini: Mini = {
           name: name || prof.name,
           tag: tag || prof.tag,
           rank: prof.rank,
@@ -111,7 +127,9 @@ export const TrackerMini: React.FC = () => {
           bannerUrl,
           countryCode: trn?.countryCode ?? '',
           level: ident?.level ?? 0,
-        });
+        };
+        setMini(fullMini);
+        writeCachedSidebarMini(fullMini, acc?.puuid);
       } catch {
         // Client closed / Riot unreachable. Keep the cached identity on screen
         // (it was correct a moment ago) — hide only if there is nothing cached.
