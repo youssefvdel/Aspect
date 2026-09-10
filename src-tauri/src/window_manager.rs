@@ -487,6 +487,53 @@ pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), S
     }
 }
 
+/// Edit-mode styles: like click-through PLUS mouse input, but WITHOUT
+/// activation. Stealing the foreground deactivates Valorant, which blanks
+/// its top strip to pure white until refocused. Mouse drag/clicks do not
+/// need activation (only keyboard does), and the on-screen Lock button
+/// covers exiting, so NOACTIVATE stays on.
+pub fn set_overlay_editable(hwnd_val: isize) -> Result<(), String> {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return Err("Overlay window handle is invalid.".to_string());
+        }
+
+        let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let new_style = ((current_style
+            & !(0x00C00000 | 0x00040000 | 0x00010000 | 0x00020000 | 0x00080000 | 0x00800000))
+            | 0x80000000  // WS_POPUP
+            | 0x10000000  // WS_VISIBLE
+            | 0x04000000) // WS_CLIPSIBLINGS
+            as i32 as isize;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
+
+        // TRANSPARENT off (receive mouse) + NOACTIVATE on (never steal focus)
+        let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
+            | 0x00080000  // WS_EX_LAYERED
+            | 0x00000008  // WS_EX_TOPMOST
+            | 0x00000080  // WS_EX_TOOLWINDOW
+            | 0x08000000; // WS_EX_NOACTIVATE
+        ex_style &= !0x00000020;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
+
+        strip_all_dwm_borders(hwnd);
+
+        let (x, y, width, height) = get_valorant_or_screen_rect(hwnd);
+
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            x,
+            y,
+            width,
+            height,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        Ok(())
+    }
+}
+
 pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
     unsafe {
         let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);

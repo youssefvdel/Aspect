@@ -284,10 +284,11 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
             #[cfg(windows)]
             {
                 if let Ok(hwnd) = window.hwnd() {
-                    let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, false);
+                    // Editable but never activated: stealing the foreground
+                    // blanks Valorant's top strip (pure white) until refocus.
+                    let _ = window_manager::set_overlay_editable(hwnd.0 as isize);
                 }
             }
-            let _ = window.set_focus();
         } else {
             #[cfg(windows)]
             {
