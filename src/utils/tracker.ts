@@ -378,6 +378,27 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
 export const shortMapName = (mapId: string, maps: Record<string, string>): string =>
   maps[mapId.toLowerCase()] ?? (mapId.split('/').pop() || '?');
 
+/** Calculate the true all-time peak tier from Riot's SeasonalInfoBySeasonID payload */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractPeakTier(seasonsObj: Record<string, any>): number {
+  let peak = 0;
+  for (const s of Object.values(seasonsObj || {})) {
+    const endTier = Number(s?.CompetitiveTier ?? 0);
+    const actRank = Number(s?.Rank ?? 0);
+    let winTier = 0;
+    if (s?.WinsByTier && typeof s.WinsByTier === 'object') {
+      for (const tk of Object.keys(s.WinsByTier)) {
+        const num = Number(tk);
+        if (!isNaN(num) && Number(s.WinsByTier[tk]) > 0) {
+          winTier = Math.max(winTier, num);
+        }
+      }
+    }
+    peak = Math.max(peak, endTier, actRank, winTier);
+  }
+  return peak;
+}
+
 /** Rank + RR + peak + per-season peaks straight from Riot. */
 export async function fetchMmrDirect(region: string, name: string, tag: string): Promise<TrackerProfile> {
   const ent = await getEntitlements();
@@ -393,7 +414,18 @@ export async function fetchMmrDirect(region: string, name: string, tag: string):
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const [id, s] of Object.entries(seasons) as [string, any][]) {
     const g = Number(s?.NumberOfGames ?? 0);
-    const t = Number(s?.CompetitiveTier ?? 0);
+    const endTier = Number(s?.CompetitiveTier ?? 0);
+    const actRank = Number(s?.Rank ?? 0);
+    let winTier = 0;
+    if (s?.WinsByTier && typeof s.WinsByTier === 'object') {
+      for (const tk of Object.keys(s.WinsByTier)) {
+        const num = Number(tk);
+        if (!isNaN(num) && Number(s.WinsByTier[tk]) > 0) {
+          winTier = Math.max(winTier, num);
+        }
+      }
+    }
+    const t = Math.max(endTier, actRank, winTier);
     per.push({ id, games: g, wins: Number(s?.NumberOfWins ?? 0), tier: t });
     if (g >= games) {
       games = g;
@@ -1127,12 +1159,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               const latest = j?.LatestCompetitiveUpdate ?? {};
               const tierId = Number(latest?.TierAfterUpdate ?? 0);
               const rr = Number(latest?.RankedRatingAfterUpdate ?? 0);
-              let peak = tierId;
               const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              for (const s of Object.values(seasons) as any[]) {
-                peak = Math.max(peak, Number(s?.CompetitiveTier ?? 0));
-              }
+              const peak = Math.max(tierId, extractPeakTier(seasons));
               const val = { tier: tierId, rr, peakTier: peak, fetchedAt: Date.now() };
               liveMmrCache.set(p, val);
               mmrMap.set(p, val);
