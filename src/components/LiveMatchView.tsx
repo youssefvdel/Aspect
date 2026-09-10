@@ -7,11 +7,18 @@ import {
   Lock,
   Edit3,
   Check,
+  Sliders,
+  Trophy,
+  Users,
+  BarChart2,
+  Tv,
+  RotateCcw,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode } from '../utils/ipc';
-import { listen } from '@tauri-apps/api/event';
+import { listen, emit } from '@tauri-apps/api/event';
+import { DEFAULT_OVERLAY_CONFIG, type OverlayConfig } from './OverlayView';
 
 export const LiveMatchView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
@@ -19,6 +26,25 @@ export const LiveMatchView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [inEditMode, setInEditMode] = useState(false);
+
+  const [overlayCfg, setOverlayCfg] = useState<OverlayConfig>(() => {
+    try {
+      const s = localStorage.getItem('aspect_overlay_cfg_v3');
+      return s ? JSON.parse(s) : DEFAULT_OVERLAY_CONFIG;
+    } catch {
+      return DEFAULT_OVERLAY_CONFIG;
+    }
+  });
+
+  const updateOverlayCfg = async (next: OverlayConfig) => {
+    setOverlayCfg(next);
+    try {
+      localStorage.setItem('aspect_overlay_cfg_v3', JSON.stringify(next));
+    } catch {}
+    try {
+      await emit('overlay-config-changed', next);
+    } catch {}
+  };
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -135,6 +161,85 @@ export const LiveMatchView: React.FC = () => {
           >
             <Eye className="w-3.5 h-3.5" />
             <span>{overlayOpen ? 'Close Overlay' : 'Open Overlay'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* In-Game HUD Widgets Control Ribbon */}
+      <div className="flex items-center justify-between p-3 rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle flex-wrap gap-2.5 shadow-xs shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-display font-extrabold text-m3-on-surface flex items-center gap-1.5">
+            <Sliders className="w-3.5 h-3.5 text-m3-primary" />
+            <span>In-Game HUD Widgets</span>
+          </span>
+          <span className="text-[11px] text-m3-outline hidden lg:inline">
+            {inEditMode
+              ? 'HUD unlocked: drag widgets directly on your game screen, then click "Lock HUD".'
+              : 'Choose which widgets to display over Valorant.'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+          <button
+            type="button"
+            onClick={() => updateOverlayCfg({ ...overlayCfg, showRank: !overlayCfg.showRank })}
+            className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+              overlayCfg.showRank
+                ? 'bg-m3-primary/20 border-m3-primary text-m3-primary font-bold'
+                : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Rank & RR</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateOverlayCfg({ ...overlayCfg, showLobby: !overlayCfg.showLobby })}
+            className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+              overlayCfg.showLobby
+                ? 'bg-m3-primary/20 border-m3-primary text-m3-primary font-bold'
+                : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Lobby Radar</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateOverlayCfg({ ...overlayCfg, showKpi: !overlayCfg.showKpi })}
+            className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+              overlayCfg.showKpi
+                ? 'bg-m3-primary/20 border-m3-primary text-m3-primary font-bold'
+                : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+            }`}
+          >
+            <BarChart2 className="w-3.5 h-3.5" />
+            <span>Stats</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateOverlayCfg({ ...overlayCfg, showDisplay: !overlayCfg.showDisplay })}
+            className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors ${
+              overlayCfg.showDisplay
+                ? 'bg-m3-primary/20 border-m3-primary text-m3-primary font-bold'
+                : 'bg-m3-surface-container border-m3-outline-subtle text-m3-outline hover:text-m3-on-surface'
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5" />
+            <span>Res Tag</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateOverlayCfg(DEFAULT_OVERLAY_CONFIG)}
+            className="h-7 px-2.5 rounded-xl bg-m3-surface-container hover:bg-m3-surface-container-high border border-m3-outline-subtle text-xs text-m3-outline hover:text-m3-on-surface flex items-center gap-1 cursor-pointer ml-1"
+            title="Reset default positions"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Reset Pos</span>
           </button>
         </div>
       </div>
