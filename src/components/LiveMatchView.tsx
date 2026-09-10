@@ -78,11 +78,14 @@ export const LiveMatchView: React.FC = () => {
     };
   }, [loadState]);
 
-  // Always automatically sync live match state in the background
+  // Background live sync: paused while the app is hidden (in-game the main
+  // window sits in the tray/background — no point re-rendering tables).
   useEffect(() => {
-    const interval = setInterval(() => {
+    const poll = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchLiveMatchState().then(setMatchState).catch(() => {});
-    }, 4000);
+    };
+    const interval = setInterval(poll, 8000);
     return () => clearInterval(interval);
   }, []);
 

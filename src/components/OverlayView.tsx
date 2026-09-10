@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
 import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
-import { getOverlayEditMode, fetchDisplayInfo, isTabDown } from '../utils/ipc';
+import { getOverlayEditMode, setOverlayEditMode, fetchDisplayInfo, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 export interface WidgetPos {
@@ -223,7 +223,10 @@ export const OverlayView: React.FC = () => {
     };
   }, []);
 
-  // Poll live match data ONLY when visible
+  // Poll live match data ONLY when visible; idle backs off to ~1/3 rate
+  // (agent select lasts ~60s+, so a 13s worst-case detect delay is fine).
+  const phaseRef = useRef<string>('idle');
+  const idleSkips = useRef(0);
   useEffect(() => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
     fetchDisplayInfo().then((info) => {
@@ -238,7 +241,16 @@ export const OverlayView: React.FC = () => {
 
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      fetchLiveMatchState().then(setMatchState).catch(() => {});
+      if (phaseRef.current === 'idle') {
+        idleSkips.current = (idleSkips.current + 1) % 3;
+        if (idleSkips.current !== 0) return;
+      }
+      fetchLiveMatchState()
+        .then((s) => {
+          phaseRef.current = s.phase;
+          setMatchState(s);
+        })
+        .catch(() => {});
     };
 
     const onVis = () => {
@@ -280,6 +292,17 @@ export const OverlayView: React.FC = () => {
       clearInterval(id);
     };
   }, [matchState?.phase, isEditMode]);
+
+  // Esc exits edit mode (overlay holds focus while editing, so the main
+  // app's Lock button may be unreachable behind the fullscreen layer).
+  useEffect(() => {
+    if (!isEditMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') void setOverlayEditMode(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isEditMode]);
 
   // Smooth GPU-composited drag handler
   const startDrag = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
@@ -429,12 +452,23 @@ export const OverlayView: React.FC = () => {
   return (
     <div
       onDragStart={(e) => e.preventDefault()}
-      className={`fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans ${
-        isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-      }`}
+      className="fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans pointer-events-none"
       style={{ backgroundColor: 'transparent' }}
     >
       {/* ZERO top bars. ZERO bottom footers. ZERO perimeter rings. Only widgets. */}
+
+      {/* Edit-mode self-exit: the fullscreen edit layer sits above the Aspect
+          app, so the Lock control lives here too (plus Esc). The main app
+          stays in sync via the overlay-edit-mode-changed event. */}
+      {isEditMode && (
+        <button
+          type="button"
+          onClick={() => void setOverlayEditMode(false)}
+          className="fixed top-4 right-4 z-50 pointer-events-auto px-4 py-2 rounded-2xl bg-m3-mint text-zinc-950 text-xs font-black shadow-2xl border border-white/20 cursor-pointer hover:brightness-110"
+        >
+          ✓ Lock HUD (Esc)
+        </button>
+      )}
 
       {/* ============================================================ */}
       {/* WIDGET 1: Player Rank & RR                                  */}
