@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
@@ -446,29 +446,6 @@ export const OverlayView: React.FC = () => {
     window.addEventListener('pointerup', onPointerUp, { passive: false });
   };
 
-  const startDragFromTray = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
-    if (!isEditMode) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Ensure widget is active
-    if (key === 'pregame' && !config.showPregame) {
-      saveConfig({ ...config, showPregame: true });
-    } else if (key === 'lobby' && !config.showLobby) {
-      saveConfig({ ...config, showLobby: true });
-    }
-
-    const startX = Math.max(0, e.clientX - (key === 'pregame' ? 360 : 160));
-    const startY = Math.max(0, e.clientY - 40);
-
-    const targetEl = widgetRefs[key].current;
-    if (targetEl) {
-      targetEl.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
-    }
-
-    startDrag(key, e, { x: startX, y: startY });
-  };
-
   const startResize = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
     if (!isEditMode) return;
     e.preventDefault();
@@ -540,17 +517,7 @@ export const OverlayView: React.FC = () => {
       className="fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans pointer-events-none"
       style={{ backgroundColor: 'transparent' }}
     >
-      {/* Edit Mode Shaded Dimmer Backdrop: dims game/desktop background so widgets & settings text pop */}
-      {isEditMode && (
-        <div
-          className="fixed inset-0 pointer-events-auto bg-black/60 backdrop-blur-[2px] transition-opacity duration-200 z-0"
-          onPointerDown={(e) => {
-            e.stopPropagation();
-          }}
-        />
-      )}
-
-      {/* ZERO top bars. ZERO bottom footers. ZERO perimeter rings. Only widgets. */}
+      {/* ZERO top bars. ZERO bottom footers. ZERO perimeter rings. Pure in-game transparency. */}
 
       {/* ============================================================ */}
       {/* CUSTOM EDIT MODE WIDGET DOCK (Visual Miniature Cards)        */}
@@ -562,7 +529,7 @@ export const OverlayView: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-m3-mint animate-pulse shadow-[0_0_8px_rgba(58,227,116,0.8)]" />
               <span className="font-display font-black text-xs text-white tracking-wider uppercase">
-                HUD Widget Tray • Click or Drag to Place
+                HUD Widgets • Click to Add to Screen
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -603,15 +570,13 @@ export const OverlayView: React.FC = () => {
                   <Shield className="w-3.5 h-3.5 text-m3-primary" />
                   <span>Agent Select</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => saveConfig({ ...config, showPregame: !config.showPregame })}
-                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                <span
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full ${
                     config.showPregame ? 'bg-m3-mint/20 text-m3-mint border border-m3-mint/30' : 'bg-white/10 text-zinc-400 border border-white/10'
                   }`}
                 >
                   {config.showPregame ? 'ON' : 'OFF'}
-                </button>
+                </span>
               </div>
 
               {/* Mini visual mockup of 5v5 Agent Select */}
@@ -635,14 +600,41 @@ export const OverlayView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dedicated Drag Bar */}
-              <div
-                onPointerDown={(e) => startDragFromTray('pregame', e)}
-                className="mt-auto px-2 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing"
+              {/* Add to Default Place Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (config.showPregame) {
+                    saveConfig({ ...config, showPregame: false });
+                  } else {
+                    saveConfig({
+                      ...config,
+                      showPregame: true,
+                      positions: {
+                        ...config.positions,
+                        pregame: DEFAULT_OVERLAY_CONFIG.positions.pregame,
+                      },
+                    });
+                  }
+                }}
+                className={`mt-auto px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showPregame
+                    ? 'bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300'
+                    : 'bg-m3-primary/20 hover:bg-m3-primary/30 border border-m3-primary/40 text-m3-primary font-bold'
+                }`}
               >
-                <Move className="w-3 h-3 text-m3-primary" />
-                <span>Drag onto Screen</span>
-              </div>
+                {config.showPregame ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>Remove from Screen</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add to Default Place</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* 2. MATCH STATUS (SCOREBOARD) MINI PREVIEW CARD */}
@@ -658,15 +650,13 @@ export const OverlayView: React.FC = () => {
                   <Users className="w-3.5 h-3.5 text-m3-gold" />
                   <span>Match Status</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => saveConfig({ ...config, showLobby: !config.showLobby })}
-                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                <span
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full ${
                     config.showLobby ? 'bg-m3-mint/20 text-m3-mint border border-m3-mint/30' : 'bg-white/10 text-zinc-400 border border-white/10'
                   }`}
                 >
                   {config.showLobby ? 'ON' : 'OFF'}
-                </button>
+                </span>
               </div>
 
               {/* Mini visual mockup of vertical scoreboard */}
@@ -683,14 +673,41 @@ export const OverlayView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dedicated Drag Bar */}
-              <div
-                onPointerDown={(e) => startDragFromTray('lobby', e)}
-                className="mt-auto px-2 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing"
+              {/* Add to Default Place Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (config.showLobby) {
+                    saveConfig({ ...config, showLobby: false });
+                  } else {
+                    saveConfig({
+                      ...config,
+                      showLobby: true,
+                      positions: {
+                        ...config.positions,
+                        lobby: DEFAULT_OVERLAY_CONFIG.positions.lobby,
+                      },
+                    });
+                  }
+                }}
+                className={`mt-auto px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                  config.showLobby
+                    ? 'bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300'
+                    : 'bg-m3-gold/20 hover:bg-m3-gold/30 border border-m3-gold/40 text-m3-gold font-bold'
+                }`}
               >
-                <Move className="w-3 h-3 text-m3-gold" />
-                <span>Drag onto Screen</span>
-              </div>
+                {config.showLobby ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>Remove from Screen</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add to Default Place</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
