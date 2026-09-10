@@ -21,6 +21,10 @@
     -webkit-user-select: text;
   }
 
+  img, a, svg {
+    -webkit-user-drag: none !important;
+  }
+
   h1, h2, h3, h4, .font-display {
     font-family: 'Outfit', system-ui, sans-serif;
     letter-spacing: -0.02em;
