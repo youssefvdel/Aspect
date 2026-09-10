@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Gamepad2, Lock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Check, Gamepad2, Lock, RefreshCw } from 'lucide-react';
 import { tierName } from '../utils/tracker';
 import { ScoreBadge, gradeFor, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
@@ -108,6 +108,10 @@ export const Overview: React.FC = () => {
   const [selStats, setSelStats] = useState<TrnActStats | null>(null);
   const [selAgents, setSelAgents] = useState<TrnAgentStat[] | null>(null);
   const [selLoading, setSelLoading] = useState(false);
+  const [selError, setSelError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  // True only for the live act + competitive — the one case where the store's
+  // `trn`/`agg` snapshots describe the selection.
   const isDefault = playlist === 'competitive' && !seasonId;
 
   const seasonOptions = useMemo(() => {
@@ -125,35 +129,55 @@ export const Overview: React.FC = () => {
     if (isDefault || !profile) {
       setSelStats(null);
       setSelAgents(null);
+      setSelError(null);
+      setSelLoading(false);
       return;
     }
     let live = true;
     setSelLoading(true);
+    // Drop the previous act's numbers the moment the selection changes. Holding
+    // them would show act A's stats under act B's label, which is exactly how
+    // switching acts appeared to do nothing.
+    setSelStats(null);
+    setSelAgents(null);
+    setSelError(null);
     const sid = seasonId || profile.currentSeasonId;
     Promise.all([
       fetchTrnActStats(profile.name, profile.tag, sid, playlist).then((r) => r.stats).catch(() => null),
       fetchTrnAgents(profile.name, profile.tag, sid, playlist).catch(() => []),
     ]).then(([st, ag]) => {
       if (!live) return;
+      if (!st) {
+        // Say so. Do NOT fall back to the live act's numbers.
+        setSelError('tracker.gg did not return stats for this act (rate-limited or unavailable).');
+        setSelLoading(false);
+        return;
+      }
       setSelStats(st);
-      setSelAgents(st ? ag : []);
+      setSelAgents(ag);
       setSelLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [isDefault, playlist, seasonId, profile]);
+  }, [isDefault, playlist, seasonId, profile, reloadKey]);
 
-  const S = selStats ?? trn;
-  const agents = selAgents ?? trnAgents;
-  const losses = S ? S.losses : profile ? Math.max(0, profile.games - profile.wins) : 0;
-  const wins = S ? S.wins : profile?.wins ?? 0;
-  const winPct = S ? S.winPct : profile && profile.games > 0 ? (profile.wins / profile.games) * 100 : 0;
-  const kd = S?.kd ?? agg?.kd ?? 0;
-  const adr = S?.adr ?? agg?.adr ?? 0;
-  const kills = S?.kills ?? agg?.kills ?? 0;
-  const deaths = S?.deaths ?? agg?.deaths ?? 0;
-  const assists = S?.assists ?? agg?.assists ?? 0;
+  // `trn` and `agg` describe the CURRENT act only, so they may only be used when
+  // the selection IS the current act. A past act that has not loaded reads as
+  // "not loaded" — never as the live act's numbers.
+  const S = isDefault ? trn : selStats;
+  const agents = isDefault ? trnAgents : selAgents ?? [];
+  const statsReady = isDefault || !!selStats;
+  const losses = S ? S.losses : isDefault && profile ? Math.max(0, profile.games - profile.wins) : 0;
+  const wins = S ? S.wins : isDefault ? profile?.wins ?? 0 : 0;
+  const winPct = S ? S.winPct : isDefault && profile && profile.games > 0 ? (profile.wins / profile.games) * 100 : 0;
+  const kd = S?.kd ?? (isDefault ? agg?.kd : undefined) ?? 0;
+  const adr = S?.adr ?? (isDefault ? agg?.adr : undefined) ?? 0;
+  const kills = S?.kills ?? (isDefault ? agg?.kills : undefined) ?? 0;
+  const deaths = S?.deaths ?? (isDefault ? agg?.deaths : undefined) ?? 0;
+  const assists = S?.assists ?? (isDefault ? agg?.assists : undefined) ?? 0;
+  const kpiReady = !selLoading && statsReady;
+  const kpiPlaceholder = selLoading ? '…' : statsReady ? undefined : '—';
 
   const orderIdx = (id: string): number => {
     const i = seasonOrder.indexOf(id.toLowerCase());
@@ -296,18 +320,36 @@ export const Overview: React.FC = () => {
         </button>
       </div>
 
+      {/* Act fetch failed — say so instead of silently showing the live act. */}
+      {selError && !isDefault && (
+        <div className="p-2.5 rounded-xl bg-m3-coral/10 border border-m3-coral/40 text-xs flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-m3-coral shrink-0" />
+            <span className="text-m3-on-surface font-medium leading-snug">
+              {selError} Nothing is shown rather than the current act's numbers.
+            </span>
+          </div>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-m3-coral/20 hover:bg-m3-coral/30 border border-m3-coral/40 text-m3-coral font-bold cursor-pointer transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {profile && (
         <>
           {/* Primary KPI Tiles */}
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-            <BigTile index={2} label="Win %" numeric={selLoading ? undefined : winPct} decimals={2} suffix="%" value={selLoading ? '…' : undefined} />
-            <BigTile index={3} label="K/D" numeric={selLoading ? undefined : kd} decimals={3} value={selLoading ? '…' : undefined} />
+            <BigTile index={2} label="Win %" numeric={kpiReady ? winPct : undefined} decimals={2} suffix="%" value={kpiPlaceholder} />
+            <BigTile index={3} label="K/D" numeric={kpiReady ? kd : undefined} decimals={3} value={kpiPlaceholder} />
             {S ? (
               <BigTile index={4} label="Headshot %" numeric={S.hsPct} decimals={2} suffix="%" />
             ) : (
               <BigTile index={4} label="Headshot %" value="—" locked />
             )}
-            <BigTile index={5} label="Damage/Round" numeric={selLoading ? undefined : adr} decimals={2} value={selLoading ? '…' : undefined} />
+            <BigTile index={5} label="Damage/Round" numeric={kpiReady ? adr : undefined} decimals={2} value={kpiPlaceholder} />
           </section>
 
           {/* Secondary stats row */}
@@ -320,8 +362,8 @@ export const Overview: React.FC = () => {
               <SmallStat label="Deaths" value={deaths ? deaths.toLocaleString() : '…'} />
               <SmallStat label="Assists" value={assists ? assists.toLocaleString() : '…'} />
               <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : '—'} locked={!S} />
-              <SmallStat label="Flawless" value={String(S?.flawless ?? agg?.flawless ?? '…')} />
-              <SmallStat label="Clutches" value={String(S?.clutches ?? agg?.clutches ?? '…')} />
+              <SmallStat label="Flawless" value={String(S?.flawless ?? (isDefault ? agg?.flawless : undefined) ?? '…')} />
+              <SmallStat label="Clutches" value={String(S?.clutches ?? (isDefault ? agg?.clutches : undefined) ?? '…')} />
             </div>
           </motion.section>
 
@@ -346,7 +388,7 @@ export const Overview: React.FC = () => {
                   <div>
                     <div className="text-[11px] font-medium text-m3-outline">First Kills / Deaths</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
-                      {S ? `${S.firstKills} / ${S.firstDeaths}` : agg ? `${agg.firstKills} / ${agg.firstDeaths}` : '…'}
+                      {S ? `${S.firstKills} / ${S.firstDeaths}` : isDefault && agg ? `${agg.firstKills} / ${agg.firstDeaths}` : '…'}
                     </div>
                   </div>
                 </div>
@@ -355,7 +397,7 @@ export const Overview: React.FC = () => {
                   <div>
                     <div className="text-[11px] font-medium text-m3-outline">Aces</div>
                     <div className="font-display font-extrabold text-lg text-m3-on-surface tabular-nums leading-tight">
-                      {S?.aces ?? agg?.aces ?? '…'}
+                      {S?.aces ?? (isDefault ? agg?.aces : undefined) ?? '…'}
                     </div>
                   </div>
                 </div>
