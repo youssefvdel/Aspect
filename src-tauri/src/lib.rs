@@ -233,9 +233,11 @@ fn restore_window_framed(hwnd: isize) -> Result<String, String> {
 #[tauri::command]
 fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
+        let _ = window.set_shadow(false);
         // Show FIRST, strip Win32 chrome SECOND — Tauri's show() re-applies
         // default styles and wipes WS_EX_TRANSPARENT if we strip beforehand.
         window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_shadow(false);
         #[cfg(windows)]
         {
             if let Ok(hwnd) = window.hwnd() {
@@ -280,8 +282,10 @@ fn set_overlay_clickthrough(app: tauri::AppHandle, enabled: bool) -> Result<(), 
 fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<(), String> {
     OVERLAY_EDIT_MODE.store(in_edit_mode, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("overlay") {
+        let _ = window.set_shadow(false);
         if in_edit_mode {
             let _ = window.show();
+            let _ = window.set_shadow(false);
             #[cfg(windows)]
             {
                 if let Ok(hwnd) = window.hwnd() {
@@ -291,6 +295,7 @@ fn set_overlay_edit_mode(app: tauri::AppHandle, in_edit_mode: bool) -> Result<()
                 }
             }
         } else {
+            let _ = window.set_shadow(false);
             #[cfg(windows)]
             {
                 if let Ok(hwnd) = window.hwnd() {
@@ -361,9 +366,19 @@ fn set_overlay_windowed(app: tauri::AppHandle, windowed: bool) -> Result<(), Str
         {
             if let Ok(hwnd) = window.hwnd() {
                 if windowed {
+                    let _ = window.set_fullscreen(false);
+                    let _ = window.set_decorations(true);
+                    let _ = window.set_always_on_top(false);
+                    let _ = window.set_shadow(true);
+                    let _ = window.set_ignore_cursor_events(false);
                     let _ = window.show();
                     let _ = window_manager::set_overlay_windowed(hwnd.0 as isize, true);
+                    let _ = window.set_focus();
                 } else {
+                    let _ = window.set_decorations(false);
+                    let _ = window.set_always_on_top(true);
+                    let _ = window.set_shadow(false);
+                    let _ = window.set_fullscreen(true);
                     let clickthrough = !OVERLAY_EDIT_MODE.load(Ordering::Relaxed);
                     let _ = window_manager::setup_overlay_window(hwnd.0 as isize, clickthrough);
                 }
@@ -809,6 +824,11 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let img = tauri::include_image!("icons/icon.png");
                 let _ = window.set_icon(img);
+            }
+
+            // Ensure overlay window starts with DWM shadow disabled
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.set_shadow(false);
             }
 
             // Create System Tray Menu

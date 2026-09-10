@@ -342,25 +342,27 @@ pub fn set_overlay_windowed(hwnd_val: isize, windowed: bool) -> Result<(), Strin
         }
 
         if windowed {
-            // Framed, interactive, NOT topmost: a regular debuggable window.
-            let current_style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-            let new_style = ((current_style
-                & !0x80000000) // clear WS_POPUP
-                | 0x00C00000  // WS_CAPTION (title bar)
-                | 0x00040000  // WS_THICKFRAME (resizable)
-                | 0x00080000  // WS_SYSMENU
-                | 0x00010000  // WS_MINIMIZEBOX
-                | 0x00020000  // WS_MAXIMIZEBOX
-                | 0x10000000  // WS_VISIBLE
-                | 0x04000000) // WS_CLIPSIBLINGS
-                as i32 as isize;
-            SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
+            // Restore from any maximized/fullscreen state first
+            let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
+                hwnd,
+                windows::Win32::UI::WindowsAndMessaging::SW_RESTORE,
+            );
 
-            let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32)
-                | 0x00080000  // WS_EX_LAYERED (keep web transparency)
-                | 0x00000080; // WS_EX_TOOLWINDOW
-            ex_style &= !(0x00000020 | 0x08000000 | 0x00000008); // eat clicks, activatable, normal z-order
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as i32 as isize);
+            // Set window title so title bar displays title
+            let title: Vec<u16> = "Aspect Overlay (Debug Window)\0".encode_utf16().collect();
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                hwnd,
+                windows::core::PCWSTR(title.as_ptr()),
+            );
+
+            // Framed, resizable window with standard caption and controls
+            let new_style: i32 = 0x14CF0000; // WS_VISIBLE | WS_CLIPSIBLINGS | WS_OVERLAPPEDWINDOW
+            SetWindowLongPtrW(hwnd, GWL_STYLE, new_style as isize);
+
+            // Eat clicks, activatable, normal z-order, NOT toolwindow
+            let mut ex_style = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32) | 0x00080000; // WS_EX_LAYERED
+            ex_style &= !(0x00000020 | 0x08000000 | 0x00000008 | 0x00000080);
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
 
             // Center a 1280x800 window on the nearest monitor.
             let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
@@ -425,11 +427,28 @@ pub fn strip_all_dwm_borders(hwnd: HWND) {
             std::mem::size_of::<u32>() as u32,
         );
 
-        // 2. Strictly prohibit DWM from drawing any window border or frame
+        // 2. Disable DWM non-client rendering entirely (kills 1px native top accent border)
+        let ncrp_disabled: u32 = 1; // DWMNCRP_DISABLED
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            2, // DWMWA_NCRENDERING_POLICY
+            &ncrp_disabled as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+
+        // 3. Strictly prohibit DWM from drawing any window border or frame
         let color_none: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
         let _ = DwmSetWindowAttribute(
             hwnd,
             34, // DWMWA_BORDER_COLOR
+            &color_none as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+
+        // 4. Force caption area color to none if any non-client calculation leaks
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            35, // DWMWA_CAPTION_COLOR
             &color_none as *const _ as *const std::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         );

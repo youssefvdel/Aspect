@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body.bg-transparent,
+html.bg-transparent {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 @layer base {
   body {
     @apply bg-m3-surface text-m3-on-surface antialiased;
