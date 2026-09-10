@@ -44,9 +44,13 @@ never offers an update or offers one forever.
 ### 2. Build, signed
 
 ```bash
-export TAURI_SIGNING_PRIVATE_KEY_PATH="$LOCALAPPDATA/Recon/signing/recon.key"
+export TAURI_SIGNING_PRIVATE_KEY="$(cat "$LOCALAPPDATA/Recon/signing/recon.key")"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""   # key was generated without one
 bun run tauri build
 ```
+
+> Pass the key **contents**. `TAURI_SIGNING_PRIVATE_KEY_PATH` was tried first and did
+> not take effect — the build proceeded unsigned and only warned at the very end.
 
 Outputs under `src-tauri/target/release/bundle/`:
 
@@ -90,14 +94,17 @@ to `$TMPDIR/latest.json`. The signature must be the file **contents**, never a p
 
 ```bash
 V=0.4.0
+B=src-tauri/target/release/bundle
 gh release create "v${V}" \
-  "src-tauri/target/release/bundle/nsis/Recon_${V}_x64-setup.exe" \
-  "src-tauri/target/release/bundle/nsis/Recon_${V}_x64-setup.nsis.zip" \
-  "src-tauri/target/release/bundle/nsis/Recon_${V}_x64-setup.nsis.zip.sig" \
-  "src-tauri/target/release/bundle/msi/Recon_${V}_x64_en-US.msi" \
-  /tmp/latest.json \
-  --title "Recon v${V}" --notes "..." --latest
+  "$B/nsis/Recon_${V}_x64-setup.exe" \
+  "$B/nsis/Recon_${V}_x64-setup.exe.sig" \
+  "$B/msi/Recon_${V}_x64_en-US.msi" \
+  "$B/msi/Recon_${V}_x64_en-US.msi.sig" \
+  "$TMPDIR/latest.json" \
+  --title "Recon v${V}" --notes-file notes.md --latest
 ```
+
+Five assets go up: the setup exe, its `.sig`, the MSI, its `.sig`, and `latest.json`.
 
 Two rules:
 
@@ -108,11 +115,21 @@ Two rules:
 ### 5. Verify before telling anyone
 
 ```bash
-curl -sL https://github.com/youssefvdel/Recon/releases/latest/download/latest.json | head -20
+# 1. the release is the newest and not excluded
+gh release view "v0.4.0" --json tagName,isDraft,isPrerelease,assets \
+  --jq '{tag:.tagName, draft:.isDraft, pre:.isPrerelease, assets:[.assets[].name]}'
+
+# 2. the exact endpoint the app polls resolves
+curl -sL -o /tmp/v.json -w "%{http_code}\n" \
+  https://github.com/youssefvdel/Recon/releases/latest/download/latest.json
+
+# 3. the manifest points at a real download
+python -c "import json;m=json.load(open('/tmp/v.json'));print(m['version']);print(m['platforms']['windows-x86_64']['url'])"
 ```
 
-Then in an older install: **Settings → Check for updates** should offer the new
-version and install it with a progress bar, no browser, and a self-restart.
+Then install an **older** build and use **Settings → Check for updates**: it should
+offer the new version, download with a progress bar, and restart itself. A build can
+only update itself if it already contains the plugin — 0.3.0 was the first.
 
 ---
 
