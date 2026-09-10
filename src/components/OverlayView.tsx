@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, BarChart2, Tv, RotateCcw } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
 import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
 import { getOverlayEditMode, setOverlayEditMode, fetchDisplayInfo, isTabDown } from '../utils/ipc';
@@ -11,20 +11,17 @@ export interface WidgetPos {
 }
 
 export interface OverlayConfig {
-  showRank: boolean;
   showLobby: boolean;
   showPregame: boolean;
   showKpi: boolean;
   showDisplay: boolean;
   positions: {
-    rank: WidgetPos;
     lobby: WidgetPos;
     pregame: WidgetPos;
     kpi: WidgetPos;
     display: WidgetPos;
   };
   scales: {
-    rank: number;
     lobby: number;
     pregame: number;
     kpi: number;
@@ -33,24 +30,20 @@ export interface OverlayConfig {
 }
 
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
-  showRank: true,
   showLobby: true,
   showPregame: true,
   showKpi: false,
   showDisplay: false,
   positions: {
-    rank: { x: 24, y: 24 },
-    display: { x: 300, y: 24 },
-    kpi: { x: 24, y: 140 },
-    lobby: { x: 16, y: 240 }, // Default position: left-mid
-    // Agent-select panel: centered, wide. Recomputed live in edit mode.
+    display: { x: 24, y: 24 },
+    kpi: { x: 24, y: 70 },
+    lobby: { x: 16, y: 200 },
     pregame: {
       x: typeof window !== 'undefined' ? Math.max(0, Math.round(window.innerWidth / 2 - 360)) : 500,
-      y: 100,
+      y: 90,
     },
   },
   scales: {
-    rank: 1.0,
     lobby: 1.0,
     pregame: 1.0,
     kpi: 1.0,
@@ -276,14 +269,12 @@ export const OverlayView: React.FC = () => {
 
   // Direct element references for GPU hardware-accelerated zero-lag dragging
   const rootRef = useRef<HTMLDivElement>(null);
-  const rankRef = useRef<HTMLDivElement>(null);
   const displayRef = useRef<HTMLDivElement>(null);
   const kpiRef = useRef<HTMLDivElement>(null);
   const lobbyRef = useRef<HTMLDivElement>(null);
   const pregameRef = useRef<HTMLDivElement>(null);
 
   const widgetRefs = {
-    rank: rankRef,
     display: displayRef,
     kpi: kpiRef,
     lobby: lobbyRef,
@@ -470,36 +461,6 @@ export const OverlayView: React.FC = () => {
     window.addEventListener('pointerup', onPointerUp, { passive: false });
   };
 
-  const changeScale = (key: keyof OverlayConfig['positions'], delta: number) => {
-    setConfig((prev) => {
-      const cur = prev.scales?.[key] ?? 1.0;
-      const nextScale = Math.max(0.6, Math.min(1.6, Number((cur + delta).toFixed(2))));
-      const next = {
-        ...prev,
-        scales: {
-          ...(prev.scales || DEFAULT_OVERLAY_CONFIG.scales),
-          [key]: nextScale,
-        },
-      };
-      saveConfig(next);
-      return next;
-    });
-  };
-
-  const resetScale = (key: keyof OverlayConfig['positions']) => {
-    setConfig((prev) => {
-      const next = {
-        ...prev,
-        scales: {
-          ...(prev.scales || DEFAULT_OVERLAY_CONFIG.scales),
-          [key]: 1.0,
-        },
-      };
-      saveConfig(next);
-      return next;
-    });
-  };
-
   const startResize = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
     if (!isEditMode) return;
     e.preventDefault();
@@ -563,9 +524,6 @@ export const OverlayView: React.FC = () => {
     const t = setTimeout(forceRepaint, 80);
     return () => clearTimeout(t);
   }, [scoreVisible, pregameVisible, forceRepaint]);
-  const myPlayer = matchState
-    ? [...matchState.blueTeam, ...matchState.redTeam].find((p) => p.isMe)
-    : null;
 
   return (
     <div
@@ -576,119 +534,215 @@ export const OverlayView: React.FC = () => {
     >
       {/* ZERO top bars. ZERO bottom footers. ZERO perimeter rings. Only widgets. */}
 
-      {/* Edit-mode self-exit: the fullscreen edit layer sits above the Aspect
-          app, so the Lock control lives here too (plus Esc). The main app
-          stays in sync via the overlay-edit-mode-changed event. */}
+      {/* ============================================================ */}
+      {/* CUSTOM EDIT MODE WIDGET DOCK (Visual Miniature Cards)        */}
+      {/* ============================================================ */}
       {isEditMode && (
-        <button
-          type="button"
-          onClick={async () => {
-            await setOverlayEditMode(false);
-          }}
-          className="fixed top-4 right-4 z-50 pointer-events-auto px-4 py-2 rounded-2xl bg-m3-mint text-zinc-950 text-xs font-black shadow-2xl border border-white/20 cursor-pointer hover:brightness-110"
-        >
-          ✓ Lock HUD (Esc)
-        </button>
-      )}
-
-      {/* ============================================================ */}
-      {/* WIDGET 1: Player Rank & RR                                  */}
-      {/* ============================================================ */}
-      {config.showRank && (
-        <div
-          ref={rankRef}
-          onPointerDown={(e) => startDrag('rank', e)}
-          style={{
-            transform: `translate3d(${config.positions.rank.x}px, ${config.positions.rank.y}px, 0) scale(${config.scales?.rank ?? 1.0})`,
-            transformOrigin: 'top left',
-            touchAction: 'none',
-          }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
-            isEditMode
-              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-0.5'
-              : ''
-          }`}
-        >
-          {isEditMode && (
-            <>
-              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
-                <span className="text-[9px] font-mono text-zinc-300">
-                  {Math.round((config.scales?.rank ?? 1.0) * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('rank', -0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Decrease size"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('rank', 0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Increase size"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    resetScale('rank');
-                  }}
-                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
-                  title="Reset size to 100%"
-                >
-                  100%
-                </button>
-              </div>
-              <div
-                onPointerDown={(e) => startResize('rank', e)}
-                className="absolute -bottom-1 -right-1 w-4 h-4 rounded-br-xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[10px] text-zinc-950 font-bold select-none shadow-sm z-10"
-                title="Drag to resize widget"
+        <div className="fixed bottom-6 inset-x-0 mx-auto w-fit max-w-[96vw] z-50 pointer-events-auto flex flex-col gap-2 p-3 rounded-3xl bg-zinc-950/92 backdrop-blur-2xl border border-white/15 shadow-2xl">
+          {/* Header row */}
+          <div className="flex items-center justify-between px-2 gap-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-m3-mint animate-pulse shadow-[0_0_8px_rgba(58,227,116,0.8)]" />
+              <span className="font-display font-black text-xs text-white tracking-wider uppercase">
+                HUD Widget Tray • Click or Drag to Place
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => saveConfig(DEFAULT_OVERLAY_CONFIG)}
+                className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                title="Reset layout to defaults"
               >
-                ↘
-              </div>
-            </>
-          )}
-          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-3">
-            {tierIcons[myPlayer?.tier ?? profile?.tier ?? 0] ? (
-              <img
-                src={tierIcons[myPlayer?.tier ?? profile?.tier ?? 0]}
-                alt=""
-                draggable={false}
-                className="w-10 h-10 object-contain shrink-0 drop-shadow-md pointer-events-none select-none"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-zinc-800 shrink-0" />
-            )}
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-display font-black text-sm text-white tracking-tight leading-tight">
-                  {myPlayer?.rank || profile?.rank || 'Unrated'}
+                <RotateCcw className="w-3 h-3 text-zinc-400" />
+                <span>Reset Layout</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await setOverlayEditMode(false);
+                }}
+                className="px-4 py-1.5 rounded-xl bg-m3-mint text-zinc-950 text-xs font-extrabold shadow-md border border-white/20 hover:brightness-110 flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Check className="w-4 h-4 stroke-[2.5]" />
+                <span>Lock HUD (Esc)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Visual Miniature Widget Cards Row */}
+          <div className="flex items-stretch gap-2.5 pt-1">
+            {/* 1. AGENT SELECT MINI PREVIEW CARD */}
+            <div
+              onPointerDown={(e) => {
+                if (!config.showPregame) {
+                  saveConfig({ ...config, showPregame: true });
+                }
+                startDrag('pregame', e);
+              }}
+              onClick={() => saveConfig({ ...config, showPregame: !config.showPregame })}
+              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-48 ${
+                config.showPregame
+                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-m3-primary" />
+                  <span>Agent Select</span>
                 </span>
-                <span className="text-xs font-mono font-extrabold text-m3-primary">
-                  {myPlayer?.rr ?? profile?.rr ?? 0} RR
+                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
+                  config.showPregame ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
+                }`}>
+                  {config.showPregame ? 'ON' : 'OFF'}
                 </span>
               </div>
-              <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
-                Peak: <strong className="text-zinc-200">{myPlayer?.peakRank || profile?.peak || '—'}</strong>
-                {profile && (
-                  <span className="ml-1.5 text-m3-mint">
-                    ({profile.wins}W / {profile.games - profile.wins}L)
-                  </span>
-                )}
+              {/* Mini visual mockup of 5v5 Agent Select */}
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-1 pointer-events-none">
+                <div className="flex items-center justify-between text-[8px] font-mono">
+                  <span className="text-red-400 font-bold">5 Attackers</span>
+                  <span className="text-teal-300 font-bold">5 Defenders</span>
+                </div>
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex gap-0.5">
+                    <span className="w-3 h-3 rounded-xs bg-red-500/60" />
+                    <span className="w-3 h-3 rounded-xs bg-red-500/60" />
+                    <span className="w-3 h-3 rounded-xs bg-red-500/60" />
+                  </div>
+                  <span className="text-[8px] font-mono text-zinc-500">VS</span>
+                  <div className="flex gap-0.5">
+                    <span className="w-3 h-3 rounded-xs bg-teal-400/60" />
+                    <span className="w-3 h-3 rounded-xs bg-teal-400/60" />
+                    <span className="w-3 h-3 rounded-xs bg-teal-400/60" />
+                  </div>
+                </div>
               </div>
+              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
+                {config.showPregame ? 'Drag to reposition' : 'Click to add'}
+              </span>
+            </div>
+
+            {/* 2. MATCH STATUS (SCOREBOARD) MINI PREVIEW CARD */}
+            <div
+              onPointerDown={(e) => {
+                if (!config.showLobby) {
+                  saveConfig({ ...config, showLobby: true });
+                }
+                startDrag('lobby', e);
+              }}
+              onClick={() => saveConfig({ ...config, showLobby: !config.showLobby })}
+              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-44 ${
+                config.showLobby
+                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-m3-gold" />
+                  <span>Match Status</span>
+                </span>
+                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
+                  config.showLobby ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
+                }`}>
+                  {config.showLobby ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              {/* Mini visual mockup of vertical scoreboard */}
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-0.5 pointer-events-none">
+                <div className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-zinc-700" />
+                  <span className="h-1.5 w-10 rounded-full bg-zinc-600" />
+                  <span className="ml-auto text-[7px] font-mono text-purple-300 font-bold">D2</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-zinc-700" />
+                  <span className="h-1.5 w-12 rounded-full bg-zinc-600" />
+                  <span className="ml-auto text-[7px] font-mono text-purple-300 font-bold">A1</span>
+                </div>
+              </div>
+              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
+                {config.showLobby ? 'Tab-peek in match' : 'Click to add'}
+              </span>
+            </div>
+
+            {/* 3. PERFORMANCE STATS MINI PREVIEW CARD */}
+            <div
+              onPointerDown={(e) => {
+                if (!config.showKpi) {
+                  saveConfig({ ...config, showKpi: true });
+                }
+                startDrag('kpi', e);
+              }}
+              onClick={() => saveConfig({ ...config, showKpi: !config.showKpi })}
+              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-38 ${
+                config.showKpi
+                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                  <BarChart2 className="w-3.5 h-3.5 text-m3-mint" />
+                  <span>Stats</span>
+                </span>
+                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
+                  config.showKpi ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
+                }`}>
+                  {config.showKpi ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              {/* Mini visual mockup of stats numbers */}
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex items-center justify-between text-[8px] font-mono pointer-events-none">
+                <div className="flex flex-col">
+                  <span className="text-zinc-500">WINS</span>
+                  <span className="text-m3-mint font-bold">{profile?.wins ?? 58}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-zinc-500">WR</span>
+                  <span className="text-purple-300 font-bold">56%</span>
+                </div>
+              </div>
+              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
+                {config.showKpi ? 'Drag to reposition' : 'Click to add'}
+              </span>
+            </div>
+
+            {/* 4. DISPLAY RESOLUTION MINI PREVIEW CARD */}
+            <div
+              onPointerDown={(e) => {
+                if (!config.showDisplay) {
+                  saveConfig({ ...config, showDisplay: true });
+                }
+                startDrag('display', e);
+              }}
+              onClick={() => saveConfig({ ...config, showDisplay: !config.showDisplay })}
+              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-38 ${
+                config.showDisplay
+                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                  <Tv className="w-3.5 h-3.5 text-m3-primary" />
+                  <span>Res Tag</span>
+                </span>
+                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
+                  config.showDisplay ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
+                }`}>
+                  {config.showDisplay ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              {/* Mini visual mockup of display tag */}
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex items-center gap-1.5 text-[8px] font-mono text-white pointer-events-none truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-m3-mint shrink-0" />
+                <span className="truncate">{displayTag.split('•')[0].trim() || '2088×1440'}</span>
+              </div>
+              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
+                {config.showDisplay ? 'Drag to reposition' : 'Click to add'}
+              </span>
             </div>
           </div>
         </div>
@@ -793,56 +847,13 @@ export const OverlayView: React.FC = () => {
           }`}
         >
           {isEditMode && (
-            <>
-              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
-                <span className="text-[9px] font-mono text-zinc-300">
-                  {Math.round((config.scales?.lobby ?? 1.0) * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('lobby', -0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Decrease size"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('lobby', 0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Increase size"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    resetScale('lobby');
-                  }}
-                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
-                  title="Reset size to 100%"
-                >
-                  100%
-                </button>
-              </div>
-              <div
-                onPointerDown={(e) => startResize('lobby', e)}
-                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
-                title="Drag to resize HUD widget"
-              >
-                ↘
-              </div>
-            </>
+            <div
+              onPointerDown={(e) => startResize('lobby', e)}
+              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+              title="Drag to resize HUD widget"
+            >
+              ↘
+            </div>
           )}
           <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-2.5 shadow-2xl flex flex-col gap-2">
             {/* Header: Map • Mode • Phase */}
@@ -947,56 +958,13 @@ export const OverlayView: React.FC = () => {
           }`}
         >
           {isEditMode && (
-            <>
-              <div className="absolute -top-7 right-0 flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg px-1.5 py-0.5 shadow-md z-10">
-                <span className="text-[9px] font-mono text-zinc-300">
-                  {Math.round((config.scales?.pregame ?? 1.0) * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('pregame', -0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Decrease size"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    changeScale('pregame', 0.1);
-                  }}
-                  className="w-4 h-4 rounded flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold"
-                  title="Increase size"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    resetScale('pregame');
-                  }}
-                  className="text-[9px] font-mono text-zinc-400 hover:text-white px-1"
-                  title="Reset size to 100%"
-                >
-                  100%
-                </button>
-              </div>
-              <div
-                onPointerDown={(e) => startResize('pregame', e)}
-                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
-                title="Drag to resize HUD widget"
-              >
-                ↘
-              </div>
-            </>
+            <div
+              onPointerDown={(e) => startResize('pregame', e)}
+              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+              title="Drag to resize HUD widget"
+            >
+              ↘
+            </div>
           )}
           <div className="rounded-3xl bg-black/45 backdrop-blur-xl border border-white/10 p-4 shadow-2xl flex flex-col gap-3">
             <div className="flex items-center justify-between px-1">
