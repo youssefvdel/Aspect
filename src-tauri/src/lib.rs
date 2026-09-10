@@ -749,13 +749,9 @@ pub fn run() {
                 }
             });
 
-            // Automated working set trimmer to keep RAM consumption minimal across host and WebView2 child tree
-            std::thread::spawn(|| {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(12));
-                    trim_working_set();
-                }
-            });
+            // Working-set trims happen on hide/unfocus events below — no timer:
+            // EmptyWorkingSet every 12s was faulting hot pages back in and
+            // hitching the UI on a fixed cadence.
 
             // Explicitly set high-res icon on the main window for crystal clear Windows taskbar & titlebar rendering
             if let Some(window) = app.get_webview_window("main") {
