@@ -131,7 +131,7 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     team: 'Blue',
     agentId: '',
     agentName: 'Viper',
-    agentIcon: 'https://media.valorant-api.com/agents/707eab51-47e6-8043-86d8-d69c45b3d5b8/displayicon.png',
+    agentIcon: 'https://media.valorant-api.com/agents/707eab51-4836-f488-046a-cda6bf494859/displayicon.png',
     agentRole: 'Controller',
     tier: 20,
     rank: 'Platinum 3',
@@ -1003,6 +1003,9 @@ const PregameTeamColumn: React.FC<{
               src={p.agentIcon}
               alt=""
               draggable={false}
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = 'none';
+              }}
               className="w-9 h-9 rounded-xl object-cover shrink-0 border border-white/10 pointer-events-none select-none"
             />
           ) : (
@@ -1077,6 +1080,9 @@ const VerticalSquadColumn: React.FC<{
               src={p.agentIcon}
               alt=""
               draggable={false}
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = 'none';
+              }}
               className="w-5 h-5 rounded-md object-cover shrink-0 pointer-events-none select-none border border-white/10"
             />
           ) : (
