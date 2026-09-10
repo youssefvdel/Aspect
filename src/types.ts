@@ -267,6 +267,11 @@ export interface LiveMatchPlayer {
   region?: string;
   country?: string;
   kd?: number | string;
+  winPct?: number;
+  hsPct?: number;
+  recentWon?: number;
+  recentLost?: number;
+  streak?: number;
 }
 
 export interface LiveMatchState {
@@ -276,6 +281,7 @@ export interface LiveMatchState {
   mapName: string;
   mode: string;
   isDeathmatch: boolean;
+  startingSide?: 'Attack' | 'Defense';
   blueTeam: LiveMatchPlayer[];
   redTeam: LiveMatchPlayer[];
   updatedAt: number;

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Plus } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
+import { getMapRecommendation } from '../utils/mapAdvisor';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -27,11 +28,8 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   showLobby: true,
   showPregame: true,
   positions: {
-    lobby: { x: 16, y: 220 },
-    pregame: {
-      x: typeof window !== 'undefined' ? Math.max(0, Math.round(window.innerWidth / 2 - 360)) : 500,
-      y: 90,
-    },
+    lobby: { x: 20, y: 180 },
+    pregame: { x: 20, y: 100 },
   },
   scales: {
     lobby: 1.0,
@@ -39,33 +37,7 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   },
 };
 
-function shortRank(rank?: string): string {
-  if (!rank || rank === 'Unrated' || rank === '—') return 'Unr';
-  return rank
-    .replace('Iron ', 'I')
-    .replace('Bronze ', 'B')
-    .replace('Silver ', 'S')
-    .replace('Gold ', 'G')
-    .replace('Platinum ', 'P')
-    .replace('Diamond ', 'D')
-    .replace('Ascendant ', 'A')
-    .replace('Immortal ', 'Imm')
-    .replace('Radiant', 'Rad');
-}
 
-function getCountryDisplay(p: LiveMatchPlayer): { flag: string; label: string } {
-  const code = (p.country || p.region || 'EU').toUpperCase();
-  if (code.length === 2 && /^[A-Z]{2}$/.test(code)) {
-    try {
-      const codePoints = code
-        .split('')
-        .map((c) => 127397 + c.charCodeAt(0));
-      const flag = String.fromCodePoint(...codePoints);
-      return { flag, label: code };
-    } catch {}
-  }
-  return { flag: '🌐', label: code.slice(0, 3) };
-}
 
 function formatKd(kd?: number | string): { text: string; color: string } {
   if (kd == null || kd === '' || kd === 0) return { text: '—', color: 'text-zinc-500' };
@@ -102,6 +74,12 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     country: 'DE',
     region: 'EU',
     kd: 1.28,
+    winPct: 58,
+    hsPct: 28,
+    recentWon: 3,
+    recentLost: 1,
+    streak: 2,
+    selectionState: 'locked',
   },
   {
     puuid: 'p2',
@@ -123,6 +101,12 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     country: 'EG',
     region: 'EU',
     kd: 1.05,
+    winPct: 52,
+    hsPct: 21,
+    recentWon: 2,
+    recentLost: 2,
+    streak: 1,
+    selectionState: 'locked',
   },
   {
     puuid: 'p3',
@@ -144,6 +128,66 @@ const PREVIEW_PLAYERS: LiveMatchPlayer[] = [
     country: 'FR',
     region: 'EU',
     kd: 0.94,
+    winPct: 49,
+    hsPct: 18,
+    recentWon: 1,
+    recentLost: 3,
+    streak: 0,
+    selectionState: 'selected',
+  },
+  {
+    puuid: 'p4',
+    name: 'SovaGod',
+    tag: 'DART',
+    team: 'Blue',
+    agentId: '',
+    agentName: 'Sova',
+    agentIcon: 'https://media.valorant-api.com/agents/ded3520f-4264-bfed-162d-b080e2f0f09f/displayicon.png',
+    agentRole: 'Initiator',
+    tier: 23,
+    rank: 'Diamond 3',
+    rr: 45,
+    peakTier: 25,
+    peakRank: 'Ascendant 2',
+    accountLevel: 178,
+    cardId: '',
+    isMe: false,
+    country: 'UK',
+    region: 'EU',
+    kd: 1.18,
+    winPct: 56,
+    hsPct: 24,
+    recentWon: 4,
+    recentLost: 1,
+    streak: 3,
+    selectionState: 'locked',
+  },
+  {
+    puuid: 'p5',
+    name: 'CypherWire',
+    tag: 'TRAP',
+    team: 'Blue',
+    agentId: '',
+    agentName: 'Cypher',
+    agentIcon: 'https://media.valorant-api.com/agents/117ed9e3-49f3-6512-3ccf-0cada7e3823b/displayicon.png',
+    agentRole: 'Sentinel',
+    tier: 22,
+    rank: 'Diamond 2',
+    rr: 15,
+    peakTier: 23,
+    peakRank: 'Diamond 3',
+    accountLevel: 95,
+    cardId: '',
+    isMe: false,
+    country: 'IT',
+    region: 'EU',
+    kd: 1.10,
+    winPct: 53,
+    hsPct: 22,
+    recentWon: 3,
+    recentLost: 2,
+    streak: 1,
+    selectionState: 'selected',
   },
 ];
 
@@ -506,10 +550,10 @@ export const OverlayView: React.FC = () => {
       className="fixed inset-0 w-screen h-screen select-none overflow-hidden font-sans pointer-events-none"
       style={{ backgroundColor: 'transparent' }}
     >
-      {/* Edit Mode Full-Screen Dark Dimmer Backdrop: darkens the screen for focused editing */}
+      {/* Edit Mode Dimmer: subtle 40% darkness so desktop/game remains visible */}
       {isEditMode && (
         <div
-          className="fixed inset-0 pointer-events-auto bg-black/75 transition-opacity duration-200 z-0"
+          className="fixed inset-0 pointer-events-auto bg-black/40 transition-opacity duration-200 z-0"
           onPointerDown={(e) => {
             e.stopPropagation();
           }}
@@ -522,7 +566,7 @@ export const OverlayView: React.FC = () => {
       {/* CUSTOM EDIT MODE WIDGET DOCK (Visual Miniature Cards)        */}
       {/* ============================================================ */}
       {isEditMode && (
-        <div className="fixed bottom-6 inset-x-0 mx-auto w-fit max-w-[96vw] z-50 pointer-events-auto flex flex-col gap-2 p-3 rounded-3xl bg-[#140e1b] border border-white/20 shadow-2xl">
+        <div className="fixed bottom-6 inset-x-0 mx-auto w-fit max-w-[96vw] z-50 pointer-events-auto flex flex-col gap-2 p-3 rounded-3xl bg-[#0c0816]/85 border border-white/15 shadow-2xl">
           {/* Header row */}
           <div className="flex items-center justify-between px-2 gap-4">
             <div className="flex items-center gap-2">
@@ -726,7 +770,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[325px] will-change-transform z-10 ${
+          } select-none w-[340px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-1 shadow-2xl'
               : ''
@@ -770,8 +814,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-[#181222] border-white/30 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/20'
-                : 'bg-[#140e1b]/95 border-white/15'
+                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/10'
+                : 'bg-[#0c0816]/75 border-white/10'
             }`}
           >
             {/* Header: Map • Mode • Phase */}
@@ -794,10 +838,9 @@ export const OverlayView: React.FC = () => {
             {/* Column Titles */}
             <div className="flex items-center gap-2 px-2 text-[9px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
               <span className="flex-1">Player</span>
-              <span className="shrink-0 w-10 text-center">From</span>
-              <span className="shrink-0 w-10 text-left">Rank</span>
-              <span className="shrink-0 w-10 text-left">Peak</span>
-              <span className="shrink-0 w-8 text-right">KD</span>
+              <span className="shrink-0 w-6 text-center">Rank</span>
+              <span className="shrink-0 w-6 text-center">Peak</span>
+              <span className="shrink-0 w-8 text-right">K/D</span>
             </div>
 
             {/* Vertical Compact Teams / Player Stack */}
@@ -832,16 +875,23 @@ export const OverlayView: React.FC = () => {
                 /* Standard Competitive / 5v5 Stack */
                 <>
                   <VerticalSquadColumn
-                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
+                    title={`Attackers ${matchState?.blueTeam.some((p) => p.isMe) || (!isLive && isEditMode) ? '(Your Team)' : ''}`}
                     tagColor="text-m3-coral"
-                    players={matchState?.blueTeam || []}
+                    players={matchState?.blueTeam?.length ? matchState.blueTeam : PREVIEW_PLAYERS}
                     tierIcons={tierIcons}
                   />
-                  {matchState?.phase === 'coregame' || matchState?.phase === 'pregame' ? (
+                  {matchState?.phase === 'coregame' ? (
                     <VerticalSquadColumn
                       title={`Defenders ${matchState.redTeam.some((p) => p.isMe) ? '(Your Team)' : ''}`}
                       tagColor="text-m3-mint"
                       players={matchState.redTeam}
+                      tierIcons={tierIcons}
+                    />
+                  ) : !isLive && isEditMode ? (
+                    <VerticalSquadColumn
+                      title="Defenders"
+                      tagColor="text-m3-mint"
+                      players={PREVIEW_OPPONENTS}
                       tierIcons={tierIcons}
                     />
                   ) : (
@@ -871,7 +921,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[720px] max-w-[94vw] will-change-transform z-10 ${
+          } select-none w-[560px] max-w-[96vw] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-3xl p-1 shadow-2xl'
               : ''
@@ -913,54 +963,54 @@ export const OverlayView: React.FC = () => {
             </>
           )}
           <div
-            className={`rounded-3xl border p-4 shadow-2xl flex flex-col gap-3 transition-all ${
+            className={`rounded-3xl border p-3.5 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-[#181222] border-white/30 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/20'
-                : 'bg-[#140e1b]/95 border-white/15'
+                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
+                : 'bg-[#0c0816]/75 border-white/10'
             }`}
           >
+            {/* Header: Map • Starting Side Badge */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="font-display font-black text-white truncate">
-                  {isPregame ? matchState?.mapName : 'Agent Select Preview'}
+                <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse shadow-[0_0_8px_rgba(58,227,116,0.8)]" />
+                <span className="font-display font-black text-white text-xs tracking-wider uppercase">
+                  {matchState?.mapName || 'Ascent'} • Team Scout
                 </span>
-                {isPregame && matchState?.mode && (
-                  <span className="text-[11px] font-mono text-zinc-400 truncate">• {matchState.mode}</span>
+                {matchState?.mode && (
+                  <span className="text-[10px] font-mono text-zinc-400 truncate">• {matchState.mode}</span>
                 )}
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-amber-300/15 text-amber-200 text-[10px] font-mono font-extrabold uppercase shrink-0">
-                {isPregame ? 'Agent Select' : 'Preview'}
-              </span>
+              <div className="flex items-center gap-2">
+                {matchState?.startingSide && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-extrabold uppercase shrink-0 border ${
+                      matchState.startingSide === 'Defense'
+                        ? 'bg-m3-mint/15 text-m3-mint border-m3-mint/30'
+                        : 'bg-m3-coral/15 text-m3-coral border-m3-coral/30'
+                    }`}
+                  >
+                    {matchState.startingSide === 'Defense' ? '🛡️ Starting Defense' : '⚔️ Starting Attack'}
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-[9px] font-mono font-bold uppercase shrink-0">
+                  {isPregame ? 'Agent Select' : 'Preview'}
+                </span>
+              </div>
             </div>
 
-            {!isPregame && isEditMode ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <PregameTeamColumn title="Your Team (Preview)" tagColor="text-m3-coral" players={PREVIEW_PLAYERS} tierIcons={tierIcons} />
-                <PregameTeamColumn title="Enemy Team (Preview)" tagColor="text-m3-mint" players={PREVIEW_OPPONENTS} tierIcons={tierIcons} />
-              </div>
-            ) : matchState?.isDeathmatch ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <PregameTeamColumn title="Group 1" tagColor="text-m3-gold" players={matchState.blueTeam} tierIcons={tierIcons} />
-                {matchState.redTeam.length > 0 && (
-                  <PregameTeamColumn title="Group 2" tagColor="text-m3-gold" players={matchState.redTeam} tierIcons={tierIcons} />
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <PregameTeamColumn
-                  title="Your Team"
-                  tagColor="text-m3-coral"
-                  players={matchState?.blueTeam || []}
-                  tierIcons={tierIcons}
-                />
-                <PregameTeamColumn
-                  title="Enemy Team"
-                  tagColor="text-m3-mint"
-                  players={matchState?.redTeam || []}
-                  tierIcons={tierIcons}
-                />
-              </div>
-            )}
+            <PregameTeamColumn
+              title="Your Squad"
+              tagColor="text-m3-primary"
+              players={
+                !isLive && isEditMode
+                  ? PREVIEW_PLAYERS
+                  : matchState?.blueTeam.length
+                  ? matchState.blueTeam
+                  : PREVIEW_PLAYERS
+              }
+              tierIcons={tierIcons}
+              mapName={matchState?.mapName || 'Ascent'}
+            />
           </div>
         </div>
       )}
@@ -973,73 +1023,162 @@ const PregameTeamColumn: React.FC<{
   tagColor: string;
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
-}> = ({ title, tagColor, players, tierIcons }) => (
-  <div className="flex flex-col gap-1.5 rounded-2xl bg-black/25 border border-white/5 p-2.5 pointer-events-none select-none">
-    <div className="flex items-center justify-between px-1">
-      <span className={`text-[11px] font-black uppercase tracking-wider ${tagColor}`}>{title}</span>
-      <span className="text-[10px] font-mono text-zinc-500">{players.length} players</span>
-    </div>
-    {players.map((p) => {
-      const icon = tierIcons[p.tier];
-      const kd = formatKd(p.kd);
-      const locked = (p.selectionState || '').toLowerCase().includes('lock');
-      const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
-      return (
-        <div
-          key={p.puuid}
-          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl border ${
-            p.isMe ? 'bg-purple-950/40 border-purple-500/40' : 'bg-zinc-900/50 border-white/5'
-          }`}
-        >
-          {p.agentIcon ? (
-            <img
-              src={p.agentIcon}
-              alt=""
-              draggable={false}
-              onError={(e) => {
-                (e.currentTarget as HTMLElement).style.display = 'none';
-              }}
-              className="w-9 h-9 rounded-xl object-cover shrink-0 border border-white/10 pointer-events-none select-none"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-xl bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-xs font-black text-zinc-400">
-              ?
+  mapName: string;
+}> = ({ players, tierIcons, mapName }) => {
+  const mapRec = getMapRecommendation(mapName);
+
+  return (
+    <div className="flex flex-col gap-1.5 pointer-events-none select-none">
+      {/* Table Column Headers: Agent, Player, Rank (Icon), Peak (Icon), K/D, Win%, HS%, Recent */}
+      <div className="grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+        <span>Player</span>
+        <span className="text-center">Rank</span>
+        <span className="text-center">Peak</span>
+        <span className="text-right">K/D</span>
+        <span className="text-right">Win%</span>
+        <span className="text-right">HS%</span>
+        <span className="text-right">Recent</span>
+      </div>
+
+      {/* Teammate Rows */}
+      <div className="flex flex-col gap-1">
+        {players.map((p) => {
+          const icon = tierIcons[p.tier];
+          const peakIcon = tierIcons[p.peakTier];
+          const kd = formatKd(p.kd);
+          const locked = (p.selectionState || '').toLowerCase().includes('lock');
+          const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
+
+          return (
+            <div
+              key={p.puuid}
+              className={`grid grid-cols-[1fr_36px_36px_44px_48px_44px_68px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
+                p.isMe
+                  ? 'bg-purple-500/15 border-purple-400/30 text-white shadow-xs'
+                  : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
+              }`}
+            >
+              {/* Agent Icon + Player Name & Pick State */}
+              <div className="flex items-center gap-2 min-w-0 pr-1">
+                {p.agentIcon ? (
+                  <img
+                    src={p.agentIcon}
+                    alt=""
+                    draggable={false}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                    className={`w-7 h-7 rounded-lg object-cover shrink-0 border ${
+                      locked ? 'border-m3-mint/60' : hasPick ? 'border-amber-300/60' : 'border-white/10'
+                    } pointer-events-none select-none`}
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-lg bg-zinc-800 shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                    ?
+                  </div>
+                )}
+                <div className="flex flex-col min-w-0 flex-1 leading-tight">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="font-bold text-[11px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
+                      {p.name}
+                    </span>
+                    {p.isMe && (
+                      <span className="px-1 py-px rounded bg-purple-500/80 text-[7px] font-black text-white uppercase shrink-0">
+                        You
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[8px] font-mono font-semibold">
+                    {locked ? (
+                      <span className="text-m3-mint">✓ {p.agentName}</span>
+                    ) : hasPick ? (
+                      <span className="text-amber-300">⏳ {p.agentName}</span>
+                    ) : (
+                      <span className="text-zinc-500">Picking…</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Current Rank (Icon only) */}
+              <div className="flex items-center justify-center" title={`Rank: ${p.rank}${p.rr ? ` • ${p.rr}RR` : ''}`}>
+                {icon ? (
+                  <img src={icon} alt="" draggable={false} className="w-5 h-5 object-contain shrink-0" />
+                ) : (
+                  <span className="text-[10px] font-mono text-zinc-500">—</span>
+                )}
+              </div>
+
+              {/* Peak Rank (Icon only) */}
+              <div className="flex items-center justify-center" title={`Peak: ${p.peakRank}`}>
+                {peakIcon ? (
+                  <img src={peakIcon} alt="" draggable={false} className="w-4 h-4 object-contain opacity-75 shrink-0" />
+                ) : (
+                  <span className="text-[10px] font-mono text-zinc-500">—</span>
+                )}
+              </div>
+
+              {/* K/D */}
+              <div className="text-right font-mono text-[10px] font-bold" title="K/D Ratio">
+                <span className={kd.color}>{kd.text}</span>
+              </div>
+
+              {/* Win % */}
+              <div className="text-right font-mono text-[10px] font-semibold" title="Act Win Rate">
+                {p.winPct != null ? (
+                  <span className={p.winPct >= 50 ? 'text-m3-mint' : 'text-zinc-400'}>
+                    {p.winPct}%
+                  </span>
+                ) : (
+                  <span className="text-zinc-600">—</span>
+                )}
+              </div>
+
+              {/* HS % */}
+              <div className="text-right font-mono text-[10px]" title="Headshot %">
+                {p.hsPct != null ? (
+                  <span className="text-amber-200/90 font-medium">{p.hsPct}%</span>
+                ) : (
+                  <span className="text-zinc-600">—</span>
+                )}
+              </div>
+
+              {/* Recent (W/L and Streak) */}
+              <div className="flex flex-col items-end leading-none font-mono" title="Recent Record & Streak">
+                {p.recentWon != null && p.recentLost != null ? (
+                  <>
+                    <span className="text-[9px] font-bold text-white">
+                      {p.recentWon}W - {p.recentLost}L
+                    </span>
+                    {p.streak && p.streak > 0 ? (
+                      <span className="text-[8px] text-m3-mint font-bold mt-0.5">
+                        {p.streak}W Strk
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-[10px] text-zinc-600">—</span>
+                )}
+              </div>
             </div>
-          )}
-          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-bold text-[13px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
-                {p.name}
-              </span>
-              {p.tag && <span className="text-[10px] font-mono text-zinc-500 shrink-0">#{p.tag}</span>}
-              {p.isMe && (
-                <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
-                  You
-                </span>
-              )}
-              <span className="ml-auto flex items-center gap-1 shrink-0 text-[10px] font-mono font-bold">
-                <span className={`w-1.5 h-1.5 rounded-full ${locked ? 'bg-m3-mint' : hasPick ? 'bg-amber-300' : 'bg-zinc-600'}`} />
-                <span className={locked ? 'text-m3-mint' : hasPick ? 'text-amber-200' : 'text-zinc-500'}>
-                  {locked ? 'Locked' : hasPick ? p.agentName : 'Picking…'}
-                </span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400 min-w-0">
-              {icon && (
-                <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0 pointer-events-none select-none" />
-              )}
-              <span className="font-bold text-purple-200 truncate">{p.rank}</span>
-              <span className="font-bold text-m3-primary shrink-0">{p.rr}RR</span>
-              <span className="truncate">Peak {p.peakRank}</span>
-              <span className={`font-bold shrink-0 ${kd.color}`}>K/D {kd.text}</span>
-              <span className="shrink-0">LVL {p.accountLevel}</span>
-            </div>
-          </div>
+          );
+        })}
+      </div>
+
+      {/* Smart Map Advisor: Best Agent on this Map */}
+      <div className="mt-1 px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between text-[10px] font-mono">
+        <div className="flex items-center gap-1.5">
+          <span className="text-m3-gold font-bold">🎯 {mapRec.isMetaPick ? 'META PICK' : 'YOUR BEST'}:</span>
+          <span className="text-white font-bold">{mapRec.agentName}</span>
+          <span className="text-zinc-500">({mapRec.role})</span>
         </div>
-      );
-    })}
-  </div>
-);
+        <span className="text-m3-mint text-[9px] font-medium truncate max-w-[240px] text-right" title={mapRec.reason}>
+          {mapRec.reason}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 const VerticalSquadColumn: React.FC<{
   title: string;
@@ -1055,7 +1194,6 @@ const VerticalSquadColumn: React.FC<{
     {players.map((p) => {
       const icon = tierIcons[p.tier];
       const peakIcon = tierIcons[p.peakTier];
-      const country = getCountryDisplay(p);
       const kd = formatKd(p.kd);
 
       return (
@@ -1096,26 +1234,22 @@ const VerticalSquadColumn: React.FC<{
             )}
           </div>
 
-          {/* Where is he from (Flag + Code) */}
-          <div className="flex items-center gap-1 shrink-0 px-1 py-0.5 rounded bg-white/5 border border-white/5" title={`Region: ${p.region || 'EU'}`}>
-            <span className="text-xs leading-none select-none">{country.flag}</span>
-            <span className="font-mono text-[9px] font-bold text-zinc-300">{country.label}</span>
-          </div>
-
-          {/* Current Rank */}
-          <div className="flex items-center gap-1 shrink-0 w-10 justify-start" title={`Rank: ${p.rank} (${p.rr} RR)`}>
+          {/* Current Rank (Icon only) */}
+          <div className="flex items-center justify-center w-6 shrink-0" title={`Rank: ${p.rank} (${p.rr} RR)`}>
             {icon ? (
-              <img src={icon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain shrink-0" />
-            ) : null}
-            <span className="font-mono text-[10px] font-bold text-purple-300">{shortRank(p.rank)}</span>
+              <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0" />
+            ) : (
+              <span className="text-[10px] font-mono text-zinc-500">—</span>
+            )}
           </div>
 
-          {/* Peak Rank */}
-          <div className="flex items-center gap-1 shrink-0 w-10 justify-start" title={`Peak: ${p.peakRank}`}>
+          {/* Peak Rank (Icon only) */}
+          <div className="flex items-center justify-center w-6 shrink-0" title={`Peak: ${p.peakRank}`}>
             {peakIcon ? (
               <img src={peakIcon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain opacity-75 shrink-0" />
-            ) : null}
-            <span className="font-mono text-[10px] text-zinc-400">{shortRank(p.peakRank)}</span>
+            ) : (
+              <span className="text-[10px] font-mono text-zinc-500">—</span>
+            )}
           </div>
 
           {/* KD */}

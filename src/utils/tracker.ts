@@ -945,7 +945,19 @@ export const glzHostFor = (region: string): string => {
 };
 
 const liveMmrCache = new Map<string, { tier: number; rr: number; peakTier: number; fetchedAt: number }>();
-const livePlayerStatsCache = new Map<string, { kd?: number; country?: string; fetchedAt: number }>();
+const livePlayerStatsCache = new Map<
+  string,
+  {
+    kd?: number;
+    winPct?: number;
+    hsPct?: number;
+    recentWon?: number;
+    recentLost?: number;
+    streak?: number;
+    country?: string;
+    fetchedAt: number;
+  }
+>();
 
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
   // Dev dashboard simulator: canned match without Riot open (dev builds only).
@@ -1161,6 +1173,10 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               .then((res) => {
                 livePlayerStatsCache.set(p.puuid, {
                   kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
+                  winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
+                  hsPct: res?.stats?.hsPct != null ? Math.round(res.stats.hsPct) : undefined,
+                  recentWon: res?.stats?.wins,
+                  recentLost: res?.stats?.losses,
                   country: res?.countryCode || region.toUpperCase(),
                   fetchedAt: Date.now(),
                 });
@@ -1198,6 +1214,11 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         region: region.toUpperCase(),
         country: statsCached?.country || region.toUpperCase(),
         kd: statsCached?.kd,
+        winPct: statsCached?.winPct,
+        hsPct: statsCached?.hsPct,
+        recentWon: statsCached?.recentWon,
+        recentLost: statsCached?.recentLost,
+        streak: statsCached?.streak,
       };
 
       if (targetTeam === 'Blue') {
@@ -1207,6 +1228,12 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       }
     });
 
+    const startingSide = matchData.AllyTeam?.TeamID === 'Red'
+      ? 'Attack'
+      : matchData.AllyTeam?.TeamID === 'Blue'
+      ? 'Defense'
+      : undefined;
+
     return {
       phase,
       matchId,
@@ -1214,6 +1241,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       mapName,
       mode: modeName,
       isDeathmatch,
+      startingSide,
       blueTeam,
       redTeam,
       updatedAt: Date.now(),
