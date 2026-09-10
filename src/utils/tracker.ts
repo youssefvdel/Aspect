@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
+import type { LiveMatchPlayer, LiveMatchState, LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
 
 /* Keyless tracker: everything comes straight from Riot using the local
@@ -349,24 +349,23 @@ export async function fetchCompetitiveUpdates(region: string, count = 20): Promi
 /** Find the account's shard: cached 7 days, else first shard that answers. */
 export async function detectRegion(): Promise<string> {
   try {
+    const ent = await getEntitlements();
+    if (ent.access_token) {
+      const part = ent.access_token.split('.')[1];
+      if (part) {
+        const decoded = JSON.parse(atob(part));
+        const reg = decoded?.pp?.c || decoded?.c;
+        if (reg && typeof reg === 'string') return reg.toLowerCase();
+      }
+    }
+  } catch {}
+  try {
     const raw = localStorage.getItem('aspect_tracker_shard');
     if (raw) {
       const { savedAt, region } = JSON.parse(raw);
       if (Date.now() - savedAt < 7 * 24 * 3600 * 1000 && region) return region;
     }
   } catch {}
-  const ent = await getEntitlements();
-  for (const r of ['eu', 'na', 'ap', 'br', 'latam', 'kr']) {
-    try {
-      const j = await riotGet(shardFor(r), `/mmr/v1/players/${ent.puuid}`);
-      if (j?.LatestCompetitiveUpdate) {
-        try {
-          localStorage.setItem('aspect_tracker_shard', JSON.stringify({ savedAt: Date.now(), region: r }));
-        } catch {}
-        return r;
-      }
-    } catch {}
-  }
   return 'eu';
 }
 
@@ -780,4 +779,245 @@ export async function aggregateDetails(
     },
     byId,
   };
+}
+
+export const glzHostFor = (region: string): string => {
+  const r = region.toLowerCase();
+  const map: Record<string, string> = {
+    eu: 'glz-eu-1.eu.a.pvp.net',
+    na: 'glz-na-1.na.a.pvp.net',
+    ap: 'glz-ap-1.ap.a.pvp.net',
+    kr: 'glz-kr-1.kr.a.pvp.net',
+    latam: 'glz-latam-1.latam.a.pvp.net',
+    br: 'glz-br-1.br.a.pvp.net',
+  };
+  return map[r] ?? 'glz-eu-1.eu.a.pvp.net';
+};
+
+export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
+  const idleState: LiveMatchState = {
+    phase: 'idle',
+    matchId: '',
+    mapId: '',
+    mapName: 'No Match Active',
+    mode: '',
+    blueTeam: [],
+    redTeam: [],
+    updatedAt: Date.now(),
+  };
+
+  if (!isTauri()) return idleState;
+
+  try {
+    const ent = await getEntitlements();
+    if (!ent.puuid) return idleState;
+
+    const region = regionOverride || (await detectRegion());
+    const glz = glzHostFor(region);
+    const shard = shardFor(region);
+    const data = await gameData();
+
+    let phase: 'idle' | 'pregame' | 'coregame' = 'idle';
+    let matchId = '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let matchData: any = null;
+
+    // 1. Check Coregame (in-match)
+    try {
+      const corePlayer = await riotGet(glz, `/core-game/v1/players/${ent.puuid}`).catch(() =>
+        riotGet(glz, `/coregame/v1/players/${ent.puuid}`)
+      );
+      if (corePlayer?.MatchID) {
+        matchId = corePlayer.MatchID;
+        matchData = await riotGet(glz, `/core-game/v1/matches/${matchId}`).catch(() =>
+          riotGet(glz, `/coregame/v1/matches/${matchId}`)
+        );
+        if (matchData && !matchData.httpStatus) {
+          phase = 'coregame';
+        }
+      }
+    } catch {}
+
+    // 2. Check Pregame (agent select) if not in coregame
+    if (phase === 'idle') {
+      try {
+        const prePlayer = await riotGet(glz, `/pregame/v1/players/${ent.puuid}`);
+        if (prePlayer?.MatchID) {
+          matchId = prePlayer.MatchID;
+          matchData = await riotGet(glz, `/pregame/v1/matches/${matchId}`);
+          if (matchData && !matchData.httpStatus) {
+            phase = 'pregame';
+          }
+        }
+      } catch {}
+    }
+
+    if (phase === 'idle' || !matchData) {
+      return idleState;
+    }
+
+    interface RawPlayer {
+      puuid: string;
+      team: 'Blue' | 'Red';
+      characterId: string;
+      accountLevel: number;
+      cardId: string;
+      selectionState?: string;
+    }
+
+    const rawPlayers: RawPlayer[] = [];
+
+    if (phase === 'coregame' && Array.isArray(matchData.Players)) {
+      for (const p of matchData.Players) {
+        rawPlayers.push({
+          puuid: p.Subject,
+          team: p.TeamID === 'Red' ? 'Red' : 'Blue',
+          characterId: p.CharacterID || '',
+          accountLevel: p.PlayerIdentity?.AccountLevel || 0,
+          cardId: p.PlayerIdentity?.PlayerCardID || '',
+        });
+      }
+    } else if (phase === 'pregame') {
+      if (Array.isArray(matchData.Teams)) {
+        for (const t of matchData.Teams) {
+          const tId = t.TeamID === 'Red' ? 'Red' : 'Blue';
+          for (const p of t.Players || []) {
+            rawPlayers.push({
+              puuid: p.Subject,
+              team: tId,
+              characterId: p.CharacterID || '',
+              accountLevel: p.PlayerIdentity?.AccountLevel || 0,
+              cardId: p.PlayerIdentity?.PlayerCardID || '',
+              selectionState: p.CharacterSelectionState || '',
+            });
+          }
+        }
+      }
+      // Pregame AllyTeam fallback
+      if (rawPlayers.length === 0 && Array.isArray(matchData.AllyTeam?.Players)) {
+        for (const p of matchData.AllyTeam.Players) {
+          rawPlayers.push({
+            puuid: p.Subject,
+            team: 'Blue',
+            characterId: p.CharacterID || '',
+            accountLevel: p.PlayerIdentity?.AccountLevel || 0,
+            cardId: p.PlayerIdentity?.PlayerCardID || '',
+            selectionState: p.CharacterSelectionState || '',
+          });
+        }
+      }
+    }
+
+    const puuids = rawPlayers.map((p) => p.puuid).filter(Boolean);
+    const nameMap = await resolvePlayerNames(puuids, region);
+
+    // Fetch MMRs in parallel with safety fallback
+    const mmrMap = new Map<string, { tier: number; rr: number; peakTier: number }>();
+    await Promise.all(
+      puuids.map(async (p) => {
+        try {
+          const j = await riotGet(shard, `/mmr/v1/players/${p}`);
+          const latest = j?.LatestCompetitiveUpdate ?? {};
+          const tierId = Number(latest?.TierAfterUpdate ?? 0);
+          const rr = Number(latest?.RankedRatingAfterUpdate ?? 0);
+          let peak = tierId;
+          const seasons = j?.QueueSkills?.competitive?.SeasonalInfoBySeasonID ?? {};
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const s of Object.values(seasons) as any[]) {
+            peak = Math.max(peak, Number(s?.CompetitiveTier ?? 0));
+          }
+          mmrMap.set(p, { tier: tierId, rr, peakTier: peak });
+        } catch {
+          mmrMap.set(p, { tier: 0, rr: 0, peakTier: 0 });
+        }
+      })
+    );
+
+    const rawMapId = String(matchData.MapID || '').toLowerCase();
+    const mapDict: Record<string, string> = {
+      '/game/maps/duality/duality': 'Bind',
+      '/game/maps/bonsai/bonsai': 'Split',
+      '/game/maps/ascent/ascent': 'Ascent',
+      '/game/maps/triad/triad': 'Haven',
+      '/game/maps/port/port': 'Icebox',
+      '/game/maps/foxtrot/foxtrot': 'Breeze',
+      '/game/maps/canyon/canyon': 'Fracture',
+      '/game/maps/pitt/pitt': 'Pearl',
+      '/game/maps/jam/jam': 'Lotus',
+      '/game/maps/juliett/juliett': 'Sunset',
+      '/game/maps/plummet/plummet': 'Abyss',
+    };
+    const mapName = mapDict[rawMapId] || data.maps[rawMapId] || shortMapName(rawMapId, data.maps);
+
+    const rawModeId = String(matchData.ModeID || matchData.Mode || '');
+    const isDeathmatch = rawModeId.toLowerCase().includes('deathmatch');
+    const modeName = isDeathmatch
+      ? 'Deathmatch'
+      : rawModeId.toLowerCase().includes('hurry')
+      ? 'Swiftplay'
+      : rawModeId.toLowerCase().includes('onefa')
+      ? 'Spike Rush'
+      : 'Competitive / Unrated';
+
+    const blueTeam: LiveMatchPlayer[] = [];
+    const redTeam: LiveMatchPlayer[] = [];
+
+    // For FFA / Deathmatch where everyone is on team 'Blue', split into 2 equal columns
+    const shouldSplitFFA = isDeathmatch || (rawPlayers.length > 5 && rawPlayers.every((p) => p.team === 'Blue'));
+
+    rawPlayers.forEach((p, idx) => {
+      const resolved = nameMap[p.puuid];
+      const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);
+      const tag = resolved?.tag || '';
+      const mmr = mmrMap.get(p.puuid) || { tier: 0, rr: 0, peakTier: 0 };
+      const agentRawName = data.agents[p.characterId.toLowerCase()] || '';
+      const agentMeta = Object.values(data.agentInfo).find(
+        (a) => a.name.toLowerCase() === agentRawName.toLowerCase()
+      );
+
+      const targetTeam = shouldSplitFFA ? (idx % 2 === 0 ? 'Blue' : 'Red') : p.team;
+
+      const playerObj: LiveMatchPlayer = {
+        puuid: p.puuid,
+        name,
+        tag,
+        team: targetTeam,
+        agentId: p.characterId,
+        agentName: agentRawName || 'Selecting…',
+        agentIcon: agentMeta?.icon || '',
+        agentRole: agentMeta?.role || '',
+        tier: mmr.tier,
+        rank: tierName(mmr.tier),
+        rr: mmr.rr,
+        peakTier: mmr.peakTier,
+        peakRank: mmr.peakTier > 0 ? tierName(mmr.peakTier) : '—',
+        accountLevel: p.accountLevel,
+        cardId: p.cardId,
+        isMe: p.puuid === ent.puuid,
+        selectionState: p.selectionState,
+      };
+
+      if (targetTeam === 'Blue') {
+        blueTeam.push(playerObj);
+      } else {
+        redTeam.push(playerObj);
+      }
+    });
+
+    return {
+      phase,
+      matchId,
+      mapId: rawMapId,
+      mapName,
+      mode: modeName,
+      blueTeam,
+      redTeam,
+      updatedAt: Date.now(),
+    };
+  } catch (err) {
+    return {
+      ...idleState,
+      error: String(err),
+    };
+  }
 }

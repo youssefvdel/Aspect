@@ -243,3 +243,35 @@ export interface UpdateInfo {
   html_url: string;
   download_url: string | null;
 }
+
+export interface LiveMatchPlayer {
+  puuid: string;
+  name: string;
+  tag: string;
+  team: 'Blue' | 'Red';
+  agentId: string;
+  agentName: string;
+  agentIcon: string;
+  agentRole: string;
+  tier: number;
+  rank: string;
+  rr: number;
+  peakTier: number;
+  peakRank: string;
+  accountLevel: number;
+  cardId: string;
+  isMe: boolean;
+  selectionState?: string;
+}
+
+export interface LiveMatchState {
+  phase: 'idle' | 'pregame' | 'coregame';
+  matchId: string;
+  mapId: string;
+  mapName: string;
+  mode: string;
+  blueTeam: LiveMatchPlayer[];
+  redTeam: LiveMatchPlayer[];
+  updatedAt: number;
+  error?: string;
+}

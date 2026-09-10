@@ -230,6 +230,26 @@ export async function restoreWindow(hwnd: number): Promise<string> {
   return await invoke<string>('restore_window_framed', { hwnd });
 }
 
+export async function showOverlay(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('show_overlay');
+}
+
+export async function hideOverlay(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('hide_overlay');
+}
+
+export async function setOverlayClickthrough(enabled: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('set_overlay_clickthrough', { enabled });
+}
+
+export async function isOverlayVisible(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return await invoke<boolean>('is_overlay_visible');
+}
+
 export async function fetchValorantConfigs(): Promise<ConfigFileInfo[]> {
   if (!isTauri()) return mockConfigs;
   return await invoke<ConfigFileInfo[]>('get_valorant_configs');

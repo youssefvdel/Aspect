@@ -3,9 +3,10 @@ import { Overview } from './Overview';
 import { MatchHistory } from './MatchHistory';
 import { TrackerMaps } from './TrackerMaps';
 import { TrackerAgents } from './TrackerAgents';
+import { LiveMatchView } from './LiveMatchView';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export type TrackerSubTab = 'overview' | 'matches' | 'agents' | 'maps';
+export type TrackerSubTab = 'overview' | 'live' | 'matches' | 'agents' | 'maps';
 
 interface SubTabItem {
   id: TrackerSubTab;
@@ -14,6 +15,7 @@ interface SubTabItem {
 
 const TABS: SubTabItem[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'live', label: 'Live Match' },
   { id: 'matches', label: 'Matches' },
   { id: 'agents', label: 'Agents' },
   { id: 'maps', label: 'Maps' },
@@ -54,6 +56,12 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
           {subTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <Overview />
+            </motion.div>
+          )}
+
+          {subTab === 'live' && (
+            <motion.div key="live" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+              <LiveMatchView />
             </motion.div>
           )}
 

@@ -3,9 +3,9 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
+    EnumWindows, GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
     GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, SetWindowLongPtrW,
-    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, SM_CXSCREEN, SM_CYSCREEN,
+    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN,
     SWP_FRAMECHANGED, SWP_SHOWWINDOW, WINDOW_STYLE, WS_BORDER, WS_CAPTION,
     WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP,
     WS_SYSMENU, WS_THICKFRAME,
@@ -120,6 +120,33 @@ pub fn is_valorant_game_window(_hwnd: HWND, title: &str, class_name: &str) -> bo
 
     // 3. Fallback: exact match on title "VALORANT" if class_name is unavailable
     lower == "valorant"
+}
+
+pub fn is_valorant_foreground() -> bool {
+    unsafe {
+        let fg = GetForegroundWindow();
+        if !IsWindow(fg).as_bool() {
+            return false;
+        }
+        let length = GetWindowTextLengthW(fg);
+        if length == 0 {
+            return false;
+        }
+        let mut buffer: Vec<u16> = vec![0; (length + 1) as usize];
+        let copied = GetWindowTextW(fg, &mut buffer);
+        if copied > 0 {
+            let title = String::from_utf16_lossy(&buffer[..copied as usize]);
+            let mut class_buf = [0u16; 128];
+            let class_len = GetClassNameW(fg, &mut class_buf);
+            let class_name = if class_len > 0 {
+                String::from_utf16_lossy(&class_buf[..class_len as usize])
+            } else {
+                String::new()
+            };
+            return is_valorant_game_window(fg, title.trim(), &class_name);
+        }
+        false
+    }
 }
 
 pub fn is_game_window(hwnd: HWND, title: &str, class_name: &str) -> bool {
@@ -298,5 +325,75 @@ pub fn restore_window(hwnd_val: isize) -> Result<String, String> {
         ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
 
         Ok("Window restored to standard framed mode.".to_string())
+    }
+}
+
+pub fn setup_overlay_window(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return Err("Overlay window handle is invalid.".to_string());
+        }
+
+        // WS_EX_TRANSPARENT: 0x00000020 (mouse clicks pass through)
+        // WS_EX_LAYERED:     0x00080000 (transparency support)
+        // WS_EX_NOACTIVATE:  0x08000000 (never steal focus from Valorant)
+        // WS_EX_TOPMOST:     0x00000008 (stay above fullscreen game)
+        // WS_EX_TOOLWINDOW:  0x00000080 (hide from Alt+Tab switcher)
+        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        ex_style |= 0x00080000 | 0x08000000 | 0x00000008 | 0x00000080;
+        if clickthrough {
+            ex_style |= 0x00000020;
+        } else {
+            ex_style &= !0x00000020;
+        }
+
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+
+        // Match primary display bounds
+        let h_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+
+        let (x, y, width, height) = if GetMonitorInfoW(h_mon, &mut mi).as_bool() {
+            let rc = mi.rcMonitor;
+            (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
+        } else {
+            let cx = GetSystemMetrics(SM_CXSCREEN);
+            let cy = GetSystemMetrics(SM_CYSCREEN);
+            (0, 0, cx, cy)
+        };
+
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            x,
+            y,
+            width,
+            height,
+            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+        );
+
+        Ok(())
+    }
+}
+
+pub fn toggle_overlay_clickthrough(hwnd_val: isize, clickthrough: bool) -> Result<(), String> {
+    unsafe {
+        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+        if !IsWindow(hwnd).as_bool() {
+            return Err("Overlay window handle is invalid.".to_string());
+        }
+
+        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        if clickthrough {
+            ex_style |= 0x00000020;
+        } else {
+            ex_style &= !0x00000020;
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+        Ok(())
     }
 }

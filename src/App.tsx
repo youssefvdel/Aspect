@@ -5,6 +5,7 @@ import { TopBar } from './components/TopBar';
 import { UtilityView } from './components/UtilityView';
 import { SettingsView } from './components/SettingsView';
 import { TrackerView } from './components/TrackerView';
+import { OverlayView } from './components/OverlayView';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
 import {
@@ -25,6 +26,26 @@ import {
 import { listen } from '@tauri-apps/api/event';
 
 export const App: React.FC = () => {
+  const isOverlay = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    if (window.location.hash.includes('overlay') || window.location.search.includes('overlay')) return true;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const label = (window as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label;
+      return label === 'overlay';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOverlay) {
+      document.documentElement.style.backgroundColor = 'transparent';
+      document.body.style.backgroundColor = 'transparent';
+      document.body.classList.add('bg-transparent');
+    }
+  }, [isOverlay]);
+
   const [currentTab, setCurrentTab] = useState<TabType>('overview');
   const [displayInfo, setDisplayInfo] = useState<DisplayInfo | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutBinding | null>(null);
@@ -233,6 +254,10 @@ export const App: React.FC = () => {
       showToast(String(e), 'info');
     }
   };
+
+  if (isOverlay) {
+    return <OverlayView />;
+  }
 
   return (
     <div className="h-screen w-screen bg-m3-surface text-m3-on-surface flex overflow-hidden selection:bg-m3-primary-container selection:text-m3-on-primary-container antialiased font-sans">

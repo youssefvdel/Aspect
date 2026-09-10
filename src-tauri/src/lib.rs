@@ -229,6 +229,58 @@ fn restore_window_framed(hwnd: isize) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                let _ = window_manager::setup_overlay_window(hwnd.0 as isize, true);
+            }
+        }
+        let _ = window.set_ignore_cursor_events(true);
+        window.show().map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        window.hide().map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn set_overlay_clickthrough(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                let _ = window_manager::toggle_overlay_clickthrough(hwnd.0 as isize, enabled);
+            }
+        }
+        let _ = window.set_ignore_cursor_events(enabled);
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn is_overlay_visible(app: tauri::AppHandle) -> Result<bool, String> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        Ok(window.is_visible().unwrap_or(false))
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
 fn get_valorant_configs() -> Result<Vec<game_config::ConfigFileInfo>, String> {
     Ok(game_config::find_valorant_configs())
 }
@@ -621,6 +673,32 @@ pub fn run() {
                 }
             });
 
+            // In-Game TAB Overlay Peek Thread:
+            // When user holds TAB while in Valorant, show the overlay. When released, hide it.
+            let tab_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut was_tab_down = false;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(35));
+                    let tab_down = unsafe {
+                        (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(0x09) as u16 & 0x8000) != 0
+                    };
+
+                    if tab_down != was_tab_down {
+                        was_tab_down = tab_down;
+                        if tab_down {
+                            if window_manager::is_valorant_foreground() {
+                                let _ = show_overlay(tab_handle.clone());
+                            }
+                        } else {
+                            if window_manager::is_valorant_foreground() {
+                                let _ = hide_overlay(tab_handle.clone());
+                            }
+                        }
+                    }
+                }
+            });
+
             // Automated working set trimmer to keep RAM consumption minimal across host and WebView2 child tree
             std::thread::spawn(|| {
                 loop {
@@ -715,6 +793,10 @@ pub fn run() {
             get_auto_borderless,
             make_window_borderless,
             restore_window_framed,
+            show_overlay,
+            hide_overlay,
+            set_overlay_clickthrough,
+            is_overlay_visible,
             get_valorant_configs,
             update_valorant_config,
             update_valorant_config_custom,

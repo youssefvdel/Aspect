@@ -42,6 +42,7 @@ fn curl_args() -> Command {
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.arg("--ssl-no-revoke");
     }
     cmd
 }
@@ -54,8 +55,10 @@ fn local_get(port: &str, password: &str, path: &str) -> Result<serde_json::Value
         .args([
             "-s",
             "-k",
+            "--connect-timeout",
+            "1",
             "--max-time",
-            "5",
+            "2",
             "-u",
             &format!("riot:{}", password),
             &url,
@@ -221,11 +224,14 @@ pub fn riot_direct_get(
         return Err("Invalid path.".to_string());
     }
     let url = format!("https://{}{}", host, path);
+    let ua = format!("ShooterGame/{} Windows/10.0.19042.1.256.64bit", client_version);
     let output = curl_args()
         .args([
             "-s",
+            "--connect-timeout",
+            "2",
             "--max-time",
-            "10",
+            "4",
             "-H",
             &format!("Authorization: Bearer {}", access_token),
             "-H",
@@ -234,6 +240,8 @@ pub fn riot_direct_get(
             &format!("X-Riot-ClientPlatform: {}", client_platform),
             "-H",
             &format!("X-Riot-ClientVersion: {}", client_version),
+            "-H",
+            &format!("User-Agent: {}", ua),
             &url,
         ])
         .output()
@@ -269,7 +277,8 @@ pub fn riot_resolve_names(
         .ok_or_else(|| "No entitlement token".to_string())?;
 
     let client_version = local_client_version().unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
-    let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", shard);
+    let clean_shard = shard.trim_start_matches("pd.").trim_end_matches(".a.pvp.net");
+    let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", clean_shard);
     let body = serde_json::to_string(&puuids).map_err(|e| e.to_string())?;
 
     let output = curl_args()
