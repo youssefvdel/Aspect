@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, BarChart2, Tv, RotateCcw } from 'lucide-react';
-import type { LiveMatchState, LiveMatchPlayer, TrackerProfile } from '../types';
-import { fetchLiveMatchState, gameData, detectLocalAccount, detectRegion, fetchMmrDirect } from '../utils/tracker';
-import { getOverlayEditMode, setOverlayEditMode, fetchDisplayInfo, isTabDown } from '../utils/ipc';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move } from 'lucide-react';
+import type { LiveMatchState, LiveMatchPlayer } from '../types';
+import { fetchLiveMatchState, gameData } from '../utils/tracker';
+import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 export interface WidgetPos {
@@ -13,31 +13,21 @@ export interface WidgetPos {
 export interface OverlayConfig {
   showLobby: boolean;
   showPregame: boolean;
-  showKpi: boolean;
-  showDisplay: boolean;
   positions: {
     lobby: WidgetPos;
     pregame: WidgetPos;
-    kpi: WidgetPos;
-    display: WidgetPos;
   };
   scales: {
     lobby: number;
     pregame: number;
-    kpi: number;
-    display: number;
   };
 }
 
 export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   showLobby: true,
   showPregame: true,
-  showKpi: false,
-  showDisplay: false,
   positions: {
-    display: { x: 24, y: 24 },
-    kpi: { x: 24, y: 70 },
-    lobby: { x: 16, y: 200 },
+    lobby: { x: 16, y: 220 },
     pregame: {
       x: typeof window !== 'undefined' ? Math.max(0, Math.round(window.innerWidth / 2 - 360)) : 500,
       y: 90,
@@ -46,8 +36,6 @@ export const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   scales: {
     lobby: 1.0,
     pregame: 1.0,
-    kpi: 1.0,
-    display: 1.0,
   },
 };
 
@@ -231,8 +219,6 @@ const PREVIEW_OPPONENTS: LiveMatchPlayer[] = [
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
-  const [profile, setProfile] = useState<TrackerProfile | null>(null);
-  const [displayTag, setDisplayTag] = useState<string>('2088×1440 @ 260Hz • 1.45:1');
 
   // Edit mode state (synced with main app)
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
@@ -269,14 +255,10 @@ export const OverlayView: React.FC = () => {
 
   // Direct element references for GPU hardware-accelerated zero-lag dragging
   const rootRef = useRef<HTMLDivElement>(null);
-  const displayRef = useRef<HTMLDivElement>(null);
-  const kpiRef = useRef<HTMLDivElement>(null);
   const lobbyRef = useRef<HTMLDivElement>(null);
   const pregameRef = useRef<HTMLDivElement>(null);
 
   const widgetRefs = {
-    display: displayRef,
-    kpi: kpiRef,
     lobby: lobbyRef,
     pregame: pregameRef,
   };
@@ -328,15 +310,6 @@ export const OverlayView: React.FC = () => {
   const idleSkips = useRef(0);
   useEffect(() => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
-    fetchDisplayInfo().then((info) => {
-      setDisplayTag(`${info.current_width}×${info.current_height} @ ${info.current_hz}Hz`);
-    }).catch(() => {});
-
-    detectLocalAccount().then(async (acc) => {
-      const reg = await detectRegion();
-      const prof = await fetchMmrDirect(reg, acc.game_name, acc.tagline);
-      setProfile(prof);
-    }).catch(() => {});
 
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -403,18 +376,27 @@ export const OverlayView: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [isEditMode]);
 
-  // Smooth GPU-composited drag handler
-  const startDrag = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
+  // Smooth GPU-composited drag handler with pointer capture
+  const startDrag = (
+    key: keyof OverlayConfig['positions'],
+    e: React.PointerEvent,
+    overrideStartPos?: WidgetPos
+  ) => {
     if (!isEditMode) return;
     e.preventDefault();
     e.stopPropagation();
     setActiveDragKey(key);
 
-    const targetEl = widgetRefs[key].current;
-    const current = config.positions[key] || { x: 16, y: 240 };
+    const dragTarget = e.currentTarget as HTMLElement;
+    try {
+      dragTarget.setPointerCapture(e.pointerId);
+    } catch {}
 
-    let curX = current.x;
-    let curY = current.y;
+    const targetEl = widgetRefs[key].current;
+    const basePos = overrideStartPos || config.positions[key] || { x: 16, y: 200 };
+
+    let curX = basePos.x;
+    let curY = basePos.y;
     const startClientX = e.clientX;
     const startClientY = e.clientY;
 
@@ -426,8 +408,8 @@ export const OverlayView: React.FC = () => {
       // Clamp strictly within screen bounds
       const screenW = typeof window !== 'undefined' ? window.innerWidth : 2088;
       const screenH = typeof window !== 'undefined' ? window.innerHeight : 1440;
-      const clampedX = Math.max(0, Math.min(screenW - 80, current.x + dx));
-      const clampedY = Math.max(0, Math.min(screenH - 50, current.y + dy));
+      const clampedX = Math.max(0, Math.min(screenW - 120, basePos.x + dx));
+      const clampedY = Math.max(0, Math.min(screenH - 80, basePos.y + dy));
 
       curX = clampedX;
       curY = clampedY;
@@ -440,6 +422,9 @@ export const OverlayView: React.FC = () => {
 
     const onPointerUp = (upEv: PointerEvent) => {
       upEv.preventDefault();
+      try {
+        dragTarget.releasePointerCapture(upEv.pointerId);
+      } catch {}
       setActiveDragKey(null);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -459,6 +444,29 @@ export const OverlayView: React.FC = () => {
 
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('pointerup', onPointerUp, { passive: false });
+  };
+
+  const startDragFromTray = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
+    if (!isEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ensure widget is active
+    if (key === 'pregame' && !config.showPregame) {
+      saveConfig({ ...config, showPregame: true });
+    } else if (key === 'lobby' && !config.showLobby) {
+      saveConfig({ ...config, showLobby: true });
+    }
+
+    const startX = Math.max(0, e.clientX - (key === 'pregame' ? 360 : 160));
+    const startY = Math.max(0, e.clientY - 40);
+
+    const targetEl = widgetRefs[key].current;
+    if (targetEl) {
+      targetEl.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+    }
+
+    startDrag(key, e, { x: startX, y: startY });
   };
 
   const startResize = (key: keyof OverlayConfig['positions'], e: React.PointerEvent) => {
@@ -571,33 +579,31 @@ export const OverlayView: React.FC = () => {
           </div>
 
           {/* Visual Miniature Widget Cards Row */}
-          <div className="flex items-stretch gap-2.5 pt-1">
+          <div className="flex items-stretch gap-3 pt-1">
             {/* 1. AGENT SELECT MINI PREVIEW CARD */}
             <div
-              onPointerDown={(e) => {
-                if (!config.showPregame) {
-                  saveConfig({ ...config, showPregame: true });
-                }
-                startDrag('pregame', e);
-              }}
-              onClick={() => saveConfig({ ...config, showPregame: !config.showPregame })}
-              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-48 ${
+              className={`flex flex-col gap-2 p-3 rounded-2xl border select-none transition-all w-56 ${
                 config.showPregame
                   ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
-                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+                  : 'bg-zinc-900/60 border-white/10 opacity-70'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-m3-primary" />
                   <span>Agent Select</span>
                 </span>
-                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
-                  config.showPregame ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
-                }`}>
+                <button
+                  type="button"
+                  onClick={() => saveConfig({ ...config, showPregame: !config.showPregame })}
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                    config.showPregame ? 'bg-m3-mint/20 text-m3-mint border border-m3-mint/30' : 'bg-white/10 text-zinc-400 border border-white/10'
+                  }`}
+                >
                   {config.showPregame ? 'ON' : 'OFF'}
-                </span>
+                </button>
               </div>
+
               {/* Mini visual mockup of 5v5 Agent Select */}
               <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-1 pointer-events-none">
                 <div className="flex items-center justify-between text-[8px] font-mono">
@@ -618,39 +624,43 @@ export const OverlayView: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
-                {config.showPregame ? 'Drag to reposition' : 'Click to add'}
-              </span>
+
+              {/* Dedicated Drag Bar */}
+              <div
+                onPointerDown={(e) => startDragFromTray('pregame', e)}
+                className="mt-auto px-2 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing"
+              >
+                <Move className="w-3 h-3 text-m3-primary" />
+                <span>Drag onto Screen</span>
+              </div>
             </div>
 
             {/* 2. MATCH STATUS (SCOREBOARD) MINI PREVIEW CARD */}
             <div
-              onPointerDown={(e) => {
-                if (!config.showLobby) {
-                  saveConfig({ ...config, showLobby: true });
-                }
-                startDrag('lobby', e);
-              }}
-              onClick={() => saveConfig({ ...config, showLobby: !config.showLobby })}
-              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-44 ${
+              className={`flex flex-col gap-2 p-3 rounded-2xl border select-none transition-all w-52 ${
                 config.showLobby
                   ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
-                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
+                  : 'bg-zinc-900/60 border-white/10 opacity-70'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-m3-gold" />
                   <span>Match Status</span>
                 </span>
-                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
-                  config.showLobby ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
-                }`}>
+                <button
+                  type="button"
+                  onClick={() => saveConfig({ ...config, showLobby: !config.showLobby })}
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                    config.showLobby ? 'bg-m3-mint/20 text-m3-mint border border-m3-mint/30' : 'bg-white/10 text-zinc-400 border border-white/10'
+                  }`}
+                >
                   {config.showLobby ? 'ON' : 'OFF'}
-                </span>
+                </button>
               </div>
+
               {/* Mini visual mockup of vertical scoreboard */}
-              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-0.5 pointer-events-none">
+              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex flex-col gap-1 pointer-events-none">
                 <div className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-xs bg-zinc-700" />
                   <span className="h-1.5 w-10 rounded-full bg-zinc-600" />
@@ -662,174 +672,22 @@ export const OverlayView: React.FC = () => {
                   <span className="ml-auto text-[7px] font-mono text-purple-300 font-bold">A1</span>
                 </div>
               </div>
-              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
-                {config.showLobby ? 'Tab-peek in match' : 'Click to add'}
-              </span>
-            </div>
 
-            {/* 3. PERFORMANCE STATS MINI PREVIEW CARD */}
-            <div
-              onPointerDown={(e) => {
-                if (!config.showKpi) {
-                  saveConfig({ ...config, showKpi: true });
-                }
-                startDrag('kpi', e);
-              }}
-              onClick={() => saveConfig({ ...config, showKpi: !config.showKpi })}
-              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-38 ${
-                config.showKpi
-                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
-                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                  <BarChart2 className="w-3.5 h-3.5 text-m3-mint" />
-                  <span>Stats</span>
-                </span>
-                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
-                  config.showKpi ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
-                }`}>
-                  {config.showKpi ? 'ON' : 'OFF'}
-                </span>
+              {/* Dedicated Drag Bar */}
+              <div
+                onPointerDown={(e) => startDragFromTray('lobby', e)}
+                className="mt-auto px-2 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing"
+              >
+                <Move className="w-3 h-3 text-m3-gold" />
+                <span>Drag onto Screen</span>
               </div>
-              {/* Mini visual mockup of stats numbers */}
-              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex items-center justify-between text-[8px] font-mono pointer-events-none">
-                <div className="flex flex-col">
-                  <span className="text-zinc-500">WINS</span>
-                  <span className="text-m3-mint font-bold">{profile?.wins ?? 58}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-zinc-500">WR</span>
-                  <span className="text-purple-300 font-bold">56%</span>
-                </div>
-              </div>
-              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
-                {config.showKpi ? 'Drag to reposition' : 'Click to add'}
-              </span>
-            </div>
-
-            {/* 4. DISPLAY RESOLUTION MINI PREVIEW CARD */}
-            <div
-              onPointerDown={(e) => {
-                if (!config.showDisplay) {
-                  saveConfig({ ...config, showDisplay: true });
-                }
-                startDrag('display', e);
-              }}
-              onClick={() => saveConfig({ ...config, showDisplay: !config.showDisplay })}
-              className={`flex flex-col gap-1.5 p-2.5 rounded-2xl border cursor-pointer select-none transition-all w-38 ${
-                config.showDisplay
-                  ? 'bg-purple-950/40 border-purple-500/60 shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
-                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-white/10 opacity-70 hover:opacity-100'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                  <Tv className="w-3.5 h-3.5 text-m3-primary" />
-                  <span>Res Tag</span>
-                </span>
-                <span className={`text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full ${
-                  config.showDisplay ? 'bg-m3-mint/20 text-m3-mint' : 'bg-white/10 text-zinc-400'
-                }`}>
-                  {config.showDisplay ? 'ON' : 'OFF'}
-                </span>
-              </div>
-              {/* Mini visual mockup of display tag */}
-              <div className="rounded-xl bg-black/40 border border-white/5 p-1.5 flex items-center gap-1.5 text-[8px] font-mono text-white pointer-events-none truncate">
-                <span className="w-1.5 h-1.5 rounded-full bg-m3-mint shrink-0" />
-                <span className="truncate">{displayTag.split('•')[0].trim() || '2088×1440'}</span>
-              </div>
-              <span className="text-[9px] font-mono text-zinc-400 text-center mt-auto">
-                {config.showDisplay ? 'Drag to reposition' : 'Click to add'}
-              </span>
             </div>
           </div>
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* WIDGET 2: Display & Stretched Tag                           */}
-      {/* ============================================================ */}
-      {config.showDisplay && (
-        <div
-          ref={displayRef}
-          onPointerDown={(e) => startDrag('display', e)}
-          style={{
-            transform: `translate3d(${config.positions.display.x}px, ${config.positions.display.y}px, 0) scale(${config.scales?.display ?? 1.0})`,
-            transformOrigin: 'top left',
-            touchAction: 'none',
-          }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
-            isEditMode
-              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-xl p-0.5'
-              : ''
-          }`}
-        >
-          {isEditMode && (
-            <div
-              onPointerDown={(e) => startResize('display', e)}
-              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-br-lg bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[9px] text-zinc-950 font-bold select-none shadow-sm z-10"
-              title="Drag to resize widget"
-            >
-              ↘
-            </div>
-          )}
-          <div className="rounded-xl bg-black/35 backdrop-blur-md border border-white/10 px-3 py-1.5 shadow-2xl flex items-center gap-2 text-xs font-mono text-white">
-            <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse" />
-            <span>{displayTag}</span>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* WIDGET 3: Performance KPI                                   */}
-      {/* ============================================================ */}
-      {config.showKpi && profile && (
-        <div
-          ref={kpiRef}
-          onPointerDown={(e) => startDrag('kpi', e)}
-          style={{
-            transform: `translate3d(${config.positions.kpi.x}px, ${config.positions.kpi.y}px, 0) scale(${config.scales?.kpi ?? 1.0})`,
-            transformOrigin: 'top left',
-            touchAction: 'none',
-          }}
-          className={`fixed top-0 left-0 pointer-events-auto select-none will-change-transform ${
-            isEditMode
-              ? 'cursor-grab active:cursor-grabbing ring-2 ring-m3-primary/70 ring-dashed rounded-2xl p-0.5'
-              : ''
-          }`}
-        >
-          {isEditMode && (
-            <div
-              onPointerDown={(e) => startResize('kpi', e)}
-              className="absolute -bottom-1 -right-1 w-4 h-4 rounded-br-xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[10px] text-zinc-950 font-bold select-none shadow-sm z-10"
-              title="Drag to resize widget"
-            >
-              ↘
-            </div>
-          )}
-          <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 px-3.5 py-2 shadow-2xl flex items-center gap-4 text-xs font-mono">
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Wins</span>
-              <span className="text-m3-mint font-bold">{profile.wins}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Matches</span>
-              <span className="text-white font-bold">{profile.games}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase tracking-wider text-zinc-400">Win Rate</span>
-              <span className="text-purple-300 font-bold">
-                {profile.games > 0 ? `${Math.round((profile.wins / profile.games) * 100)}%` : '—'}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* WIDGET 4: Match Panel — agent select always on, in-match Tab-peek only */}
+      {/* WIDGET: Match Panel — agent select always on, in-match Tab-peek only */}
       {/* ============================================================ */}
       {config.showLobby && showScorePanel && (
         <div
@@ -847,13 +705,25 @@ export const OverlayView: React.FC = () => {
           }`}
         >
           {isEditMode && (
-            <div
-              onPointerDown={(e) => startResize('lobby', e)}
-              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
-              title="Drag to resize HUD widget"
-            >
-              ↘
-            </div>
+            <>
+              <div
+                onPointerDown={(e) => startDrag('lobby', e)}
+                className="mb-1.5 px-3 py-1.5 rounded-xl bg-m3-primary/20 border border-m3-primary/40 flex items-center justify-between cursor-grab active:cursor-grabbing text-[11px] font-mono font-bold text-m3-primary select-none shadow-sm"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Move className="w-3.5 h-3.5" />
+                  <span>Move Scoreboard</span>
+                </div>
+                <span className="text-[9px] text-zinc-400 font-normal">Hold to drag</span>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('lobby', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
           )}
           <div className="rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-2.5 shadow-2xl flex flex-col gap-2">
             {/* Header: Map • Mode • Phase */}
@@ -958,13 +828,25 @@ export const OverlayView: React.FC = () => {
           }`}
         >
           {isEditMode && (
-            <div
-              onPointerDown={(e) => startResize('pregame', e)}
-              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
-              title="Drag to resize HUD widget"
-            >
-              ↘
-            </div>
+            <>
+              <div
+                onPointerDown={(e) => startDrag('pregame', e)}
+                className="mb-2 px-3.5 py-1.5 rounded-2xl bg-m3-primary/20 border border-m3-primary/40 flex items-center justify-between cursor-grab active:cursor-grabbing text-xs font-mono font-bold text-m3-primary select-none shadow-sm"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Move className="w-3.5 h-3.5" />
+                  <span>Move Agent Select Panel</span>
+                </div>
+                <span className="text-[10px] text-zinc-400 font-normal">Hold to drag</span>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('pregame', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
           )}
           <div className="rounded-3xl bg-black/45 backdrop-blur-xl border border-white/10 p-4 shadow-2xl flex flex-col gap-3">
             <div className="flex items-center justify-between px-1">
