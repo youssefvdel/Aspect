@@ -1,18 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowUpCircle,
   CheckCircle2,
   Download,
-  ExternalLink,
   Loader2,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   X,
   AlertCircle,
+  RotateCw,
 } from 'lucide-react';
-import type { UpdateInfo } from '../types';
-import { checkAppUpdates, openExternalUrl } from '../utils/ipc';
+import {
+  checkForUpdate,
+  installUpdate,
+  restartApp,
+  updaterSupported,
+  formatBytes,
+  type AvailableUpdate,
+} from '../utils/updater';
+import { APP_VERSION } from '../utils/version';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -20,49 +28,84 @@ interface UpdateModalProps {
   onUpdateStatusChange?: (hasUpdate: boolean, latestVersion: string) => void;
 }
 
+type Phase = 'checking' | 'available' | 'downloading' | 'installing' | 'ready' | 'uptodate' | 'error';
+
+/* Real update flow: the Tauri updater fetches a signed manifest, verifies the
+   download against our public key, installs quietly and relaunches. No browser
+   download, no GitHub page, no guessing at asset names. */
 export const UpdateModal: React.FC<UpdateModalProps> = ({
   isOpen,
   onClose,
   onUpdateStatusChange,
 }) => {
-  const [loading, setLoading] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [phase, setPhase] = useState<Phase>('checking');
+  const [update, setUpdate] = useState<AvailableUpdate | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloaded, setDownloaded] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  const performCheck = async () => {
-    setLoading(true);
+  const performCheck = useCallback(async () => {
+    setPhase('checking');
     setError(null);
     try {
-      const res = await checkAppUpdates();
-      setUpdateInfo(res);
-      if (onUpdateStatusChange) {
-        onUpdateStatusChange(res.has_update, res.latest_version);
+      const found = await checkForUpdate();
+      setUpdate(found);
+      if (found) {
+        setPhase('available');
+        onUpdateStatusChange?.(true, found.version);
+      } else {
+        setPhase('uptodate');
+        onUpdateStatusChange?.(false, APP_VERSION);
       }
     } catch (err) {
       setError(String(err));
-    } finally {
-      setLoading(false);
+      setPhase('error');
     }
-  };
+  }, [onUpdateStatusChange]);
 
   useEffect(() => {
     if (isOpen) {
+      setDownloaded(0);
+      setTotal(0);
       performCheck();
     }
-  }, [isOpen]);
+  }, [isOpen, performCheck]);
 
-  // Keyboard Esc listener
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
+    const onKey = (e: KeyboardEvent) => {
+      // Never let Esc kill the modal mid-install.
+      if (e.key === 'Escape' && isOpen && phase !== 'downloading' && phase !== 'installing') onClose();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose, phase]);
+
+  const handleInstall = async () => {
+    if (!update) return;
+    setError(null);
+    try {
+      await installUpdate(update, (e) => {
+        if (e.phase === 'downloading') {
+          setDownloaded(e.downloaded);
+          setTotal(e.total);
+          setPhase('downloading');
+        } else {
+          setPhase('installing');
+        }
+      });
+      // Installed and verified — restart into the new build.
+      setPhase('ready');
+      await restartApp();
+    } catch (err) {
+      setError(String(err));
+      setPhase('error');
+    }
+  };
 
   if (!isOpen) return null;
+
+  const pct = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null;
+  const busy = phase === 'downloading' || phase === 'installing';
 
   return (
     <AnimatePresence>
@@ -83,72 +126,108 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 <h3 className="font-display font-bold text-sm text-m3-on-surface leading-tight">
                   Software Updates
                 </h3>
-                <p className="text-[10px] text-m3-outline">
-                  Recon • GitHub Releases
+                <p className="text-[10px] text-m3-outline flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-m3-mint" />
+                  Signed &amp; verified
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 rounded-lg hover:bg-m3-surface-container-high flex items-center justify-center text-m3-outline hover:text-m3-on-surface transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {!busy && (
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-lg hover:bg-m3-surface-container-high flex items-center justify-center text-m3-outline hover:text-m3-on-surface transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          {/* Content Body */}
+          {/* Body */}
           <div className="flex flex-col gap-3 py-1">
-            {loading ? (
+            {!updaterSupported() ? (
+              <div className="py-4 px-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-[11px] text-amber-300">
+                The updater only runs inside the installed app.
+              </div>
+            ) : phase === 'checking' ? (
               <div className="py-8 flex flex-col items-center justify-center gap-2.5 text-center">
                 <Loader2 className="w-6 h-6 text-m3-primary animate-spin" />
-                <p className="text-xs font-medium text-m3-on-surface">
-                  Checking for new releases...
-                </p>
+                <p className="text-xs font-medium text-m3-on-surface">Checking for updates…</p>
                 <p className="text-[10px] text-m3-outline font-mono">
                   github.com/youssefvdel/Recon
                 </p>
               </div>
-            ) : error ? (
+            ) : phase === 'error' ? (
               <div className="py-4 px-3 rounded-xl bg-red-950/20 border border-red-500/30 flex flex-col gap-2">
                 <div className="flex items-center gap-2 text-red-400 text-xs font-semibold">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>Update check error</span>
+                  <span>Update failed</span>
                 </div>
-                <p className="text-[11px] text-red-300/80 break-words">
-                  {error}
+                <p className="text-[11px] text-red-300/80 break-words">{error}</p>
+              </div>
+            ) : phase === 'downloading' || phase === 'installing' || phase === 'ready' ? (
+              <div className="flex flex-col gap-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-m3-on-surface flex items-center gap-2">
+                    {phase === 'installing' ? (
+                      <>
+                        <RotateCw className="w-3.5 h-3.5 animate-spin text-m3-primary" />
+                        Installing {update?.version}…
+                      </>
+                    ) : phase === 'ready' ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-m3-mint" />
+                        Installed — restarting…
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5 text-m3-primary" />
+                        Downloading {update?.version}…
+                      </>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-mono text-m3-outline">
+                    {pct !== null ? `${pct}%` : formatBytes(downloaded)}
+                    {total > 0 ? ` · ${formatBytes(total)}` : ''}
+                  </span>
+                </div>
+                {/* Determinate when the server sends a length, else a pulse. */}
+                <div className="h-1.5 rounded-full bg-m3-surface-container-highest overflow-hidden">
+                  <div
+                    className={`h-full bg-m3-primary transition-[width] duration-200 ${
+                      pct === null ? 'w-1/3 animate-pulse' : ''
+                    }`}
+                    style={pct !== null ? { width: `${pct}%` } : undefined}
+                  />
+                </div>
+                <p className="text-[10px] text-m3-outline">
+                  Verified against Recon's signing key before install. The app restarts itself
+                  when it's done — no installer window, nothing to click.
                 </p>
               </div>
-            ) : updateInfo?.has_update ? (
+            ) : phase === 'available' && update ? (
               <div className="flex flex-col gap-3">
-                {/* Update Banner */}
                 <div className="p-3 rounded-xl bg-m3-primary/10 border border-m3-primary/40 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <ArrowUpCircle className="w-5 h-5 text-m3-primary shrink-0" />
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-m3-primary">
-                          New Version Available
-                        </span>
+                        <span className="text-xs font-bold text-m3-primary">Update available</span>
                         <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded bg-m3-primary text-m3-on-primary">
-                          {updateInfo.latest_version}
+                          {update.version}
                         </span>
                       </div>
                       <span className="text-[10px] text-m3-outline">
-                        Installed: {updateInfo.current_version}
+                        Installed: {APP_VERSION}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Release Title & Notes */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-bold text-m3-on-surface">
-                    {updateInfo.release_title}
-                  </span>
+                {update.notes && (
                   <div className="p-3 rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle/70 custom-scrollbar max-h-40 overflow-y-auto text-xs text-m3-on-surface-variant font-mono whitespace-pre-wrap leading-relaxed">
-                    {updateInfo.release_notes}
+                    {update.notes}
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="py-6 flex flex-col items-center justify-center gap-2 text-center">
@@ -156,45 +235,37 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-m3-on-surface">
-                    You're up to date!
-                  </h4>
+                  <h4 className="text-xs font-bold text-m3-on-surface">You're up to date</h4>
                   <p className="text-[11px] text-m3-outline mt-0.5">
-                    Recon {updateInfo?.current_version || `v${__APP_VERSION__}`} is the latest version.
+                    Recon {APP_VERSION} is the latest version.
                   </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Footer Actions */}
+          {/* Footer */}
           <div className="pt-3 border-t border-m3-outline-subtle/80 flex items-center justify-between gap-2">
             <button
               onClick={performCheck}
-              disabled={loading}
+              disabled={phase === 'checking' || busy}
               className="h-8 px-3 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${phase === 'checking' ? 'animate-spin' : ''}`} />
               <span>Check Again</span>
             </button>
 
             <div className="flex items-center gap-2">
-              {updateInfo?.has_update && updateInfo.download_url ? (
+              {phase === 'available' && update ? (
                 <button
-                  onClick={() => openExternalUrl(updateInfo.download_url!)}
+                  onClick={handleInstall}
                   className="h-8 px-4 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download Update</span>
+                  <span>Install &amp; Restart</span>
                 </button>
-              ) : updateInfo?.has_update ? (
-                <button
-                  onClick={() => openExternalUrl(updateInfo.html_url)}
-                  className="h-8 px-4 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-m3-on-primary text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>View on GitHub</span>
-                </button>
+              ) : busy ? (
+                <span className="text-[10px] text-m3-outline font-mono">Do not close the app…</span>
               ) : (
                 <button
                   onClick={onClose}

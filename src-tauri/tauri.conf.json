@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Recon • Stretched Resolution & Utility",
+        "title": "Recon \u2022 Stretched Resolution & Utility",
         "width": 1180,
         "height": 860,
         "minWidth": 980,
@@ -44,7 +44,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/trnfetch"],
+    "externalBin": [
+      "binaries/trnfetch"
+    ],
     "icon": [
       "icons/icon.ico",
       "icons/icon.png",
@@ -55,6 +57,18 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/youssefvdel/Recon/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERCMTBGNDc1NUYxN0NDMTIKUldRU3pCZGZkZlFRMi9RSHBSUzZYTWZGNjJWQXQ1Mk1RSkg0a0Fia080WVBlbThBU0NhVDltY3AK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

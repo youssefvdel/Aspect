@@ -766,6 +766,8 @@ pub fn run() {
     // Single-instance: re-running the exe/shortcut while Aspect sits in the
     // tray focuses the existing window instead of spawning a second copy.
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_mcp_bridge::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {

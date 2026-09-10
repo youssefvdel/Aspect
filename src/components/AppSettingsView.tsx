@@ -13,11 +13,15 @@ import {
   Loader2,
   GitBranch,
 } from 'lucide-react';
-import type { UpdateInfo, MonitorDevice } from '../types';
+import type { MonitorDevice } from '../types';
 import {
-  checkAppUpdates,
+  checkForUpdate,
+  installUpdate,
+  restartApp,
+  type AvailableUpdate,
+} from '../utils/updater';
+import {
   openExternalUrl,
-  installAppUpdate,
   getAutostartEnabled,
   setAutostartEnabled,
   fetchAllMonitors,
@@ -34,7 +38,7 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
   onUpdateStatusChange,
 }) => {
   const [currentVersion, setCurrentVersion] = useState(APP_VERSION);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<AvailableUpdate | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
@@ -76,9 +80,9 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     setError(null);
     setInstallStatus(null);
     try {
-      const res = await checkAppUpdates();
-      setUpdateInfo(res);
-      onUpdateStatusChange?.(res.has_update, res.latest_version);
+      const found = await checkForUpdate();
+      setUpdateInfo(found);
+      onUpdateStatusChange?.(!!found, found?.version ?? '');
     } catch (err) {
       setError(String(err));
     } finally {
@@ -131,20 +135,22 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
   };
 
   const handleInstallUpdate = async () => {
-    if (!updateInfo?.download_url) {
-      if (updateInfo?.html_url) {
-        openExternalUrl(updateInfo.html_url);
-      }
-      return;
-    }
+    if (!updateInfo) return;
 
     setInstalling(true);
-    setInstallStatus('Downloading update payload...');
+    setInstallStatus('Downloading and verifying update...');
     setError(null);
 
     try {
-      const result = await installAppUpdate(updateInfo.download_url);
-      setInstallStatus(result || 'Update downloaded and launching...');
+      await installUpdate(updateInfo, (e) => {
+        setInstallStatus(
+          e.phase === 'installing'
+            ? 'Installing — the app will restart itself...'
+            : `Downloading ${updateInfo.version}...`
+        );
+      });
+      setInstallStatus('Installed. Restarting...');
+      await restartApp();
     } catch (e) {
       setError(String(e));
       setInstalling(false);
@@ -205,27 +211,27 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
                 <p className="text-[11px] text-red-300/80 mt-0.5 break-words">{error}</p>
               </div>
             </div>
-          ) : updateInfo?.has_update ? (
+          ) : updateInfo ? (
             <div className="p-4 sm:p-5 rounded-2xl bg-m3-primary/10 border border-m3-primary/40 flex flex-col space-y-3.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center space-x-2.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-m3-primary animate-pulse" />
                   <span className="text-xs sm:text-sm font-bold text-m3-primary">
-                    New Version Available: {updateInfo.latest_version}
+                    New Version Available: {updateInfo.version}
                   </span>
                 </div>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-m3-primary/20 text-m3-primary font-bold">
-                  v{currentVersion} → {updateInfo.latest_version}
+                  v{currentVersion} → {updateInfo.version}
                 </span>
               </div>
 
               {/* Release Title & Notes */}
               <div className="space-y-1.5">
                 <h3 className="text-xs font-bold text-m3-on-surface">
-                  {updateInfo.release_title}
+                  Recon {updateInfo.version}
                 </h3>
                 <div className="p-3 rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle/70 custom-scrollbar max-h-36 overflow-y-auto text-xs text-m3-on-surface-variant font-mono whitespace-pre-wrap leading-relaxed">
-                  {updateInfo.release_notes}
+                  {updateInfo.notes || 'No release notes provided.'}
                 </div>
               </div>
 
@@ -239,7 +245,7 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-1">
                 <button
-                  onClick={() => openExternalUrl(updateInfo.html_url)}
+                  onClick={() => openExternalUrl('https://github.com/youssefvdel/Recon/releases')}
                   className="px-3.5 py-1.5 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />

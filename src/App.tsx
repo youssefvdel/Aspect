@@ -10,6 +10,7 @@ import { DevDashboard } from './components/DevDashboard';
 import { OverlayView } from './components/OverlayView';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
+import { checkForUpdate } from './utils/updater';
 import {
   fetchDisplayInfo,
   fetchShortcut,
@@ -23,7 +24,6 @@ import {
   trimMemory,
   isTauri,
   isBadModeErrorMessage,
-  checkAppUpdates,
 } from './utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 import { IS_DEV } from './utils/devTools';
@@ -65,11 +65,11 @@ export const App: React.FC = () => {
   // Background update check on startup (delayed 2.5s so app startup is instantaneous)
   useEffect(() => {
     const timer = setTimeout(() => {
-      checkAppUpdates()
-        .then((res) => {
-          if (res.has_update) {
+      checkForUpdate()
+        .then((found) => {
+          if (found) {
             setHasUpdate(true);
-            setLatestVersion(res.latest_version);
+            setLatestVersion(found.version);
           }
         })
         .catch(() => {});
