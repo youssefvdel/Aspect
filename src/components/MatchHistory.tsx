@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Lightbulb, TrendingUp } from 'lucide-react';
+import { Check, Lightbulb } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { matchCard, queueLabel, shortMapName, tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
@@ -523,16 +523,6 @@ export const MatchHistory: React.FC = () => {
     });
   };
 
-  const toggleDay = (ids: string[]) => {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      const allOpen = ids.every((id) => next.has(id));
-      if (allOpen) ids.forEach((id) => next.delete(id));
-      else ids.forEach((id) => next.add(id));
-      return next;
-    });
-  };
-
   if (!profile && games.length === 0) {
     return (
       <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
@@ -622,7 +612,6 @@ export const MatchHistory: React.FC = () => {
 
         {/* Day groups */}
         {days.map((day) => {
-          const dayIds = day.rs.map((r) => r.g.matchId || String(r.g.when));
           return (
             <div key={day.label} className="flex flex-col gap-2 shrink-0">
               <div className="flex items-center gap-2 sm:gap-3 px-1 flex-wrap">
@@ -630,12 +619,6 @@ export const MatchHistory: React.FC = () => {
                 <span className="text-[10px] font-mono font-bold text-m3-outline bg-m3-surface-container-high border border-m3-outline-subtle rounded-md px-1.5 py-px">
                   {day.rs.length}
                 </span>
-                <button
-                  onClick={() => toggleDay(dayIds)}
-                  className="flex items-center gap-1 text-[12px] font-bold text-m3-coral hover:opacity-80 cursor-pointer">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  <span>View Report</span>
-                </button>
                 <span className="text-[13px] font-display font-extrabold mx-auto">
                   <span className="text-m3-mint">{day.w} W</span>
                   <span className="text-m3-outline"> // </span>
