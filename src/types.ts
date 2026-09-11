@@ -303,6 +303,8 @@ export interface LiveMatchState {
    *  per-player 24h record to the mode actually being played. */
   queueId?: string;
   startingSide?: 'Attack' | 'Defense';
+  allyScore?: number;
+  enemyScore?: number;
   blueTeam: LiveMatchPlayer[];
   redTeam: LiveMatchPlayer[];
   updatedAt: number;

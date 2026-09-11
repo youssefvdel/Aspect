@@ -1410,6 +1410,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
 
     // Extract live party mappings from local presence chat (checks puuid, pid, private, packedData, and parties)
     const presencePartyMap = new Map<string, string>(); // puuid (lowercase) -> partyId (lowercase)
+    let liveAllyScore = 0;
+    let liveEnemyScore = 0;
     try {
       if (isTauri()) {
         const rawPres = await invoke<string>('local_presences');
@@ -1430,6 +1432,11 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                 blob?.partyPresenceData?.partyId ||
                 ''
               ).toLowerCase().trim();
+
+              if (pU === ent.puuid.toLowerCase()) {
+                liveAllyScore = Number(blob?.partyOwnerMatchScoreAllyTeam ?? blob?.partyPresenceData?.partyOwnerMatchScoreAllyTeam ?? 0);
+                liveEnemyScore = Number(blob?.partyOwnerMatchScoreEnemyTeam ?? blob?.partyPresenceData?.partyOwnerMatchScoreEnemyTeam ?? 0);
+              }
             } catch {}
           }
 
@@ -1886,6 +1893,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       isDeathmatch,
       queueId: liveQueue,
       startingSide,
+      allyScore: liveAllyScore,
+      enemyScore: liveEnemyScore,
       blueTeam,
       redTeam,
       updatedAt: Date.now(),
