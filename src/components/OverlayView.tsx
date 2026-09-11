@@ -2120,10 +2120,14 @@ const PregameTeamColumn: React.FC<{
                     {p.isIncognito && (
                       <span
                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7.5px] font-mono font-bold uppercase shrink-0"
-                        title="Name Hidden in Valorant (Unmasked by Recon)"
+                        title={
+                          p.nameResolved
+                            ? 'Name Hidden in Valorant (Unmasked by Recon)'
+                            : 'Riot hides this name during live matches — revealed automatically after the game'
+                        }
                       >
                         <EyeOff className="w-2.5 h-2.5" />
-                        Unmasked
+                        {p.nameResolved ? 'Unmasked' : 'Hidden'}
                       </span>
                     )}
                   </div>

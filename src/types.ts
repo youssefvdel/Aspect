@@ -290,6 +290,9 @@ export interface LiveMatchPlayer {
   partyId?: string;
   partyIndex?: number; // 0 = solo, 1 = party 1, 2 = party 2...
   isIncognito?: boolean;
+  /** True when name holds the real Riot ID. False = Riot hides this player
+   *  live (strict-hide) and name falls back to "Player N" until post-game. */
+  nameResolved?: boolean;
 }
 
 export interface LiveMatchState {

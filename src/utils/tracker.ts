@@ -750,6 +750,42 @@ export async function resolvePlayerNames(
 }
 
 /**
+ * Permanently remember Riot IDs from a trusted source (post-game
+ * match-details payload, live presences). This is how strict-hidden players
+ * get unmasked: Riot blanks their live name-service entry, but reveals the
+ * real gameName/tagLine after the match — once seen, Recon knows them in
+ * every future lobby, even while hidden.
+ */
+export function rememberPlayerNames(entries: { puuid: string; name: string; tag: string }[]): void {
+  if (entries.length === 0) return;
+  const cacheKey = 'aspect_names_cache_v2';
+  let cache: Record<string, { name: string; tag: string }> = {};
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) cache = JSON.parse(raw);
+  } catch {}
+  let touched = false;
+  for (const e of entries) {
+    const sub = String(e?.puuid ?? '').trim();
+    const nm = String(e?.name ?? '').trim();
+    if (!sub || !nm || nm.startsWith('Player ')) continue;
+    const tg = String(e?.tag ?? '').trim();
+    const val = { name: nm, tag: tg };
+    if (cache[sub]?.name !== nm || cache[sub]?.tag !== tg) {
+      cache[sub] = val;
+      cache[sub.toLowerCase()] = val;
+      cache[sub.toUpperCase()] = val;
+      touched = true;
+    }
+  }
+  if (touched) {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(cache));
+    } catch {}
+  }
+}
+
+/**
  * Full match straight from Riot via the SAME endpoint TRN/Blitz call locally
  * (match-details/v1 — the singular /match/v1 path 503s for client creds).
  * Immutable → cached forever. Throws when unusable.
@@ -827,6 +863,11 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
         p.tag = nameMap[p.puuid].tag;
       }
     }
+  } catch {}
+  // Permanent memory: the payload reveals strict-hidden names post-game.
+  // Remember them so future live lobbies unmask instantly from cache.
+  try {
+    rememberPlayerNames(players.map((p) => ({ puuid: p.puuid, name: p.name, tag: p.tag })));
   } catch {}
   const teamOf = (puuid: string): string => players.find((p) => p.puuid === puuid)?.team ?? '';
   // Damage taken: every player's roundDamage lists who they hit — invert it.
@@ -1593,6 +1634,12 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
 
     const puuids = rawPlayers.map((p) => p.puuid).filter(Boolean);
     const nameMap = await resolvePlayerNames(puuids, region);
+    // Remember live presence names too — friends stay unmasked permanently.
+    try {
+      rememberPlayerNames(
+        [...presenceNameMap.entries()].map(([puuid, v]) => ({ puuid, name: v.name, tag: v.tag }))
+      );
+    } catch {}
 
     // Fetch MMRs only for players not already cached within the last 15 minutes
     const mmrMap = new Map<
@@ -1923,6 +1970,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         streak: statsCached?.streak,
         streakIsWin: statsCached?.streakIsWin,
         isIncognito: p.isIncognito ?? false,
+        nameResolved: !!realName,
         partyId: pPartyId,
         partyIndex: pPartyIndex,
       };
