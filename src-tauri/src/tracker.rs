@@ -367,8 +367,14 @@ fn riot_resolve_names_blocking(shard: String, puuids: Vec<String>) -> Result<Str
         .ok_or_else(|| "No entitlement token".to_string())?;
 
     let client_version = local_client_version_blocking()
-        .unwrap_or_else(|_| "release-13.05-shipping-11-3831114".to_string());
-    let clean_shard = shard.trim_start_matches("pd.").trim_end_matches(".a.pvp.net");
+        .unwrap_or_else(|_| "release-13.05-shipping-11-5350494".to_string());
+    let shard_lower = shard.trim_start_matches("pd.").trim_end_matches(".a.pvp.net").to_lowercase();
+    let clean_shard = match shard_lower.as_str() {
+        "na" | "latam" | "br" => "na",
+        "ap" => "ap",
+        "kr" => "kr",
+        _ => "eu",
+    };
     let url = format!("https://pd.{}.a.pvp.net/name-service/v2/players", clean_shard);
     let body = serde_json::to_string(&puuids).map_err(|e| e.to_string())?;
 
