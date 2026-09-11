@@ -385,6 +385,15 @@ export const MatchHistory: React.FC = () => {
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
     for (const g of games) {
+      // Matches tab shows Competitive games only
+      const queue = (
+        g.queueId ||
+        detailsById[g.matchId]?.queue ||
+        queueById[g.matchId] ||
+        ''
+      ).toLowerCase();
+      if (queue && queue !== 'competitive') continue;
+
       const detail = detailsById[g.matchId];
       const me = detail?.players.find((p) => p.puuid === puuid);
       const agent = me?.agent ?? '?';
@@ -437,15 +446,22 @@ export const MatchHistory: React.FC = () => {
       });
     }
     return out;
-  }, [games, detailsById, puuid, mapById, agentFilter, mapFilter]);
+  }, [games, detailsById, puuid, mapById, queueById, agentFilter, mapFilter]);
 
   const agentsPlayed = useMemo(
     () => [...new Set(rows.map((r) => r.agent).filter((a) => a && a !== '?'))].sort(),
     [rows]
   );
   const mapsPlayed = useMemo(
-    () => [...new Set(games.map((g) => mapById[g.matchId] ?? shortMapName(g.mapId, {})).filter((m) => m && m !== '?'))].sort(),
-    [games, mapById]
+    () =>
+      [
+        ...new Set(
+          rows
+            .map((r) => mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {}))
+            .filter((m) => m && m !== '?')
+        ),
+      ].sort(),
+    [rows, mapById]
   );
 
   const sum = useMemo(() => {
@@ -672,7 +688,7 @@ export const MatchHistory: React.FC = () => {
                   key={r.g.matchId || r.g.when}
                   r={r}
                   index={i}
-                  queue={queueLabel(detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || '')}
+                  queue={queueLabel(r.g.queueId || detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || 'competitive')}
                   map={mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {})}
                   icon={infoByName[r.agent.toLowerCase()]?.icon ?? ''}
                   rankIcon={tierIconByName[r.g.tier.toLowerCase()] ?? ''}
@@ -685,7 +701,7 @@ export const MatchHistory: React.FC = () => {
                         detail: r.detail,
                         game: r.g,
                         mapName: mapById[r.g.matchId] ?? shortMapName(r.g.mapId, {}),
-                        queue: queueLabel(detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || ''),
+                        queue: queueLabel(r.g.queueId || detailsById[r.g.matchId]?.queue || queueById[r.g.matchId] || 'competitive'),
                       });
                     }
                   }}

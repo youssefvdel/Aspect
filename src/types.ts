@@ -194,6 +194,7 @@ export interface TrackerMmrPoint {
   matchId: string;
   mapId: string;
   when: number;
+  queueId?: string;
 }
 
 export interface LocalRiotAccount {

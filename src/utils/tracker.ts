@@ -593,11 +593,16 @@ export function cardArtUrls(cardId?: string): { wide: string; small: string } {
 }
 
 /** Last N competitive games with map, time, and RR earned — feeds rows AND trend. */
-export async function fetchCompetitiveUpdates(region: string, count = 20): Promise<TrackerMmrPoint[]> {
+export async function fetchCompetitiveUpdates(
+  region: string,
+  count = 20,
+  queue = 'competitive'
+): Promise<TrackerMmrPoint[]> {
   const ent = await getEntitlements();
+  const queueParam = queue ? `&queue=${encodeURIComponent(queue)}` : '';
   const j = await riotGet(
     shardFor(region),
-    `/mmr/v1/players/${ent.puuid}/competitiveupdates?startIndex=0&endIndex=${count}`
+    `/mmr/v1/players/${ent.puuid}/competitiveupdates?startIndex=0&endIndex=${count}${queueParam}`
   );
   const list = Array.isArray(j?.Matches) ? j.Matches : [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -608,6 +613,7 @@ export async function fetchCompetitiveUpdates(region: string, count = 20): Promi
     matchId: String(g?.MatchID ?? ''),
     mapId: String(g?.MapID ?? ''),
     when: Number(g?.MatchStartTime ?? 0),
+    queueId: String(g?.QueueID ?? queue ?? 'competitive'),
   }));
 }
 
