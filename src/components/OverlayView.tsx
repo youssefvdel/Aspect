@@ -996,7 +996,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[350px] will-change-transform z-10 ${
+          } select-none w-[270px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_30px_rgba(168,85,247,0.45)] ring-2 ring-white/30'
               : ''
@@ -1088,14 +1088,14 @@ export const OverlayView: React.FC = () => {
             </div>
 
             {/* Column Titles */}
-            <div className="flex items-center gap-1 px-2 text-[9px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
-              <span className="shrink-0 w-5 text-center" title="Tracker Score tier">TS</span>
-              <span className="flex-1 min-w-0">Player</span>
+            <div className="flex items-center gap-1 px-1.5 text-[8.5px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
+              <span className="shrink-0 w-4 text-center" title="Tracker Score tier">TS</span>
+              <span className="shrink-0 w-8 text-center" title="Agent">Agent</span>
               <span className="shrink-0 w-6 text-center">Rank</span>
               <span className="shrink-0 w-6 text-center">Peak</span>
-              <span className="shrink-0 w-9 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
-              <span className="shrink-0 w-8 text-right">K/D</span>
-              <span className="shrink-0 w-9 text-right" title="Act-wide win rate">Win%</span>
+              <span className="shrink-0 w-8 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
+              <span className="shrink-0 w-7 text-right">K/D</span>
+              <span className="shrink-0 w-8 text-right" title="Act-wide win rate">Win%</span>
               <span className="shrink-0 w-8 text-right" title="Act-wide headshot %">HS%</span>
               <span className="shrink-0 w-9 text-right" title="Wins / losses in the last 24 hours">24H</span>
             </div>
@@ -1893,6 +1893,7 @@ const VerticalSquadColumn: React.FC<{
       return (
         <div
           key={p.puuid}
+          title={`${p.name}${p.tag ? '#' + p.tag : ''} • ${p.agentName}`}
           className={`relative overflow-hidden flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-xs transition-colors ${
             party
               ? `${party.bg} border-white/10`
@@ -1925,60 +1926,45 @@ const VerticalSquadColumn: React.FC<{
             )}
           </div>
 
-          {/* Agent Icon (with Flag Overlay) */}
-          <div className="relative shrink-0">
-            {p.agentIcon ? (
-              <img
-                src={p.agentIcon}
-                alt=""
-                draggable={false}
-                onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
-                }}
-                className="w-5 h-5 rounded-md object-cover pointer-events-none select-none border border-white/10"
-              />
-            ) : (
-              <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
-                ?
-              </div>
-            )}
-            {flagUrl && (
-              <img
-                src={flagUrl}
-                alt={p.country || ''}
-                title={`Country: ${p.country}`}
-                draggable={false}
-                onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
-                }}
-                className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] shadow-xs border border-black/80 pointer-events-none select-none"
-              />
-            )}
-          </div>
-
-          {/* Player Name */}
-          <div className="flex items-center gap-1 min-w-0 flex-1">
+          {/* Agent Icon (with Flag Overlay + Party dot / You indicator) */}
+          <div className="flex items-center gap-1 shrink-0 w-8">
+            <div className="relative shrink-0">
+              {p.agentIcon ? (
+                <img
+                  src={p.agentIcon}
+                  alt=""
+                  draggable={false}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                  className="w-5 h-5 rounded-md object-cover pointer-events-none select-none border border-white/10"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
+                  ?
+                </div>
+              )}
+              {flagUrl && (
+                <img
+                  src={flagUrl}
+                  alt={p.country || ''}
+                  title={`Country: ${p.country}`}
+                  draggable={false}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                  className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] shadow-xs border border-black/80 pointer-events-none select-none"
+                />
+              )}
+            </div>
             {party && (
               <span
                 className={`w-1.5 h-1.5 rounded-full ${party.bar} shrink-0 shadow-xs`}
                 title={`Queued together in ${party.name}`}
               />
             )}
-            <span className="font-semibold truncate text-white text-[11px]" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
-              {p.name}
-            </span>
             {p.isMe && (
-              <span className="px-1 py-px rounded bg-purple-500 text-[8px] font-black text-white uppercase shrink-0">
-                You
-              </span>
-            )}
-            {p.isIncognito && (
-              <span
-                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7px] font-mono font-bold uppercase shrink-0"
-                title="Name Hidden in Valorant (Unmasked by Recon)"
-              >
-                <EyeOff className="w-2.5 h-2.5" />
-              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0 shadow-[0_0_6px_rgba(192,132,252,0.8)]" title="You" />
             )}
           </div>
 
