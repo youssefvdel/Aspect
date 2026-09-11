@@ -786,6 +786,61 @@ export function rememberPlayerNames(entries: { puuid: string; name: string; tag:
 }
 
 /**
+ * Decides when a finished match should be harvested for real names.
+ *
+ * Riot blanks strict-hidden stranger names in BOTH live payloads and
+ * /name-service during a match, but releases them once the match is over.
+ * So the moment we transition out of `coregame` we must ask name-service
+ * for the whole lobby and remember the answers — that is the only window
+ * where a hidden player's real Riot ID becomes available.
+ *
+ * Returns the deduped PUUIDs of every lobby participant at match end, or
+ * null when no harvest should run (not a match end, or nobody to ask for).
+ * Pure — no I/O, so the transition rules are testable.
+ */
+export function matchEndHarvest(
+  prev: LiveMatchState | null,
+  next: LiveMatchState
+): string[] | null {
+  if (!prev || prev.phase !== 'coregame') return null;
+  if (next.phase === 'coregame') return null;
+  const puuids = [...prev.blueTeam, ...prev.redTeam]
+    .map((p) => p.puuid)
+    .filter(Boolean);
+  const deduped = [...new Set(puuids)];
+  return deduped.length > 0 ? deduped : null;
+}
+
+/**
+ * Asks name-service for the whole lobby at match end and remembers the
+ * answers permanently. This is what makes strict-hidden players show their
+ * real Riot ID in every future lobby: Riot only releases those names after
+ * the match, and `resolvePlayerNames` + `rememberPlayerNames` fold them into
+ * the persistent cache. Best-effort — never throws into the poll loop.
+ */
+export async function harvestMatchNames(puuids: string[], region?: string): Promise<number> {
+  if (puuids.length === 0) return 0;
+  try {
+    // Callers may not know the shard; detectRegion reads it from the local
+    // session token, which is exactly what resolvePlayerNames needs.
+    const shard = region || (await detectRegion());
+    // matchEndHarvest already deduped; resolvePlayerNames caches by PUUID.
+    const nameMap = await resolvePlayerNames(puuids, shard);
+    const entries = puuids
+      .map((puuid) => {
+        const hit = nameMap[puuid] ?? nameMap[puuid.toLowerCase()] ?? nameMap[puuid.toUpperCase()];
+        return hit?.name ? { puuid, name: hit.name, tag: hit.tag } : null;
+      })
+      .filter((e): e is { puuid: string; name: string; tag: string } => e !== null);
+    if (entries.length === 0) return 0;
+    rememberPlayerNames(entries);
+    return entries.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Full match straight from Riot via the SAME endpoint TRN/Blitz call locally
  * (match-details/v1 — the singular /match/v1 path 503s for client creds).
  * Immutable → cached forever. Throws when unusable.

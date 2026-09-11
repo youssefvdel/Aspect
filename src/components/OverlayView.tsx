@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Trophy, EyeOff, Swords, Clock, AlertTriangle, Layers, Skull, Crosshair, Target } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
-import { fetchLiveMatchState, gameData } from '../utils/tracker';
+import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import {
@@ -578,6 +578,7 @@ export const OverlayView: React.FC = () => {
   // Poll live match data ONLY when visible; idle backs off to ~1/3 rate
   // (agent select lasts ~60s+, so a 13s worst-case detect delay is fine).
   const phaseRef = useRef<string>('idle');
+  const prevStateRef = useRef<LiveMatchState | null>(null);
   const idleSkips = useRef(0);
   const ticking = useRef(false);
   useEffect(() => {
@@ -600,6 +601,11 @@ export const OverlayView: React.FC = () => {
       ticking.current = true;
       fetchLiveMatchState()
         .then((s) => {
+          // Match just ended: Riot releases hidden names only now, so ask
+          // name-service for the whole lobby and cache them permanently.
+          const harvest = matchEndHarvest(prevStateRef.current, s);
+          if (harvest) harvestMatchNames(harvest).catch(() => {});
+          prevStateRef.current = s;
           phaseRef.current = s.phase;
           setMatchState(s);
         })

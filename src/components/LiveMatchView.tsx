@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   RefreshCw,
   Eye,
@@ -13,7 +13,7 @@ import {
   Clock,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
-import { fetchLiveMatchState, gameData } from '../utils/tracker';
+import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import {
@@ -48,6 +48,7 @@ export const LiveMatchView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
+  const prevStateRef = useRef<LiveMatchState | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [inEditMode, setInEditMode] = useState(false);
 
@@ -83,7 +84,15 @@ export const LiveMatchView: React.FC = () => {
   useEffect(() => {
     const poll = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      fetchLiveMatchState().then(setMatchState).catch(() => {});
+      fetchLiveMatchState()
+        .then((s) => {
+          // Match just ended: hidden names are released by Riot only now.
+          const harvest = matchEndHarvest(prevStateRef.current, s);
+          if (harvest) harvestMatchNames(harvest).catch(() => {});
+          prevStateRef.current = s;
+          setMatchState(s);
+        })
+        .catch(() => {});
     };
     const interval = setInterval(poll, 8000);
     return () => clearInterval(interval);
