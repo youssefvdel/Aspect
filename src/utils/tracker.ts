@@ -1522,15 +1522,37 @@ export function getCachedLivePlayerStats(puuid: string): LivePlayerStatsEntry | 
   return mem;
 }
 
-export function setCachedLivePlayerStats(puuid: string, entry: LivePlayerStatsEntry): void {
+export function setCachedLivePlayerStats(puuid: string, entry: Partial<LivePlayerStatsEntry>): void {
   if (!puuid) return;
   const pU = puuid.toLowerCase();
-  livePlayerStatsCache.set(pU, entry);
+
+  let existing: LivePlayerStatsEntry | undefined = livePlayerStatsCache.get(pU);
+  let store: Record<string, LivePlayerStatsEntry> = {};
+
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem(LIVE_STATS_CACHE_KEY);
-      const store: Record<string, LivePlayerStatsEntry> = raw ? JSON.parse(raw) : {};
-      store[pU] = entry;
+      if (raw) {
+        store = JSON.parse(raw);
+        if (store[pU]) {
+          existing = { ...existing, ...store[pU] };
+        }
+      }
+    } catch {}
+  }
+
+  // Deep-merge: preserve whatever was previously fetched by the other window
+  const merged: LivePlayerStatsEntry = {
+    ...existing,
+    ...entry,
+    fetchedAt: entry.fetchedAt ?? existing?.fetchedAt ?? Date.now(),
+  };
+
+  livePlayerStatsCache.set(pU, merged);
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      store[pU] = merged;
       const keys = Object.keys(store);
       if (keys.length > 150) {
         const sorted = keys.sort((a, b) => store[a].fetchedAt - store[b].fetchedAt);
