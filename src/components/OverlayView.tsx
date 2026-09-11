@@ -2064,13 +2064,23 @@ const PregameTeamColumn: React.FC<{
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
             >
-              {/* Curved bow cap wrapping the outer left edge and corners */}
-              <div
-                className={`absolute left-0 top-0 bottom-0 w-3 rounded-l-xl border-l-[3.5px] border-t-[3.5px] border-b-[3.5px] border-r-0 pointer-events-none transition-colors ${
-                  party ? party.bar.replace('bg-', 'border-') : 'border-purple-400/60'
-                }`}
-                title={party ? `Queued together in ${party.name}` : 'Solo'}
-              />
+              {/* Party identifier: curved bow arc wrapping the left edge when queued in a party */}
+              {party && (
+                <svg
+                  className={`absolute left-0 top-0 bottom-0 h-full w-2.5 pointer-events-none ${party.text} drop-shadow-[0_0_6px_currentColor]`}
+                  viewBox="0 0 10 32"
+                  fill="none"
+                  preserveAspectRatio="none"
+                >
+                  <title>{`Queued together in ${party.name}`}</title>
+                  <path
+                    d="M 8 2.5 C 3.5 2.5, 1.5 5.5, 1.5 10 L 1.5 22 C 1.5 26.5, 3.5 29.5, 8 29.5"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
               {/* Tracker Score badge (hex tier emblem, never a raw number) */}
               <div
                 className="flex items-center justify-center shrink-0"
@@ -2301,13 +2311,23 @@ const VerticalSquadColumn: React.FC<{
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
-          {/* Curved bow cap wrapping the outer left edge and corners */}
-          <div
-            className={`absolute left-0 top-0 bottom-0 w-2.5 rounded-l-lg border-l-[3px] border-t-[3px] border-b-[3px] border-r-0 pointer-events-none transition-colors ${
-              party ? party.bar.replace('bg-', 'border-') : 'border-purple-400/60'
-            }`}
-            title={party ? `Queued together in ${party.name}` : 'Solo'}
-          />
+          {/* Party identifier: curved bow arc wrapping the left edge when queued in a party */}
+          {party && (
+            <svg
+              className={`absolute left-0 top-0 bottom-0 h-full w-2 pointer-events-none ${party.text} drop-shadow-[0_0_5px_currentColor]`}
+              viewBox="0 0 10 32"
+              fill="none"
+              preserveAspectRatio="none"
+            >
+              <title>{`Queued together in ${party.name}`}</title>
+              <path
+                d="M 8 2.5 C 3.5 2.5, 1.5 5.5, 1.5 10 L 1.5 22 C 1.5 26.5, 3.5 29.5, 8 29.5"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
           {/* Tracker Score tier badge */}
           <div
             className="shrink-0 w-4 flex items-center justify-center"
