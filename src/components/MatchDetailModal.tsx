@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { X, Skull, Shield, Bomb, Swords, Clock } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { tierName, resolvePlayerNames } from '../utils/tracker';
@@ -379,7 +380,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         </div>
 
         {/* Modal Navigation Tabs */}
-        <div className="flex items-center gap-8 px-5 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs sm:text-[13px] font-bold shrink-0">
+        <div className="flex items-center gap-8 px-6 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs sm:text-[13px] font-bold shrink-0">
           {[
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'duels', label: 'Duels' },
@@ -390,27 +391,32 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id as ModalTab)}
-                className={`py-3 transition-colors cursor-pointer whitespace-nowrap border-b-2 font-bold ${
-                  active
-                    ? 'text-m3-on-surface border-m3-primary -mb-px'
-                    : 'text-m3-outline hover:text-m3-on-surface border-transparent -mb-px'
+                className={`relative py-3 transition-colors cursor-pointer whitespace-nowrap font-bold ${
+                  active ? 'text-m3-on-surface' : 'text-m3-outline hover:text-m3-on-surface'
                 }`}
               >
-                {t.label}
+                <span>{t.label}</span>
+                {active && (
+                  <motion.span
+                    layoutId="modal-active-tab"
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                    className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-m3-primary rounded-full"
+                  />
+                )}
               </button>
             );
           })}
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-3.5">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col">
           {/* Tab 1: Scoreboard */}
           {activeTab === 'scoreboard' && (
-            <div className="flex flex-col gap-2">
+            <div className="flex-1 flex flex-col justify-between gap-3 sm:gap-4 min-h-0">
               {/* Team Blue Table */}
-              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
+              <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
                 {/* Team Blue Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint">
+                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-mint" />
                     <span>Team Blue • {teamBlueScore} Rounds</span>
@@ -421,8 +427,8 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
 
                 {/* Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="flex-1 overflow-x-auto min-h-0">
+                  <table className="w-full h-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
                         <th className="py-2 px-3 min-w-[44px]">Agent</th>
@@ -451,7 +457,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         return (
                           <tr
                             key={p.puuid || idx}
-                            className={`hover:bg-m3-surface-container-high/60 transition-colors ${
+                            className={`h-[20%] hover:bg-m3-surface-container-high/60 transition-colors ${
                               party ? party.bg : p.isMe ? 'bg-m3-primary/10' : ''
                             }`}
                           >
@@ -561,9 +567,9 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
 
               {/* Team Red Table */}
-              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
+              <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
                 {/* Team Red Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral">
+                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-coral" />
                     <span>Team Red • {teamRedScore} Rounds</span>
@@ -574,8 +580,8 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
 
                 {/* Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="flex-1 overflow-x-auto min-h-0">
+                  <table className="w-full h-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
                         <th className="py-2 px-3 min-w-[44px]">Agent</th>
@@ -604,7 +610,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         return (
                           <tr
                             key={p.puuid || idx}
-                            className={`hover:bg-m3-surface-container-high/60 transition-colors ${
+                            className={`h-[20%] hover:bg-m3-surface-container-high/60 transition-colors ${
                               party ? party.bg : p.isMe ? 'bg-m3-primary/10' : ''
                             }`}
                           >
