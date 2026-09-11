@@ -2054,7 +2054,7 @@ const PregameTeamColumn: React.FC<{
                         title="Name Hidden in Valorant (Unmasked by Recon)"
                       >
                         <EyeOff className="w-2.5 h-2.5" />
-                        Hidden
+                        Unmasked
                       </span>
                     )}
                   </div>

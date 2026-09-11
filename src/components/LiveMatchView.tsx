@@ -470,11 +470,11 @@ const PlayerRow: React.FC<{
             )}
             {p.isIncognito && (
               <span
-                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-500 border border-amber-400/30 text-[8px] font-mono font-bold uppercase shrink-0"
-                title="Name hidden in Valorant — unmasked by Recon from the account UUID"
+                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[8px] font-mono font-bold uppercase shrink-0"
+                title="Name hidden in Valorant — unmasked by Recon from account UUID"
               >
                 <EyeOff className="w-2.5 h-2.5" />
-                Hidden
+                Unmasked
               </span>
             )}
           </div>
