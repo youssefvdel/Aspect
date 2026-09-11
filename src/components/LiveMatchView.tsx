@@ -258,9 +258,16 @@ export const LiveMatchView: React.FC = () => {
           </div>
 
           {matchState?.mapName && matchState.phase !== 'idle' && (
-            <span className="text-[11px] font-display font-bold text-m3-on-surface">
-              {matchState.mapName} • {matchState.mode}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11.5px] font-display font-extrabold text-m3-on-surface">
+                {matchState.mapName}
+              </span>
+              {matchState.mode && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 border border-purple-400/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  {matchState.mode}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
@@ -324,7 +331,7 @@ export const LiveMatchView: React.FC = () => {
         </div>
       ) : teams.isFfa ? (
         <PlayerTable
-          title={`Free For All • Deathmatch (${teams.yours.length} Players)`}
+          title={`Free For All (${teams.yours.length} Players)`}
           accent="gold"
           players={teams.yours}
           tierIcons={tierIcons}
@@ -395,9 +402,13 @@ const MatchStatusStrip: React.FC<{
       <span className="flex items-center gap-1.5 font-mono text-m3-outline">
         <Swords className="w-3 h-3 text-m3-primary" />
         <span className="font-bold text-m3-on-surface">{state.mapName || 'Unknown map'}</span>
-        <span>•</span>
-        <span>{state.mode}</span>
       </span>
+
+      {state.mode && (
+        <span className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-400/30 text-purple-200 text-[9.5px] font-mono font-bold uppercase">
+          {state.mode}
+        </span>
+      )}
 
       {state.startingSide && !state.isDeathmatch && (
         <span className="flex items-center gap-1.5 font-mono text-m3-outline">
@@ -481,9 +492,9 @@ const PlayerTable: React.FC<{
         <span className="text-right" title="Act-wide headshot %">HS%</span>
         <span
           className="text-right"
-          title={scope ? `Wins/losses in the last 24 hours — ${scope} games only` : 'Wins/losses in the last 24 hours'}
+          title={scope ? `Wins / losses in the last 24 hours (${scope} games)` : 'Wins / losses in the last 24 hours'}
         >
-          {scope ? `24h ${scope}` : 'Last 24h'}
+          24H
         </span>
         <span className="text-right">Lvl</span>
       </div>
