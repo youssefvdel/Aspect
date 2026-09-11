@@ -260,53 +260,127 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
 
       {/* Modal Dialog Card (Google Material 3 Theme) */}
-      <div className="relative w-full max-w-5xl max-h-[92vh] bg-m3-surface-container-low border border-m3-outline-subtle rounded-3xl shadow-m3-3 flex flex-col overflow-hidden text-m3-on-surface z-10">
+      <div className="relative w-full max-w-5xl max-h-[94vh] bg-m3-surface-container-low border border-m3-outline-subtle rounded-2xl shadow-m3-3 flex flex-col overflow-hidden text-m3-on-surface z-10">
         {/* Header */}
-        <div className="px-5 py-4 bg-m3-surface-container border-b border-m3-outline-subtle flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4 flex-wrap min-w-0">
-            {/* Map & Mode */}
+        <div className="px-4 py-2.5 bg-m3-surface-container border-b border-m3-outline-subtle flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 min-w-0">
+            {/* Map & Mode & Date */}
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-m3-outline">
-                {queue || 'Competitive'}
+              <div className="flex items-center gap-2">
+                <span className="font-display font-black text-lg text-m3-on-surface tracking-tight leading-none">
+                  {mapName}
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-m3-surface-container-highest text-m3-outline border border-m3-outline-subtle">
+                  {queue || 'Competitive'}
+                </span>
               </div>
-              <div className="font-display font-black text-xl text-m3-on-surface tracking-tight">
-                {mapName}
+              <div className="text-[10px] font-medium text-m3-outline mt-0.5 flex items-center gap-1.5">
+                <Clock className="w-2.5 h-2.5 text-m3-outline shrink-0" />
+                <span>{formatMatchDate(detail.when)}</span>
+                <span>•</span>
+                <span className="font-mono">{formatDuration(matchDurationMs)}</span>
               </div>
             </div>
 
             {/* Match Score (M3 Semantic Tones) */}
-            <div className="flex items-center gap-2 bg-m3-surface-container-high border border-m3-outline-subtle px-3.5 py-1.5 rounded-2xl">
-              <span className="font-display font-black text-lg text-m3-mint">
-                Team Blue {teamBlueScore}
+            <div className="flex items-center gap-1.5 bg-m3-surface-container-high border border-m3-outline-subtle px-2.5 py-1 rounded-xl shrink-0">
+              <span className="font-display font-black text-base text-m3-mint">
+                {teamBlueScore}
               </span>
-              <span className="text-m3-outline font-bold text-sm">:</span>
-              <span className="font-display font-black text-lg text-m3-coral">
-                {teamRedScore} Team Red
+              <span className="text-m3-outline font-bold text-xs">:</span>
+              <span className="font-display font-black text-base text-m3-coral">
+                {teamRedScore}
               </span>
-            </div>
-
-            {/* Date & Duration */}
-            <div className="text-xs text-m3-outline font-medium flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-m3-outline shrink-0" />
-              <span>{formatMatchDate(detail.when)}</span>
-              <span>•</span>
-              <span className="font-mono">{formatDuration(matchDurationMs)}</span>
             </div>
           </div>
 
-          {/* Close Button */}
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="w-9 h-9 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle ml-2"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Right side: Round Timeline Strip + Close Button */}
+          <div className="flex items-center gap-2 shrink-0">
+            {detail.rounds && detail.rounds.length > 0 && (
+              <div className="flex flex-col gap-0.5 bg-m3-surface-container-high border border-m3-outline-subtle px-2 py-1 rounded-xl shrink-0">
+                {/* Team Blue Row */}
+                <div className="flex items-center gap-1">
+                  <span className="w-7 text-[8px] font-bold text-m3-mint shrink-0">
+                    B ({teamBlueScore})
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    {detail.rounds.map((r, i) => {
+                      const isWin = r.winningTeam === 'Blue';
+                      return (
+                        <div
+                          key={i}
+                          title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
+                          className={`w-3 h-3.5 rounded-xs flex items-center justify-center text-[7px] font-bold ${
+                            isWin
+                              ? 'bg-m3-mint/20 border border-m3-mint/50 text-m3-mint'
+                              : 'bg-white/[0.04] text-m3-outline/25'
+                          }`}
+                        >
+                          {isWin ? (
+                            r.roundResult?.toLowerCase().includes('defuse') ? (
+                              <Shield className="w-2 h-2" />
+                            ) : (
+                              <Skull className="w-2 h-2" />
+                            )
+                          ) : (
+                            '·'
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Team Red Row */}
+                <div className="flex items-center gap-1">
+                  <span className="w-7 text-[8px] font-bold text-m3-coral shrink-0">
+                    R ({teamRedScore})
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    {detail.rounds.map((r, i) => {
+                      const isWin = r.winningTeam === 'Red';
+                      return (
+                        <div
+                          key={i}
+                          title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
+                          className={`w-3 h-3.5 rounded-xs flex items-center justify-center text-[7px] font-bold ${
+                            isWin
+                              ? 'bg-m3-coral/20 border border-m3-coral/50 text-m3-coral'
+                              : 'bg-white/[0.04] text-m3-outline/25'
+                          }`}
+                        >
+                          {isWin ? (
+                            r.roundResult?.toLowerCase().includes('bomb') ||
+                            r.roundResult?.toLowerCase().includes('detonate') ? (
+                              <Bomb className="w-2 h-2" />
+                            ) : (
+                              <Skull className="w-2 h-2" />
+                            )
+                          ) : (
+                            '·'
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              title="Close"
+              className="w-7 h-7 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Navigation Tabs (Google Material 3 Sub-Nav) */}
-        <div className="flex items-center gap-6 px-5 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs sm:text-[13px] font-bold shrink-0">
+        <div className="flex items-center gap-6 px-4 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs font-bold shrink-0">
           {[
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'duels', label: 'Duels' },
@@ -317,7 +391,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id as ModalTab)}
-                className={`relative py-3 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`relative py-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                   active ? 'text-m3-on-surface' : 'text-m3-outline hover:text-m3-on-surface'
                 }`}
               >
@@ -325,7 +399,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 {active && (
                   <motion.span
                     layoutId="modal-active-tab"
-                    className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-m3-primary rounded-full"
+                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-m3-primary rounded-full"
                   />
                 )}
               </button>
@@ -334,92 +408,19 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-4">
-          {/* Rounds Timeline Strip */}
-          <div className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-2.5 shrink-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline mb-1.5">
-              Round Timeline ({detail.rounds.length} Rounds)
-            </div>
-            <div className="overflow-x-auto pb-0.5">
-              <div className="flex flex-col gap-1 w-full">
-                {/* Team Blue Row */}
-                <div className="flex items-center gap-1 w-full">
-                  <span className="w-14 text-[10px] font-bold text-m3-mint truncate">
-                    Blue ({teamBlueScore})
-                  </span>
-                  {detail.rounds.map((r, i) => {
-                    const isWin = r.winningTeam === 'Blue';
-                    return (
-                      <div
-                        key={i}
-                        title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                        className={`flex-1 min-w-[20px] h-6 rounded flex items-center justify-center text-[9px] font-bold ${
-                          isWin
-                            ? 'bg-m3-mint/15 border border-m3-mint/40 text-m3-mint'
-                            : 'bg-m3-surface-container-highest/50 text-m3-outline/50'
-                        }`}
-                      >
-                        {isWin ? (
-                          r.roundResult?.toLowerCase().includes('defuse') ? (
-                            <Shield className="w-2.5 h-2.5" />
-                          ) : (
-                            <Skull className="w-2.5 h-2.5" />
-                          )
-                        ) : (
-                          '•'
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Team Red Row */}
-                <div className="flex items-center gap-1 w-full">
-                  <span className="w-14 text-[10px] font-bold text-m3-coral truncate">
-                    Red ({teamRedScore})
-                  </span>
-                  {detail.rounds.map((r, i) => {
-                    const isWin = r.winningTeam === 'Red';
-                    return (
-                      <div
-                        key={i}
-                        title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                        className={`flex-1 min-w-[20px] h-6 rounded flex items-center justify-center text-[9px] font-bold ${
-                          isWin
-                            ? 'bg-m3-coral/15 border border-m3-coral/40 text-m3-coral'
-                            : 'bg-m3-surface-container-highest/50 text-m3-outline/50'
-                        }`}
-                      >
-                        {isWin ? (
-                          r.roundResult?.toLowerCase().includes('bomb') ||
-                          r.roundResult?.toLowerCase().includes('detonate') ? (
-                            <Bomb className="w-2.5 h-2.5" />
-                          ) : (
-                            <Skull className="w-2.5 h-2.5" />
-                          )
-                        ) : (
-                          '•'
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-3.5 flex flex-col gap-2.5">
           {/* Tab 1: Scoreboard */}
           {activeTab === 'scoreboard' && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               {/* Team Blue Table */}
-              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
+              <div className="rounded-xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
                 {/* Team Blue Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-m3-mint" />
+                <div className="px-3 py-1 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-[11px] font-bold text-m3-mint">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-m3-mint" />
                     <span>Team Blue • {teamBlueScore} Rounds</span>
                   </div>
-                  <span className="text-m3-outline font-medium text-[11px]">
+                  <span className="text-m3-outline font-medium text-[10px]">
                     Avg. Rank: {avgRankName(teamBlue)}
                   </span>
                 </div>
@@ -428,24 +429,24 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2.5 px-3 min-w-[44px]">Agent</th>
-                        <th className="py-2.5 px-3 min-w-[140px]">Player (Click for overview)</th>
-                        <th className="py-2.5 px-2 text-center">TRS</th>
-                        <th className="py-2.5 px-2 text-center">ACS</th>
-                        <th className="py-2.5 px-2.5 text-center">K / D / A</th>
-                        <th className="py-2.5 px-2 text-center">+/-</th>
-                        <th className="py-2.5 px-2 text-center">K/D</th>
-                        <th className="py-2.5 px-2 text-center">DDΔ</th>
-                        <th className="py-2.5 px-2 text-center">ADR</th>
-                        <th className="py-2.5 px-2 text-center">HS%</th>
-                        <th className="py-2.5 px-2 text-center">KAST</th>
-                        <th className="py-2.5 px-2 text-center">FK</th>
-                        <th className="py-2.5 px-2 text-center">FD</th>
-                        <th className="py-2.5 px-2 text-center">MK</th>
+                      <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[9px] font-bold uppercase tracking-wider text-m3-outline select-none">
+                        <th className="py-1 px-2 min-w-[36px]">Agent</th>
+                        <th className="py-1 px-2 min-w-[130px]">Player</th>
+                        <th className="py-1 px-1.5 text-center">TRS</th>
+                        <th className="py-1 px-1.5 text-center">ACS</th>
+                        <th className="py-1 px-2 text-center">K / D / A</th>
+                        <th className="py-1 px-1.5 text-center">+/-</th>
+                        <th className="py-1 px-1.5 text-center">K/D</th>
+                        <th className="py-1 px-1.5 text-center">DDΔ</th>
+                        <th className="py-1 px-1.5 text-center">ADR</th>
+                        <th className="py-1 px-1.5 text-center">HS%</th>
+                        <th className="py-1 px-1.5 text-center">KAST</th>
+                        <th className="py-1 px-1.5 text-center">FK</th>
+                        <th className="py-1 px-1.5 text-center">FD</th>
+                        <th className="py-1 px-1.5 text-center">MK</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-m3-outline-subtle/30 font-mono">
+                    <tbody className="divide-y divide-m3-outline-subtle/20 font-mono">
                       {teamBlue.map((p, idx) => {
                         const isMatchMvp = p.puuid === matchMvpPuuid;
                         const isTeamMvp = idx === 0 && !isMatchMvp;
@@ -460,23 +461,23 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             }`}
                           >
                             {/* Agent */}
-                            <td className="relative py-2 px-3">
+                            <td className="relative py-1 px-2">
                               {party ? (
                                 <div
-                                  className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+                                  className={`absolute left-0 top-0.5 bottom-0.5 w-1 rounded-r-full ${party.bar}`}
                                   title="Queued together"
                                 />
                               ) : p.isMe ? (
-                                <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-m3-primary" />
+                                <div className="absolute left-0 top-0.5 bottom-0.5 w-[3px] rounded-r-full bg-m3-primary" />
                               ) : null}
-                              <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
+                              <div className="relative w-6 h-6 rounded-md overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-m3-surface-container-highest" />
                                 )}
                                 {p.accountLevel ? (
-                                  <span className="absolute bottom-0 right-0 text-[7px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
+                                  <span className="absolute bottom-0 right-0 text-[6px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
                                     {p.accountLevel}
                                   </span>
                                 ) : null}
@@ -484,29 +485,29 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name (Clickable) */}
-                            <td className="py-2 px-3 font-sans">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <td className="py-1 px-2 font-sans">
+                              <div className="flex items-center gap-1 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => openPlayer(p)}
-                                  className="font-bold text-xs truncate max-w-[130px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
+                                  className="font-bold text-[11px] truncate max-w-[125px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
                                 >
                                   <span className={p.isMe ? 'text-m3-primary font-black' : 'text-m3-on-surface'}>
                                     {p.displayName}
                                   </span>
                                   {p.displayTag ? (
-                                    <span className="text-[10px] text-m3-outline font-normal">#{p.displayTag}</span>
+                                    <span className="text-[9px] text-m3-outline font-normal">#{p.displayTag}</span>
                                   ) : null}
                                 </button>
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3 h-3 object-contain" />
                                 ) : null}
                                 {isMatchMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
+                                  <span className="px-1 py-px rounded text-[7px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
                                     Match MVP
                                   </span>
                                 ) : isTeamMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
+                                  <span className="px-1 py-px rounded text-[7px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
                                     Team MVP
                                   </span>
                                 ) : null}
@@ -514,48 +515,48 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* TRS */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-outline font-bold text-[11px]">{p.trs}</td>
 
                             {/* ACS */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-extrabold">{p.acs}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-extrabold text-[11px]">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-2 px-2.5 text-center text-m3-on-surface">
+                            <td className="py-1 px-2 text-center text-m3-on-surface text-[11px]">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-bold text-[11px] ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-2 px-2 text-center font-extrabold ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-extrabold text-[11px] ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-bold text-[11px] ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-medium">{p.adr}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-medium text-[11px]">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-medium">{p.hsPct}%</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-medium text-[11px]">{p.hsPct}%</td>
 
                             {/* KAST */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-medium">{p.kast}%</td>
+                            <td className="py-1 px-1.5 text-center text-m3-outline font-medium text-[11px]">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-2 px-2 text-center text-m3-mint font-bold">{p.fk}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-mint font-bold text-[11px]">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-2 px-2 text-center text-m3-coral font-bold">{p.fd}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-coral font-bold text-[11px]">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-2 px-2 text-center text-m3-tertiary font-bold">{p.mk}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-tertiary font-bold text-[11px]">{p.mk}</td>
                           </tr>
                         );
                       })}
@@ -565,14 +566,14 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
 
               {/* Team Red Table */}
-              <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
+              <div className="rounded-xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
                 {/* Team Red Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-m3-coral" />
+                <div className="px-3 py-1 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-[11px] font-bold text-m3-coral">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-m3-coral" />
                     <span>Team Red • {teamRedScore} Rounds</span>
                   </div>
-                  <span className="text-m3-outline font-medium text-[11px]">
+                  <span className="text-m3-outline font-medium text-[10px]">
                     Avg. Rank: {avgRankName(teamRed)}
                   </span>
                 </div>
@@ -581,24 +582,24 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2.5 px-3 min-w-[44px]">Agent</th>
-                        <th className="py-2.5 px-3 min-w-[140px]">Player (Click for overview)</th>
-                        <th className="py-2.5 px-2 text-center">TRS</th>
-                        <th className="py-2.5 px-2 text-center">ACS</th>
-                        <th className="py-2.5 px-2.5 text-center">K / D / A</th>
-                        <th className="py-2.5 px-2 text-center">+/-</th>
-                        <th className="py-2.5 px-2 text-center">K/D</th>
-                        <th className="py-2.5 px-2 text-center">DDΔ</th>
-                        <th className="py-2.5 px-2 text-center">ADR</th>
-                        <th className="py-2.5 px-2 text-center">HS%</th>
-                        <th className="py-2.5 px-2 text-center">KAST</th>
-                        <th className="py-2.5 px-2 text-center">FK</th>
-                        <th className="py-2.5 px-2 text-center">FD</th>
-                        <th className="py-2.5 px-2 text-center">MK</th>
+                      <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[9px] font-bold uppercase tracking-wider text-m3-outline select-none">
+                        <th className="py-1 px-2 min-w-[36px]">Agent</th>
+                        <th className="py-1 px-2 min-w-[130px]">Player</th>
+                        <th className="py-1 px-1.5 text-center">TRS</th>
+                        <th className="py-1 px-1.5 text-center">ACS</th>
+                        <th className="py-1 px-2 text-center">K / D / A</th>
+                        <th className="py-1 px-1.5 text-center">+/-</th>
+                        <th className="py-1 px-1.5 text-center">K/D</th>
+                        <th className="py-1 px-1.5 text-center">DDΔ</th>
+                        <th className="py-1 px-1.5 text-center">ADR</th>
+                        <th className="py-1 px-1.5 text-center">HS%</th>
+                        <th className="py-1 px-1.5 text-center">KAST</th>
+                        <th className="py-1 px-1.5 text-center">FK</th>
+                        <th className="py-1 px-1.5 text-center">FD</th>
+                        <th className="py-1 px-1.5 text-center">MK</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-m3-outline-subtle/30 font-mono">
+                    <tbody className="divide-y divide-m3-outline-subtle/20 font-mono">
                       {teamRed.map((p, idx) => {
                         const isMatchMvp = p.puuid === matchMvpPuuid;
                         const isTeamMvp = idx === 0 && !isMatchMvp;
@@ -613,23 +614,23 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             }`}
                           >
                             {/* Agent */}
-                            <td className="relative py-2 px-3">
+                            <td className="relative py-1 px-2">
                               {party ? (
                                 <div
-                                  className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+                                  className={`absolute left-0 top-0.5 bottom-0.5 w-1 rounded-r-full ${party.bar}`}
                                   title="Queued together"
                                 />
                               ) : p.isMe ? (
-                                <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-m3-primary" />
+                                <div className="absolute left-0 top-0.5 bottom-0.5 w-[3px] rounded-r-full bg-m3-primary" />
                               ) : null}
-                              <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
+                              <div className="relative w-6 h-6 rounded-md overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-m3-surface-container-highest" />
                                 )}
                                 {p.accountLevel ? (
-                                  <span className="absolute bottom-0 right-0 text-[7px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
+                                  <span className="absolute bottom-0 right-0 text-[6px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
                                     {p.accountLevel}
                                   </span>
                                 ) : null}
@@ -637,29 +638,29 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name (Clickable) */}
-                            <td className="py-2 px-3 font-sans">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <td className="py-1 px-2 font-sans">
+                              <div className="flex items-center gap-1 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => openPlayer(p)}
-                                  className="font-bold text-xs truncate max-w-[130px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
+                                  className="font-bold text-[11px] truncate max-w-[125px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
                                 >
                                   <span className={p.isMe ? 'text-m3-primary font-black' : 'text-m3-on-surface'}>
                                     {p.displayName}
                                   </span>
                                   {p.displayTag ? (
-                                    <span className="text-[10px] text-m3-outline font-normal">#{p.displayTag}</span>
+                                    <span className="text-[9px] text-m3-outline font-normal">#{p.displayTag}</span>
                                   ) : null}
                                 </button>
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3 h-3 object-contain" />
                                 ) : null}
                                 {isMatchMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
+                                  <span className="px-1 py-px rounded text-[7px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
                                     Match MVP
                                   </span>
                                 ) : isTeamMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
+                                  <span className="px-1 py-px rounded text-[7px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
                                     Team MVP
                                   </span>
                                 ) : null}
@@ -667,48 +668,48 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* TRS */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-bold">{p.trs}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-outline font-bold text-[11px]">{p.trs}</td>
 
                             {/* ACS */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-extrabold">{p.acs}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-extrabold text-[11px]">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-2 px-2.5 text-center text-m3-on-surface">
+                            <td className="py-1 px-2 text-center text-m3-on-surface text-[11px]">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-bold text-[11px] ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-2 px-2 text-center font-extrabold ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-extrabold text-[11px] ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-2 px-2 text-center font-bold ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1 px-1.5 text-center font-bold text-[11px] ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-medium">{p.adr}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-medium text-[11px]">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-2 px-2 text-center text-m3-on-surface font-medium">{p.hsPct}%</td>
+                            <td className="py-1 px-1.5 text-center text-m3-on-surface font-medium text-[11px]">{p.hsPct}%</td>
 
                             {/* KAST */}
-                            <td className="py-2 px-2 text-center text-m3-outline font-medium">{p.kast}%</td>
+                            <td className="py-1 px-1.5 text-center text-m3-outline font-medium text-[11px]">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-2 px-2 text-center text-m3-mint font-bold">{p.fk}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-mint font-bold text-[11px]">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-2 px-2 text-center text-m3-coral font-bold">{p.fd}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-coral font-bold text-[11px]">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-2 px-2 text-center text-m3-tertiary font-bold">{p.mk}</td>
+                            <td className="py-1 px-1.5 text-center text-m3-tertiary font-bold text-[11px]">{p.mk}</td>
                           </tr>
                         );
                       })}
