@@ -121,7 +121,7 @@ function mockPregame(): LiveMatchState {
     matchId: 'dev-match-pregame',
     mapId: '/game/maps/ascent/ascent',
     mapName: 'Ascent',
-    mode: 'Competitive / Unrated',
+    mode: 'Competitive',
     isDeathmatch: false,
     blueTeam,
     redTeam,

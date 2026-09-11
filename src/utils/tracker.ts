@@ -1441,8 +1441,9 @@ export async function fetchPlayer24hRecord(
         if (oldest < cutoff) break;
       }
 
+      const targetQueue = (queue || '').toLowerCase().trim();
       const recent = entries
-        .filter((h) => h.id && h.at >= cutoff && (!queue || h.queue === queue))
+        .filter((h) => h.id && h.at >= cutoff && (!targetQueue || h.queue.toLowerCase().trim() === targetQueue))
         .sort((a, b) => b.at - a.at);
 
       if (recent.length === 0) {
@@ -1931,14 +1932,35 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const mapName = mapDict[rawMapId] || data.maps[rawMapId] || shortMapName(rawMapId, data.maps);
 
     const rawModeId = String(matchData.ModeID || matchData.Mode || '');
-    const isDeathmatch = rawModeId.toLowerCase().includes('deathmatch');
+    const directQueue = String(
+      matchData.QueueID ||
+      matchData.MatchmakingData?.QueueID ||
+      liveQueue ||
+      ''
+    ).toLowerCase().trim();
+
+    const isDeathmatch = rawModeId.toLowerCase().includes('deathmatch') || directQueue.includes('deathmatch');
+
+    // Strictly resolve exact game mode — never mix Competitive, Unrated, or other modes together
     const modeName = isDeathmatch
       ? 'Deathmatch'
+      : directQueue === 'competitive'
+      ? 'Competitive'
+      : directQueue === 'unrated'
+      ? 'Unrated'
+      : directQueue === 'swiftplay' || rawModeId.toLowerCase().includes('hurry')
+      ? 'Swiftplay'
+      : directQueue === 'spikerush' || rawModeId.toLowerCase().includes('onefa')
+      ? 'Spike Rush'
+      : directQueue === 'premier'
+      ? 'Premier'
+      : directQueue === 'ggteam'
+      ? 'Escalation'
       : rawModeId.toLowerCase().includes('hurry')
       ? 'Swiftplay'
       : rawModeId.toLowerCase().includes('onefa')
       ? 'Spike Rush'
-      : 'Competitive / Unrated';
+      : 'Competitive';
 
     const blueTeam: LiveMatchPlayer[] = [];
     const redTeam: LiveMatchPlayer[] = [];
