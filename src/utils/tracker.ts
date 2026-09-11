@@ -680,30 +680,61 @@ export async function resolvePlayerNames(
   shard = 'eu'
 ): Promise<Record<string, { name: string; tag: string }>> {
   if (puuids.length === 0) return {};
-  const cacheKey = 'aspect_names_cache_v1';
+  const cacheKey = 'aspect_names_cache_v2';
+  const legacyKey = 'aspect_names_cache_v1';
   let cache: Record<string, { name: string; tag: string }> = {};
   try {
     const raw = localStorage.getItem(cacheKey);
     if (raw) cache = JSON.parse(raw);
   } catch {}
+  // One-time migration: v1 held ~200+ resolved names. Merge them into v2
+  // instead of dropping them — otherwise every live lobby re-PUTs 10
+  // PUUIDs and risks Riot 1015 rate-limiting mid-game.
+  try {
+    const legacyRaw = localStorage.getItem(legacyKey);
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as Record<string, { name: string; tag: string }>;
+      let migrated = 0;
+      for (const [k, v] of Object.entries(legacy || {})) {
+        if (v?.name && !cache[k]) {
+          cache[k] = v;
+          migrated++;
+        }
+      }
+      if (migrated > 0) {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(cache));
+        } catch {}
+      }
+      try {
+        localStorage.removeItem(legacyKey);
+      } catch {}
+    }
+  } catch {}
 
-  const missing = puuids.filter((p) => !cache[p] || !cache[p].name);
+  const cachedFor = (p: string) => cache[p] ?? cache[p.toLowerCase()] ?? cache[p.toUpperCase()];
+  const missing = puuids.filter((p) => !cachedFor(p)?.name);
   if (missing.length === 0) return cache;
 
   try {
+    // Accept either a short region ('eu') or a full pd host — Rust
+    // normalizes both, but short codes are unambiguous.
+    const short = shard.replace(/^pd\./i, '').replace(/\.a\.pvp\.net$/i, '').toLowerCase() || 'eu';
     const res = await invoke<string>('riot_resolve_names', {
-      shard,
+      shard: short,
       puuids: missing,
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = JSON.parse(res) as any[];
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
-        const sub = String(item?.Subject ?? item?.subject ?? '');
-        const gn = String(item?.GameName ?? item?.gameName ?? '');
-        const tl = String(item?.TagLine ?? item?.tagLine ?? '');
+        const sub = String(item?.Subject ?? item?.subject ?? '').trim();
+        const gn = String(item?.GameName ?? item?.gameName ?? item?.DisplayName ?? item?.displayName ?? '').trim();
+        const tl = String(item?.TagLine ?? item?.tagLine ?? '').trim();
         if (sub && gn) {
           cache[sub] = { name: gn, tag: tl };
+          cache[sub.toLowerCase()] = { name: gn, tag: tl };
+          cache[sub.toUpperCase()] = { name: gn, tag: tl };
         }
       }
       try {
@@ -1410,6 +1441,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
 
     // Extract live party mappings from local presence chat (checks puuid, pid, private, packedData, and parties)
     const presencePartyMap = new Map<string, string>(); // puuid (lowercase) -> partyId (lowercase)
+    const presenceNameMap = new Map<string, { name: string; tag: string }>(); // puuid (lowercase) -> live Riot ID (fallback when name-service is rate-limited)
     let liveAllyScore = 0;
     let liveEnemyScore = 0;
     try {
@@ -1420,6 +1452,14 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         for (const pr of presencesList) {
           const pU = String(pr?.puuid || pr?.pid?.split?.('@')?.[0] || '').toLowerCase().trim();
           if (!pU) continue;
+
+          // Live Riot ID fallback: presences carry the real game_name/tag
+          // even when the player hides their name in-game.
+          const presName = String(pr?.game_name ?? pr?.gameName ?? '').trim();
+          const presTag = String(pr?.game_tag ?? pr?.gameTag ?? '').trim();
+          if (presName && !presenceNameMap.get(pU)?.name) {
+            presenceNameMap.set(pU, { name: presName, tag: presTag });
+          }
 
           let pId = '';
 
@@ -1765,9 +1805,16 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       const pU = p.puuid.toLowerCase();
       const pPartyIndex = playerPartyIndexMap.get(pU);
       const pPartyId = playerPartyIdMap.get(pU) || p.partyId || presencePartyMap.get(pU);
-      const resolved = nameMap[p.puuid];
-      const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);
-      const tag = resolved?.tag || '';
+      // Case-insensitive name-service lookup + live presence fallback, so
+      // hidden/incognito names resolve mid-game instead of only post-game
+      // (match-details carries gameName; pregame/coregame carry PUUID only).
+      const resolved = nameMap[p.puuid] ?? nameMap[pU] ?? nameMap[p.puuid.toUpperCase()];
+      const presFallback = presenceNameMap.get(pU);
+      const realName = resolved?.name || presFallback?.name || '';
+      const realTag = resolved?.tag || presFallback?.tag || '';
+      const isSelf = pU === ent.puuid.toLowerCase();
+      const name = realName || (isSelf ? 'You' : `Player ${idx + 1}`);
+      const tag = realName ? realTag : '';
       const mmr = mmrMap.get(p.puuid) || { tier: 0, rr: 0, peakTier: 0 };
       const agentRawName = data.agents[p.characterId.toLowerCase()] || '';
       const agentMeta = Object.values(data.agentInfo).find(
@@ -1776,10 +1823,10 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
 
       // Asynchronously fetch TRN stats (KD & country) if not cached
       const statsCached = livePlayerStatsCache.get(p.puuid);
-      if (!statsCached && resolved?.name && resolved?.tag) {
+      if (!statsCached && realName && realTag) {
         import('./trn')
           .then(({ fetchTrnActStats }) => {
-            fetchTrnActStats(resolved.name, resolved.tag)
+            fetchTrnActStats(realName, realTag)
               .then((res) => {
                 const realCountry =
                   res?.countryCode &&
