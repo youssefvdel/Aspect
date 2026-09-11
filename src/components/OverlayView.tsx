@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Trophy, EyeOff, Swords, Clock, AlertTriangle, Layers } from 'lucide-react';
+import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Trophy, EyeOff, Swords, Clock, AlertTriangle, Layers, Skull, Crosshair, Target } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
@@ -16,6 +16,14 @@ import {
 import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
+import elimWin from '../assets/round-icons/elimination-win.png';
+import elimLoss from '../assets/round-icons/elimination-loss.png';
+import defuseWin from '../assets/round-icons/defuse-win.png';
+import defuseLoss from '../assets/round-icons/defuse-loss.png';
+import detonateWin from '../assets/round-icons/detonate-win.png';
+import detonateLoss from '../assets/round-icons/detonate-loss.png';
+import timeWin from '../assets/round-icons/time-win.png';
+import timeLoss from '../assets/round-icons/time-loss.png';
 
 export interface WidgetPos {
   x: number;
@@ -26,15 +34,18 @@ export interface OverlayConfig {
   showLobby: boolean;
   showPregame: boolean;
   showTopAgents: boolean;
+  showCombatTimeline: boolean;
   positions: {
     lobby: WidgetPos;
     pregame: WidgetPos;
     topAgents: WidgetPos;
+    combatTimeline: WidgetPos;
   };
   scales: {
     lobby: number;
     pregame: number;
     topAgents: number;
+    combatTimeline: number;
   };
 }
 
@@ -46,11 +57,13 @@ export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
   // Agent Select (pregame): X: 767, Y: 447
   // Match Status (lobby): X: 22, Y: 654
   // Top Agents (topAgents): X: 1691, Y: 836
+  // Combat Timeline (under scoreboard): X: 654, Y: 940
   if (w <= 2088 || (w >= 2080 && w <= 2090)) {
     return {
       lobby: { x: 22, y: 654 },
       pregame: { x: 767, y: 447 },
       topAgents: { x: 1691, y: 836 },
+      combatTimeline: { x: 654, y: 940 },
     };
   }
 
@@ -67,20 +80,25 @@ export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
       x: Math.max(20, Math.round(w * (1691 / 2088))),
       y: Math.max(40, Math.round(h * (836 / 1440))),
     },
+    combatTimeline: {
+      x: Math.max(20, Math.round((w - 780) / 2)),
+      y: Math.max(40, Math.round(h * (940 / 1440))),
+    },
   };
 }
 
 export function getDefaultOverlayConfig(): OverlayConfig {
   return {
-    // All 3 widgets ON by default
     showLobby: true,
     showPregame: true,
     showTopAgents: true,
+    showCombatTimeline: true,
     positions: getDefaultOverlayPositions(),
     scales: {
       lobby: 1.0,
       pregame: 1.0,
       topAgents: 1.0,
+      combatTimeline: 1.0,
     },
   };
 }
@@ -351,6 +369,34 @@ const PREVIEW_OPPONENTS: LiveMatchPlayer[] = [
   },
 ];
 
+interface RoundCombatEvent {
+  roundNum: number;
+  won?: boolean;
+  outcome?: 'elim' | 'defuse' | 'detonate' | 'time';
+  kills?: number;
+  damage?: number;
+  headshots?: number;
+  hits?: number;
+  died?: boolean;
+  isCurrent?: boolean;
+  isFuture?: boolean;
+}
+
+const PREVIEW_COMBAT_ROUNDS: RoundCombatEvent[] = [
+  { roundNum: 1, won: true, outcome: 'elim', kills: 2, damage: 290, headshots: 2, hits: 4, died: false },
+  { roundNum: 2, won: true, outcome: 'defuse', kills: 1, damage: 160, headshots: 1, hits: 2, died: false },
+  { roundNum: 3, won: false, outcome: 'elim', kills: 0, damage: 80, headshots: 0, hits: 2, died: true },
+  { roundNum: 4, won: true, outcome: 'elim', kills: 3, damage: 410, headshots: 2, hits: 5, died: false },
+  { roundNum: 5, won: false, outcome: 'detonate', kills: 1, damage: 140, headshots: 1, hits: 2, died: true },
+  { roundNum: 6, won: true, outcome: 'elim', kills: 2, damage: 280, headshots: 2, hits: 3, died: false },
+  { roundNum: 7, won: false, outcome: 'elim', kills: 0, damage: 45, headshots: 0, hits: 1, died: true },
+  { roundNum: 8, won: true, outcome: 'defuse', kills: 2, damage: 275, headshots: 1, hits: 3, died: false },
+  { roundNum: 9, isCurrent: true },
+  { roundNum: 10, isFuture: true },
+  { roundNum: 11, isFuture: true },
+  { roundNum: 12, isFuture: true },
+];
+
 export const OverlayView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
@@ -369,14 +415,14 @@ export const OverlayView: React.FC = () => {
 
   // Widget config + positions (persisted)
   const [config, setConfig] = useState<OverlayConfig>(() => {
-    const MIGRATION_KEY = 'recon_overlay_cfg_v6_defaults';
+    const MIGRATION_KEY = 'recon_overlay_cfg_v7_defaults';
     try {
       if (!localStorage.getItem(MIGRATION_KEY)) {
         localStorage.setItem(MIGRATION_KEY, '1');
-        localStorage.setItem('recon_overlay_cfg_v6', JSON.stringify(DEFAULT_OVERLAY_CONFIG));
+        localStorage.setItem('recon_overlay_cfg_v7', JSON.stringify(DEFAULT_OVERLAY_CONFIG));
         return DEFAULT_OVERLAY_CONFIG;
       }
-      const saved = localStorage.getItem('recon_overlay_cfg_v6') || localStorage.getItem('recon_overlay_cfg_v5') || localStorage.getItem('aspect_overlay_cfg_v4');
+      const saved = localStorage.getItem('recon_overlay_cfg_v7') || localStorage.getItem('recon_overlay_cfg_v6') || localStorage.getItem('recon_overlay_cfg_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -393,7 +439,7 @@ export const OverlayView: React.FC = () => {
   const saveConfig = (next: OverlayConfig) => {
     setConfig(next);
     try {
-      localStorage.setItem('recon_overlay_cfg_v6', JSON.stringify(next));
+      localStorage.setItem('recon_overlay_cfg_v7', JSON.stringify(next));
     } catch {}
   };
 
@@ -490,11 +536,13 @@ export const OverlayView: React.FC = () => {
   const lobbyRef = useRef<HTMLDivElement>(null);
   const pregameRef = useRef<HTMLDivElement>(null);
   const topAgentsRef = useRef<HTMLDivElement>(null);
+  const combatTimelineRef = useRef<HTMLDivElement>(null);
 
   const widgetRefs = {
     lobby: lobbyRef,
     pregame: pregameRef,
     topAgents: topAgentsRef,
+    combatTimeline: combatTimelineRef,
   };
 
   // Native DWM message handling strips non-client borders natively.
@@ -865,7 +913,7 @@ export const OverlayView: React.FC = () => {
               <span>Widgets List</span>
             </span>
             <span className="text-[10px] font-mono text-purple-300 font-bold">
-              {[config.showPregame, config.showLobby, config.showTopAgents].filter(Boolean).length} / 3 ON
+              {[config.showPregame, config.showLobby, config.showTopAgents, config.showCombatTimeline].filter(Boolean).length} / 4 ON
             </span>
           </div>
 
@@ -972,6 +1020,43 @@ export const OverlayView: React.FC = () => {
                   ...config,
                   showTopAgents: true,
                   positions: { ...config.positions, topAgents: getDefaultOverlayPositions().topAgents },
+                })}
+                className="text-purple-300 hover:text-white underline cursor-pointer text-[9px]"
+              >
+                Reset pos
+              </button>
+            </div>
+          </div>
+
+          {/* 4. COMBAT TIMELINE */}
+          <div className={`p-2.5 rounded-2xl border transition-all flex flex-col gap-1.5 ${
+            config.showCombatTimeline ? 'bg-purple-950/40 border-purple-500/60 shadow-md ring-1 ring-purple-500/40' : 'bg-zinc-900/50 border-white/10 opacity-60'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5 text-m3-mint" />
+                <span>Combat Timeline</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => saveConfig({ ...config, showCombatTimeline: !config.showCombatTimeline })}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border transition-colors cursor-pointer ${
+                  config.showCombatTimeline
+                    ? 'bg-m3-mint/20 text-m3-mint border-m3-mint/40'
+                    : 'bg-white/5 text-zinc-400 border-white/10'
+                }`}
+              >
+                {config.showCombatTimeline ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+              <span>X: {Math.round(config.positions.combatTimeline?.x ?? 654)} Y: {Math.round(config.positions.combatTimeline?.y ?? 940)}</span>
+              <button
+                type="button"
+                onClick={() => saveConfig({
+                  ...config,
+                  showCombatTimeline: true,
+                  positions: { ...config.positions, combatTimeline: getDefaultOverlayPositions().combatTimeline },
                 })}
                 className="text-purple-300 hover:text-white underline cursor-pointer text-[9px]"
               >
@@ -1615,6 +1700,225 @@ export const OverlayView: React.FC = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* WIDGET 4: IN-GAME COMBAT TIMELINE & PER-ROUND STATS (TAB KEY)*/}
+      {/* ============================================================ */}
+      {config.showCombatTimeline && (isEditMode || (isCoregame && tabHeld)) && (
+        <div
+          ref={combatTimelineRef}
+          onPointerDown={(e) => startDrag('combatTimeline', e)}
+          style={{
+            transform: `translate3d(${config.positions.combatTimeline?.x ?? 654}px, ${config.positions.combatTimeline?.y ?? 940}px, 0) scale(${config.scales?.combatTimeline ?? 1.0})`,
+            transformOrigin: 'top left',
+            touchAction: 'none',
+          }}
+          className={`fixed top-0 left-0 ${
+            isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
+          } select-none w-[780px] max-w-[96vw] will-change-transform z-20 ${
+            isEditMode
+              ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_35px_rgba(168,85,247,0.5)] ring-2 ring-white/30'
+              : ''
+          }`}
+        >
+          {isEditMode && (
+            <>
+              {/* Corner crosshairs */}
+              <div className="absolute -top-1.5 -left-1.5 w-4 h-4 border-t-2 border-l-2 border-purple-300 pointer-events-none" />
+              <div className="absolute -top-1.5 -right-1.5 w-4 h-4 border-t-2 border-r-2 border-purple-300 pointer-events-none" />
+              <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 border-b-2 border-l-2 border-purple-300 pointer-events-none" />
+              <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 border-b-2 border-r-2 border-purple-300 pointer-events-none" />
+
+              <div
+                onPointerDown={(e) => startDrag('combatTimeline', e)}
+                className="mb-2 px-3.5 py-1.5 rounded-2xl bg-purple-600/30 border border-purple-400/60 flex items-center justify-between cursor-grab active:cursor-grabbing text-xs font-mono font-bold text-white select-none shadow-md backdrop-blur-md"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Move className="w-3.5 h-3.5 text-purple-300" />
+                  <span>Combat Timeline • ({Math.round(config.positions.combatTimeline?.x ?? 654)}, {Math.round(config.positions.combatTimeline?.y ?? 940)})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-300 font-normal">Hold to drag • Active with Tab</span>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      saveConfig({ ...config, showCombatTimeline: false });
+                    }}
+                    className="w-5 h-5 rounded-lg bg-red-500/30 hover:bg-red-500/50 border border-red-500/40 text-red-200 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                    title="Remove Combat Timeline from screen"
+                  >
+                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
+              </div>
+              <div
+                onPointerDown={(e) => startResize('combatTimeline', e)}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-br-2xl bg-m3-primary/90 hover:bg-m3-primary cursor-nwse-resize flex items-center justify-center text-[11px] text-zinc-950 font-black select-none shadow-md z-10"
+                title="Drag to resize HUD widget"
+              >
+                ↘
+              </div>
+            </>
+          )}
+
+          <div
+            className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-2 transition-all ${
+              isEditMode
+                ? 'bg-[#0c0816]/90 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
+                : 'bg-[#0c0816]/85 border-white/10 backdrop-blur-md'
+            }`}
+          >
+            {/* Header: Title + Match Info */}
+            <div className="flex items-center justify-between px-1 pb-1 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-m3-mint animate-pulse shadow-[0_0_8px_rgba(88,221,196,0.8)]" />
+                <span className="font-display font-black text-xs text-white uppercase tracking-wider">
+                  Recon Combat Performance
+                </span>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  {matchState?.mapName || 'Ascent'} // {matchState?.mode || 'Competitive'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {matchState?.startingSide && (
+                  <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px] font-mono font-bold text-zinc-300">
+                    Side: {matchState.startingSide}
+                  </span>
+                )}
+                <span className="px-1.5 py-0.5 rounded bg-m3-primary/20 text-m3-primary text-[9px] font-mono font-extrabold uppercase">
+                  {matchState?.phase === 'coregame' ? 'LIVE HUD' : 'PREVIEW'}
+                </span>
+              </div>
+            </div>
+
+            {/* Advanced Player Combat Stats Strip (Bright Neon Mint #58ddc4 like TRN) */}
+            <div className="grid grid-cols-5 gap-2 px-3 py-1.5 rounded-xl bg-black/40 border border-white/5 text-center font-mono">
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">HITS</span>
+                <span className="text-sm font-black text-m3-mint">24</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">HEAD HIT %</span>
+                <span className="text-sm font-black text-m3-mint">50%</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">DMG</span>
+                <span className="text-sm font-black text-m3-mint">1,480</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">DMG/RND</span>
+                <span className="text-sm font-black text-m3-mint">246</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">DDΔ/RND</span>
+                <span className="text-sm font-black text-m3-mint">+92</span>
+              </div>
+            </div>
+
+            {/* Per-Round Timeline Cards */}
+            <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-none">
+              {PREVIEW_COMBAT_ROUNDS.map((r) => {
+                const getOutcomeIcon = () => {
+                  if (r.won) {
+                    if (r.outcome === 'defuse') return defuseWin;
+                    if (r.outcome === 'detonate') return detonateWin;
+                    if (r.outcome === 'time') return timeWin;
+                    return elimWin;
+                  }
+                  if (r.outcome === 'defuse') return defuseLoss;
+                  if (r.outcome === 'detonate') return detonateLoss;
+                  if (r.outcome === 'time') return timeLoss;
+                  return elimLoss;
+                };
+
+                return (
+                  <div
+                    key={r.roundNum}
+                    className={`w-[58px] shrink-0 rounded-xl border p-1.5 flex flex-col items-center justify-between gap-1 transition-all ${
+                      r.won
+                        ? 'bg-m3-mint/[0.08] border-m3-mint/30 shadow-xs'
+                        : r.won === false
+                        ? 'bg-rose-500/[0.08] border-rose-500/30'
+                        : r.isCurrent
+                        ? 'bg-amber-400/[0.08] border-amber-400/60 ring-1 ring-amber-400/40 animate-pulse'
+                        : 'bg-white/[0.02] border-dashed border-white/10 opacity-40'
+                    }`}
+                  >
+                    {/* Round number + Outcome icon */}
+                    <div className="flex items-center justify-between w-full px-0.5">
+                      <span className="text-[9px] font-mono font-bold text-zinc-400">
+                        {r.roundNum}
+                      </span>
+                      {r.won !== undefined && (
+                        <img
+                          src={getOutcomeIcon()}
+                          alt=""
+                          className="w-3.5 h-3.5 object-contain"
+                        />
+                      )}
+                      {r.isCurrent && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                      )}
+                    </div>
+
+                    {/* Kills in round */}
+                    <div className="flex items-center justify-center my-0.5">
+                      {r.kills && r.kills > 0 ? (
+                        <div className="flex items-center gap-0.5 bg-white/10 px-1 py-0.5 rounded text-white font-mono font-bold text-[10px]">
+                          <Skull className="w-3 h-3 text-white" />
+                          <span>{r.kills}</span>
+                        </div>
+                      ) : r.won !== undefined ? (
+                        <span className="text-[9px] font-mono text-zinc-600">—</span>
+                      ) : null}
+                    </div>
+
+                    {/* Damage & Hits */}
+                    {r.damage !== undefined ? (
+                      <div className="flex flex-col items-center leading-tight">
+                        <span className="text-[9.5px] font-mono font-extrabold text-zinc-200">
+                          {r.damage}
+                        </span>
+                        {r.headshots ? (
+                          <span className="text-[8px] font-mono text-amber-300 font-semibold flex items-center gap-0.5">
+                            <Crosshair className="w-2 h-2" />
+                            {r.headshots} HS
+                          </span>
+                        ) : (
+                          <span className="text-[7.5px] font-mono text-zinc-500">
+                            {r.hits ?? 0} hits
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-5 flex items-center justify-center">
+                        <span className="text-[8px] font-mono text-zinc-600">
+                          {r.isCurrent ? 'NOW' : '...'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Bottom Result Bar */}
+                    <div
+                      className={`w-full h-1 rounded-full mt-0.5 ${
+                        r.won
+                          ? 'bg-m3-mint shadow-[0_0_6px_rgba(88,221,196,0.8)]'
+                          : r.won === false
+                          ? 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]'
+                          : r.isCurrent
+                          ? 'bg-amber-400 animate-pulse'
+                          : 'bg-white/10'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
