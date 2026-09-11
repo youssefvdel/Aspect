@@ -18,7 +18,10 @@ import {
   restartApp,
   updaterSupported,
   formatBytes,
+  getUpdateChannel,
+  setUpdateChannel,
   type AvailableUpdate,
+  type UpdateChannel,
 } from '../utils/updater';
 import { APP_VERSION } from '../utils/version';
 
@@ -43,12 +46,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState(0);
   const [total, setTotal] = useState(0);
+  const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
 
-  const performCheck = useCallback(async () => {
+  const performCheck = useCallback(async (channelOverride?: UpdateChannel) => {
     setPhase('checking');
     setError(null);
     try {
-      const found = await checkForUpdate();
+      const ch = channelOverride ?? channel;
+      const found = await checkForUpdate(ch);
       setUpdate(found);
       if (found) {
         setPhase('available');
@@ -61,7 +66,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       setError(String(err));
       setPhase('error');
     }
-  }, [onUpdateStatusChange]);
+  }, [channel, onUpdateStatusChange]);
+
+  const handleSwitchChannel = (next: UpdateChannel) => {
+    setChannel(next);
+    setUpdateChannel(next);
+    performCheck(next);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -142,6 +153,36 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             )}
           </div>
 
+          {/* Update Channel Pill Switcher */}
+          <div className="flex items-center p-1 rounded-xl bg-m3-surface-container-lowest border border-m3-outline-subtle/70 text-[11px] gap-1">
+            <button
+              type="button"
+              onClick={() => handleSwitchChannel('stable')}
+              disabled={busy}
+              className={`flex-1 py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                channel === 'stable'
+                  ? 'bg-m3-primary/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                  : 'text-m3-outline hover:text-m3-on-surface'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              Official Stable
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchChannel('early-access')}
+              disabled={busy}
+              className={`flex-1 py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                channel === 'early-access'
+                  ? 'bg-[#d0bcff]/20 text-[#d0bcff] border border-[#d0bcff]/50 shadow-sm'
+                  : 'text-m3-outline hover:text-m3-on-surface'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#d0bcff]" />
+              Early Access (Alpha)
+            </button>
+          </div>
+
           {/* Body */}
           <div className="flex flex-col gap-3 py-1">
             {!updaterSupported() ? (
@@ -151,7 +192,9 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             ) : phase === 'checking' ? (
               <div className="py-8 flex flex-col items-center justify-center gap-2.5 text-center">
                 <Loader2 className="w-6 h-6 text-m3-primary animate-spin" />
-                <p className="text-xs font-medium text-m3-on-surface">Checking for updates…</p>
+                <p className="text-xs font-medium text-m3-on-surface">
+                  Checking for {channel === 'early-access' ? 'Early Access (Alpha)' : 'Official Stable'} updates…
+                </p>
                 <p className="text-[10px] text-m3-outline font-mono">
                   github.com/youssefvdel/Recon
                 </p>
@@ -211,7 +254,9 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                     <ArrowUpCircle className="w-5 h-5 text-m3-primary shrink-0" />
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-m3-primary">Update available</span>
+                        <span className="text-xs font-bold text-m3-primary">
+                          {update.channel === 'early-access' ? 'Early Access Update' : 'Official Update'}
+                        </span>
                         <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded bg-m3-primary text-m3-on-primary">
                           {update.version}
                         </span>
@@ -237,7 +282,11 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 <div>
                   <h4 className="text-xs font-bold text-m3-on-surface">You're up to date</h4>
                   <p className="text-[11px] text-m3-outline mt-0.5">
-                    Recon {APP_VERSION} is the latest version.
+                    Recon {APP_VERSION} is the latest on the{' '}
+                    <span className="font-semibold text-m3-on-surface">
+                      {channel === 'early-access' ? 'Early Access (Alpha)' : 'Official Stable'}
+                    </span>{' '}
+                    channel.
                   </p>
                 </div>
               </div>
@@ -247,7 +296,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
           {/* Footer */}
           <div className="pt-3 border-t border-m3-outline-subtle/80 flex items-center justify-between gap-2">
             <button
-              onClick={performCheck}
+              onClick={() => performCheck()}
               disabled={phase === 'checking' || busy}
               className="h-8 px-3 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
             >

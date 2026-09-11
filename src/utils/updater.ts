@@ -1,5 +1,22 @@
-import { check, type Update } from '@tauri-apps/plugin-updater';
+import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
+
+export type UpdateChannel = 'stable' | 'early-access';
+
+export const UPDATE_CHANNEL_KEY = 'recon_update_channel_v1';
+
+export function getUpdateChannel(): UpdateChannel {
+  if (typeof localStorage === 'undefined') return 'stable';
+  const val = localStorage.getItem(UPDATE_CHANNEL_KEY);
+  return val === 'early-access' ? 'early-access' : 'stable';
+}
+
+export function setUpdateChannel(channel: UpdateChannel): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(UPDATE_CHANNEL_KEY, channel);
+  }
+}
 
 /* Real updater pipeline.
  *
@@ -20,6 +37,7 @@ export interface AvailableUpdate {
   date?: string;
   /** Opaque handle; hand back to installUpdate(). */
   handle: Update;
+  channel?: UpdateChannel;
 }
 
 export type InstallEvent =
@@ -31,17 +49,42 @@ export function updaterSupported(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-/** Ask the configured endpoint for an update. Returns null when up to date. */
-export async function checkForUpdate(): Promise<AvailableUpdate | null> {
+interface UpdateMetadata {
+  rid: number;
+  currentVersion: string;
+  version: string;
+  date?: string;
+  body?: string;
+  rawJson: Record<string, unknown>;
+}
+
+/** Ask the configured channel endpoint for an update. Returns null when up to date. */
+export async function checkForUpdate(channelOverride?: UpdateChannel): Promise<AvailableUpdate | null> {
   if (!updaterSupported()) return null;
-  const update = await check();
-  if (!update) return null;
-  return {
-    version: update.version,
-    notes: update.body ?? '',
-    date: update.date,
-    handle: update,
-  };
+  const channel = channelOverride ?? getUpdateChannel();
+
+  try {
+    const meta = await invoke<UpdateMetadata | null>('check_channel_update', { channel });
+    if (!meta) return null;
+    return {
+      version: meta.version,
+      notes: meta.body ?? '',
+      date: meta.date,
+      handle: new Update(meta),
+      channel,
+    };
+  } catch {
+    // Fallback: standard Tauri updater check
+    const update = await check();
+    if (!update) return null;
+    return {
+      version: update.version,
+      notes: update.body ?? '',
+      date: update.date,
+      handle: update,
+      channel: 'stable',
+    };
+  }
 }
 
 /** Download, verify, install quietly, and report progress. Does not relaunch. */

@@ -596,6 +596,14 @@ async fn check_app_updates() -> Result<updater::UpdateInfo, String> {
 }
 
 #[tauri::command]
+async fn check_channel_update(
+    webview: tauri::Webview,
+    channel: String,
+) -> Result<Option<updater::UpdateMetadata>, String> {
+    updater::check_channel_update_internal(webview, channel).await
+}
+
+#[tauri::command]
 async fn install_app_update(download_url: String) -> Result<String, String> {
     // Downloads + swaps the binary: must stay off the UI thread.
     tauri::async_runtime::spawn_blocking(move || updater::download_and_install_update(&download_url))
@@ -1042,6 +1050,7 @@ pub fn run() {
             remove_custom_override,
             list_supported_modes,
             check_app_updates,
+            check_channel_update,
             install_app_update,
             get_autostart_enabled,
             set_autostart_enabled,

@@ -12,13 +12,17 @@ import {
   Info,
   Loader2,
   GitBranch,
+  ShieldCheck,
 } from 'lucide-react';
 import type { MonitorDevice } from '../types';
 import {
   checkForUpdate,
   installUpdate,
   restartApp,
+  getUpdateChannel,
+  setUpdateChannel,
   type AvailableUpdate,
+  type UpdateChannel,
 } from '../utils/updater';
 import {
   openExternalUrl,
@@ -61,6 +65,9 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
   const [overlayMonitor, setOverlayMonitorSel] = useState('auto');
   const [monitorStatus, setMonitorStatus] = useState<string | null>(null);
 
+  // Update track: "stable" (official release) vs "early-access" (alpha / instant builds)
+  const [updateChannel, setUpdateChannelState] = useState<UpdateChannel>(getUpdateChannel);
+
   const loadSettings = useCallback(async () => {
     const ver = await appVersion();
     setCurrentVersion(ver);
@@ -75,12 +82,13 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     }
   }, []);
 
-  const handleCheckUpdates = useCallback(async () => {
+  const handleCheckUpdates = useCallback(async (channelOverride?: UpdateChannel) => {
     setChecking(true);
     setError(null);
     setInstallStatus(null);
     try {
-      const found = await checkForUpdate();
+      const channel = channelOverride ?? updateChannel;
+      const found = await checkForUpdate(channel);
       setUpdateInfo(found);
       onUpdateStatusChange?.(!!found, found?.version ?? '');
     } catch (err) {
@@ -88,7 +96,13 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     } finally {
       setChecking(false);
     }
-  }, [onUpdateStatusChange]);
+  }, [onUpdateStatusChange, updateChannel]);
+
+  const handleChannelChange = (channel: UpdateChannel) => {
+    setUpdateChannelState(channel);
+    setUpdateChannel(channel);
+    handleCheckUpdates(channel);
+  };
 
   useEffect(() => {
     loadSettings();
@@ -188,7 +202,7 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
             </div>
 
             <button
-              onClick={handleCheckUpdates}
+              onClick={() => handleCheckUpdates()}
               disabled={checking || installing}
               className="px-4 py-2 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
@@ -197,11 +211,79 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
             </button>
           </div>
 
+          {/* Update Channel / Track Selector */}
+          <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-m3-surface-container-lowest border border-m3-outline-subtle/80">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-m3-on-surface">Release Channel</span>
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                  updateChannel === 'early-access'
+                    ? 'bg-[#d0bcff]/20 text-[#d0bcff] border border-[#d0bcff]/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                }`}
+              >
+                {updateChannel === 'early-access' ? 'Early Access (Alpha)' : 'Official Stable'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-0.5">
+              <button
+                type="button"
+                onClick={() => handleChannelChange('stable')}
+                disabled={checking || installing}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                  updateChannel === 'stable'
+                    ? 'bg-m3-primary/15 border-m3-primary shadow-sm'
+                    : 'bg-m3-surface-container/60 border-m3-outline-subtle/60 hover:bg-m3-surface-container hover:border-m3-outline-subtle'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-m3-on-surface flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Official Stable
+                  </span>
+                  {updateChannel === 'stable' && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  )}
+                </div>
+                <p className="text-[11px] text-m3-outline leading-snug">
+                  Thoroughly tested and verified builds for ranked competitive play.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleChannelChange('early-access')}
+                disabled={checking || installing}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                  updateChannel === 'early-access'
+                    ? 'bg-[#d0bcff]/15 border-[#d0bcff] shadow-sm'
+                    : 'bg-m3-surface-container/60 border-m3-outline-subtle/60 hover:bg-m3-surface-container hover:border-m3-outline-subtle'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-m3-on-surface flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#d0bcff]" />
+                    Early Access (Alpha)
+                  </span>
+                  {updateChannel === 'early-access' && (
+                    <span className="w-2 h-2 rounded-full bg-[#d0bcff]" />
+                  )}
+                </div>
+                <p className="text-[11px] text-m3-outline leading-snug">
+                  Instant updates: cutting-edge alpha features and bug fixes the moment they are pushed.
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Update Status Card */}
           {checking ? (
             <div className="py-6 px-4 rounded-2xl bg-m3-surface-container-lowest border border-m3-outline-subtle flex flex-col items-center justify-center gap-2 text-center">
               <Loader2 className="w-6 h-6 text-m3-primary animate-spin" />
-              <span className="text-xs text-m3-on-surface font-medium">Checking GitHub for releases...</span>
+              <span className="text-xs text-m3-on-surface font-medium">
+                Checking for {updateChannel === 'early-access' ? 'Early Access (Alpha)' : 'Official Stable'} releases...
+              </span>
             </div>
           ) : error ? (
             <div className="p-4 rounded-2xl bg-red-950/20 border border-red-500/30 flex items-start gap-3">
@@ -273,7 +355,11 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
               <div className="flex-1">
                 <span className="text-xs font-bold text-emerald-300">You are on the latest version</span>
                 <p className="text-[11px] text-emerald-400/80">
-                  Recon v{currentVersion} is completely up to date.
+                  Recon v{currentVersion} is completely up to date on the{' '}
+                  <span className="font-semibold underline decoration-emerald-400/40">
+                    {updateChannel === 'early-access' ? 'Early Access (Alpha)' : 'Official Stable'}
+                  </span>{' '}
+                  channel.
                 </p>
               </div>
             </div>
