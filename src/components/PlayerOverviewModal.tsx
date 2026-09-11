@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ExternalLink } from 'lucide-react';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
-import { fetchTrnActStats, type TrnActStats } from '../utils/trn';
-import { fetchMmrDirect } from '../utils/tracker';
+import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
+import { fetchMmrDirect, gameData } from '../utils/tracker';
 import type { TrackerProfile } from '../types';
 
 export interface SelectedPlayerInfo {
@@ -47,12 +47,25 @@ export const PlayerOverviewModal: React.FC<Props> = ({
   onViewFullProfile,
 }) => {
   const [trnStats, setTrnStats] = useState<TrnActStats | null>(null);
+  const [trnAgents, setTrnAgents] = useState<TrnAgentStat[]>([]);
+  const [agentIconMap, setAgentIconMap] = useState<Record<string, string>>({});
   const [mmrProfile, setMmrProfile] = useState<TrackerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    gameData().then((d) => {
+      const map: Record<string, string> = {};
+      Object.values(d.agentInfo).forEach((a) => {
+        map[a.name.toLowerCase()] = a.icon;
+      });
+      setAgentIconMap(map);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!player || !player.name || player.name === player.agent) {
       setTrnStats(null);
+      setTrnAgents([]);
       setMmrProfile(null);
       return;
     }
@@ -70,13 +83,19 @@ export const PlayerOverviewModal: React.FC<Props> = ({
       : Promise.resolve(null);
     Promise.allSettled([
       fetchTrnActStats(name, tag, seasonId),
+      fetchTrnAgents(name, tag, seasonId || ''),
       mmrJob,
-    ]).then(([trnRes, mmrRes]) => {
+    ]).then(([trnRes, agentsRes, mmrRes]) => {
       if (!active) return;
       if (trnRes.status === 'fulfilled') {
         setTrnStats(trnRes.value.stats);
       } else {
         setTrnStats(null);
+      }
+      if (agentsRes.status === 'fulfilled') {
+        setTrnAgents(agentsRes.value);
+      } else {
+        setTrnAgents([]);
       }
       if (mmrRes.status === 'fulfilled') {
         setMmrProfile(mmrRes.value);
@@ -90,6 +109,26 @@ export const PlayerOverviewModal: React.FC<Props> = ({
       active = false;
     };
   }, [player, seasonId]);
+
+  const handleOpenExternal = async () => {
+    if (!player || !player.name) return;
+    const trackerUrl = `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(player.name + '#' + (player.tag || ''))}/overview`;
+    try {
+      if ((window as any).__TAURI__) {
+        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const win = new WebviewWindow(`player-${player.name.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now() % 1000}`, {
+          url: trackerUrl,
+          title: `Recon • ${player.name}#${player.tag} Profile`,
+          width: 1240,
+          height: 860,
+          resizable: true,
+        });
+        win.once('tauri://error', () => window.open(trackerUrl, '_blank'));
+        return;
+      }
+    } catch {}
+    window.open(trackerUrl, '_blank');
+  };
 
   if (!player) return null;
 
@@ -173,6 +212,15 @@ export const PlayerOverviewModal: React.FC<Props> = ({
 
             {/* Actions */}
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleOpenExternal}
+                className="px-3.5 py-1.5 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-bright border border-m3-outline-subtle text-m3-on-surface text-xs font-display font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Open full profile in new window"
+              >
+                <span>Open in Window</span>
+                <ExternalLink className="w-3.5 h-3.5 text-m3-primary" />
+              </button>
               {onViewFullProfile && player.name && (
                 <button
                   type="button"
@@ -180,10 +228,9 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                     onViewFullProfile(player.name, player.tag);
                     onClose();
                   }}
-                  className="px-4 py-1.5 rounded-full bg-m3-primary text-m3-on-primary text-xs font-display font-bold flex items-center gap-1.5 shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-full bg-m3-primary text-m3-on-primary text-xs font-display font-bold flex items-center gap-1.5 shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
                 >
-                  <span>Open Full Tracker</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>View Matches</span>
                 </button>
               )}
               <button
@@ -283,6 +330,47 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                     <div className="font-bold text-sm text-m3-on-surface mt-0.5">{trnStats.kast.toFixed(1)}%</div>
                   </div>
                 </div>
+
+                {/* Top Agents Played */}
+                {trnAgents.length > 0 && (
+                  <div className="pt-2 border-t border-m3-outline-subtle/40 flex flex-col gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-m3-outline flex items-center justify-between">
+                      <span>Top Agents This Act</span>
+                      <span className="text-[10px] font-mono text-m3-outline">{trnAgents.length} Agents</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {trnAgents.slice(0, 3).map((ag) => {
+                        const icon = agentIconMap[ag.agent.toLowerCase()];
+                        return (
+                          <div
+                            key={ag.agent}
+                            className="p-2 rounded-xl bg-m3-surface-container border border-m3-outline-subtle/50 flex items-center gap-2"
+                          >
+                            {icon ? (
+                              <img src={icon} alt={ag.agent} className="w-8 h-8 rounded-lg object-cover border border-m3-outline-subtle shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-m3-surface-container-highest flex items-center justify-center font-bold text-xs shrink-0">
+                                {ag.agent.slice(0, 2)}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 leading-tight">
+                              <span className="block font-bold text-xs text-m3-on-surface truncate">
+                                {ag.agent}
+                              </span>
+                              <div className="flex items-center gap-1.5 text-[10px] font-mono mt-0.5">
+                                <span className={ag.winPct >= 50 ? 'text-m3-mint font-bold' : 'text-m3-coral font-bold'}>
+                                  {ag.winPct.toFixed(0)}% WR
+                                </span>
+                                <span className="text-m3-outline">•</span>
+                                <span className="text-m3-outline">{ag.kd.toFixed(2)} KD</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-6 rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle text-center text-xs text-m3-outline">

@@ -712,6 +712,25 @@ export const MatchHistory: React.FC = () => {
         myAccountTag={profile?.tag}
         tierIcons={tierIcons}
         agentInfo={agentInfo}
+        onSelectProfile={(name, tag) => {
+          const trackerUrl = `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(name + '#' + (tag || ''))}/overview`;
+          try {
+            if ((window as any).__TAURI__) {
+              import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
+                const win = new WebviewWindow(`player-${name.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now() % 1000}`, {
+                  url: trackerUrl,
+                  title: `Recon • ${name}#${tag} Profile`,
+                  width: 1240,
+                  height: 860,
+                  resizable: true,
+                });
+                win.once('tauri://error', () => window.open(trackerUrl, '_blank'));
+              }).catch(() => window.open(trackerUrl, '_blank'));
+              return;
+            }
+          } catch {}
+          window.open(trackerUrl, '_blank');
+        }}
       />
     </div>
   );

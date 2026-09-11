@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Skull, Shield, Bomb, Swords, Clock } from 'lucide-react';
+import { X, Swords, Clock, ExternalLink } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
-import { tierName, resolvePlayerNames } from '../utils/tracker';
+import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
 import { getPartyStyle } from '../utils/playerDisplay';
 import { PlayerOverviewModal, type SelectedPlayerInfo } from './PlayerOverviewModal';
 
@@ -63,6 +63,11 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<ModalTab>('scoreboard');
   const [resolvedNames, setResolvedNames] = useState<Record<string, { name: string; tag: string }>>({});
   const [selectedPlayer, setSelectedPlayer] = useState<SelectedPlayerInfo | null>(null);
+  const [weaponMap, setWeaponMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    gameData().then((d) => setWeaponMap(d.weapons || {})).catch(() => {});
+  }, []);
 
   // Keyboard escape listener to close modal
   useEffect(() => {
@@ -216,6 +221,131 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     return { count, pairs, top, mism };
   }, [detail, teamBlue, teamRed]);
 
+  // Official Valorant / TRN round outcome icons
+  const ROUND_OUTCOME_ICONS: Record<string, string> = {
+    defuse: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/diffusewin1.png',
+    elimination: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/eliminationwin1.png',
+    detonate: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/spike.png',
+    time: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/timewin1.png',
+  };
+
+  const getRoundOutcomeIcon = (result?: string): string => {
+    const r = (result || '').toLowerCase();
+    if (r.includes('defuse')) return ROUND_OUTCOME_ICONS.defuse;
+    if (r.includes('detonate') || r.includes('bomb') || r.includes('exploded')) return ROUND_OUTCOME_ICONS.detonate;
+    if (r.includes('time')) return ROUND_OUTCOME_ICONS.time;
+    return ROUND_OUTCOME_ICONS.elimination;
+  };
+
+  // Personal Duels (You vs Opponents)
+  const personalDuels = useMemo(() => {
+    if (!detail) return { totalKills: 0, totalDeaths: 0, nemesis: null, prey: null };
+    const me = playerStats.find((p) => p.isMe);
+    if (!me) return { totalKills: 0, totalDeaths: 0, nemesis: null, prey: null };
+    const enemies = playerStats.filter((p) => p.team !== me.team);
+
+    let totalKills = 0;
+    let totalDeaths = 0;
+    const records = enemies.map((e) => {
+      const k = detail.kills.filter((x) => x.killerPuuid === me.puuid && x.victimPuuid === e.puuid).length;
+      const d = detail.kills.filter((x) => x.killerPuuid === e.puuid && x.victimPuuid === me.puuid).length;
+      totalKills += k;
+      totalDeaths += d;
+      return { opponent: e, kills: k, deaths: d, net: k - d };
+    });
+
+    const sortedByDeaths = [...records].sort((a, b) => b.deaths - a.deaths);
+    const sortedByKills = [...records].sort((a, b) => b.kills - a.kills);
+
+    const nemesis = sortedByDeaths[0] && sortedByDeaths[0].deaths > 0 ? sortedByDeaths[0] : null;
+    const prey = sortedByKills[0] && sortedByKills[0].kills > 0 ? sortedByKills[0] : null;
+
+    return { totalKills, totalDeaths, nemesis, prey };
+  }, [detail, playerStats]);
+
+  // Opening Duels (First Bloods & Conversion)
+  const firstBloods = useMemo(() => {
+    if (!detail) return { blue: 0, red: 0, blueConversion: 0 };
+    let blue = 0;
+    let red = 0;
+    let blueFbWins = 0;
+    for (let r = 1; r <= detail.rounds.length; r++) {
+      const roundKills = detail.kills.filter((k) => k.round === r).sort((a, b) => a.timeInRound - b.timeInRound);
+      if (roundKills.length > 0) {
+        const first = roundKills[0];
+        const roundWonBy = detail.rounds[r - 1]?.winningTeam;
+        if (first.killerTeam === 'Blue') {
+          blue++;
+          if (roundWonBy === 'Blue') blueFbWins++;
+        } else if (first.killerTeam === 'Red') {
+          red++;
+        }
+      }
+    }
+    const blueConversion = blue > 0 ? Math.round((blueFbWins / blue) * 100) : 0;
+    return { blue, red, blueConversion };
+  }, [detail]);
+
+  // Round Win Conditions Breakdown
+  const roundWinConditions = useMemo(() => {
+    if (!detail || !detail.rounds.length) return [];
+    let elim = 0;
+    let defuse = 0;
+    let detonate = 0;
+    let time = 0;
+    for (const r of detail.rounds) {
+      const res = (r.roundResult || '').toLowerCase();
+      if (res.includes('defuse')) defuse++;
+      else if (res.includes('detonate') || res.includes('bomb') || res.includes('exploded')) detonate++;
+      else if (res.includes('time')) time++;
+      else elim++;
+    }
+    const total = detail.rounds.length;
+    return [
+      { name: 'Elimination', count: elim, pct: Math.round((elim / total) * 100), icon: ROUND_OUTCOME_ICONS.elimination },
+      { name: 'Spike Defused', count: defuse, pct: Math.round((defuse / total) * 100), icon: ROUND_OUTCOME_ICONS.defuse },
+      { name: 'Spike Detonated', count: detonate, pct: Math.round((detonate / total) * 100), icon: ROUND_OUTCOME_ICONS.detonate },
+      { name: 'Time Expired', count: time, pct: Math.round((time / total) * 100), icon: ROUND_OUTCOME_ICONS.time },
+    ];
+  }, [detail]);
+
+  // Weapon Kill Distribution
+  const weaponKills = useMemo(() => {
+    if (!detail || !detail.kills.length) return [];
+    const counts = new Map<string, number>();
+    for (const k of detail.kills) {
+      if (!k.weapon) continue;
+      const lower = k.weapon.toLowerCase();
+      const raw = lower.replace(/^.*[_\/]/, '').replace(/equippable_?/i, '');
+      const wName = weaponMap[lower] || weaponMap[raw] || raw;
+      if (!wName) continue;
+      counts.set(wName, (counts.get(wName) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [detail, weaponMap]);
+
+  const handleOpenInWindow = async () => {
+    const mId = game?.matchId || (detail as any)?.matchId || (detail as any)?.id;
+    const url = mId ? `https://tracker.gg/valorant/match/${mId}` : 'https://tracker.gg/valorant';
+    try {
+      if ((window as any).__TAURI__) {
+        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const win = new WebviewWindow(`match-${(mId || 'det').slice(0, 8)}-${Date.now() % 1000}`, {
+          url,
+          title: `Recon • Match ${mapName} (${teamBlueScore}:${teamRedScore})`,
+          width: 1240,
+          height: 860,
+          resizable: true,
+        });
+        win.once('tauri://error', () => window.open(url, '_blank'));
+        return;
+      }
+    } catch {}
+    window.open(url, '_blank');
+  };
+
   const avgRankName = (team: typeof teamBlue): string => {
     const validTiers = team.map((p) => p.tier || 0).filter((t) => t > 0);
     if (validTiers.length === 0) return game ? game.tier : 'Ascendant';
@@ -306,6 +436,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <div className="flex items-center gap-0.5">
                     {detail.rounds.map((r, i) => {
                       const isWin = r.winningTeam === 'Blue';
+                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult);
                       return (
                         <div
                           key={i}
@@ -317,11 +448,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                           }`}
                         >
                           {isWin ? (
-                            r.roundResult?.toLowerCase().includes('defuse') ? (
-                              <Shield className="w-2 h-2" />
-                            ) : (
-                              <Skull className="w-2 h-2" />
-                            )
+                            <img src={outcomeIcon} alt="" className="w-2.5 h-2.5 object-contain" />
                           ) : (
                             '·'
                           )}
@@ -339,6 +466,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <div className="flex items-center gap-0.5">
                     {detail.rounds.map((r, i) => {
                       const isWin = r.winningTeam === 'Red';
+                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult);
                       return (
                         <div
                           key={i}
@@ -350,12 +478,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                           }`}
                         >
                           {isWin ? (
-                            r.roundResult?.toLowerCase().includes('bomb') ||
-                            r.roundResult?.toLowerCase().includes('detonate') ? (
-                              <Bomb className="w-2 h-2" />
-                            ) : (
-                              <Skull className="w-2 h-2" />
-                            )
+                            <img src={outcomeIcon} alt="" className="w-2.5 h-2.5 object-contain" />
                           ) : (
                             '·'
                           )}
@@ -366,6 +489,16 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Open in Window Button */}
+            <button
+              type="button"
+              onClick={handleOpenInWindow}
+              title="Open match in separate window"
+              className="w-9 h-9 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
 
             {/* Close Button */}
             <button
@@ -846,6 +979,146 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* In-Depth Duels Analytics & Match Insights */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-1">
+                {/* Panel 1: Personal Match Duels & Opening Duels */}
+                <div className="rounded-2xl border border-m3-outline-subtle bg-m3-surface-container p-4 flex flex-col gap-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-m3-outline flex items-center justify-between">
+                    <span>Personal Match Duels</span>
+                    <span className="text-m3-mint font-mono font-bold">
+                      {personalDuels.totalKills}W - {personalDuels.totalDeaths}L Net
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Nemesis */}
+                    <div className="p-3 rounded-xl bg-m3-coral/10 border border-m3-coral/30 flex flex-col gap-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-m3-coral">
+                        Your Nemesis
+                      </span>
+                      {personalDuels.nemesis ? (
+                        <div className="flex items-center gap-2.5 mt-0.5">
+                          {personalDuels.nemesis.opponent.agIcon ? (
+                            <img src={personalDuels.nemesis.opponent.agIcon} alt="" className="w-8 h-8 rounded-lg object-cover border border-m3-outline-subtle shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-m3-surface-container-highest shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="block font-bold text-xs text-m3-on-surface truncate">
+                              {personalDuels.nemesis.opponent.displayName}
+                            </span>
+                            <span className="block text-[10px] font-mono font-bold text-m3-coral">
+                              {personalDuels.nemesis.deaths} Deaths vs {personalDuels.nemesis.kills} Kills
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-m3-outline mt-1">No rival deaths</span>
+                      )}
+                    </div>
+
+                    {/* Prey / Dominated */}
+                    <div className="p-3 rounded-xl bg-m3-mint/10 border border-m3-mint/30 flex flex-col gap-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-m3-mint">
+                        Most Dominated
+                      </span>
+                      {personalDuels.prey ? (
+                        <div className="flex items-center gap-2.5 mt-0.5">
+                          {personalDuels.prey.opponent.agIcon ? (
+                            <img src={personalDuels.prey.opponent.agIcon} alt="" className="w-8 h-8 rounded-lg object-cover border border-m3-outline-subtle shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-m3-surface-container-highest shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="block font-bold text-xs text-m3-on-surface truncate">
+                              {personalDuels.prey.opponent.displayName}
+                            </span>
+                            <span className="block text-[10px] font-mono font-bold text-m3-mint">
+                              {personalDuels.prey.kills} Kills vs {personalDuels.prey.deaths} Deaths
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-m3-outline mt-1">No repeat kills</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Opening Duels (First Bloods) */}
+                  <div className="p-3 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle/50 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-m3-outline block">
+                        Opening Duels (First Bloods)
+                      </span>
+                      <span className="font-display font-extrabold text-xs text-m3-on-surface mt-0.5 block">
+                        Team Blue {firstBloods.blue} • {firstBloods.red} Team Red
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-m3-outline font-medium block">
+                        Blue FB Conversion
+                      </span>
+                      <span className="font-mono font-black text-sm text-m3-mint">
+                        {firstBloods.blueConversion}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 2: Round End Conditions with Official Valorant Icons */}
+                <div className="rounded-2xl border border-m3-outline-subtle bg-m3-surface-container p-4 flex flex-col gap-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-m3-outline flex items-center justify-between">
+                    <span>Round Win Conditions</span>
+                    <span className="text-m3-outline font-mono text-[10px]">
+                      {detail.rounds.length} Total Rounds
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {roundWinConditions.map((c) => (
+                      <div
+                        key={c.name}
+                        className="p-2.5 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle/40 flex items-center gap-2.5"
+                      >
+                        <img src={c.icon} alt="" className="w-6 h-6 object-contain shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-m3-on-surface truncate">{c.name}</span>
+                            <span className="font-mono text-m3-primary">{c.count}</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden mt-1.5">
+                            <div
+                              className="h-full rounded-full bg-m3-primary"
+                              style={{ width: `${c.pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Weapon Kill Distribution */}
+                  {weaponKills.length > 0 && (
+                    <div className="pt-2 border-t border-m3-outline-subtle/40">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-m3-outline block mb-1.5">
+                        Arsenal Kill Distribution
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {weaponKills.slice(0, 6).map((w) => (
+                          <span
+                            key={w.name}
+                            className="px-2.5 py-1 rounded-lg bg-m3-surface-container-highest border border-m3-outline-subtle text-[10px] font-mono font-bold flex items-center gap-1.5"
+                          >
+                            <span className="text-m3-on-surface">{w.name}</span>
+                            <span className="text-m3-primary">({w.count})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
