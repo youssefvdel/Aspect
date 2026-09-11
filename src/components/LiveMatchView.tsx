@@ -238,13 +238,13 @@ export const LiveMatchView: React.FC = () => {
   );
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-10">
+    <div className="h-full min-h-0 flex flex-col justify-between gap-1.5 max-w-6xl mx-auto w-full overflow-hidden px-3 py-1.5 select-none">
       {/* Top Header & Actions Bar */}
-      <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-xs font-mono font-bold">
+      <div className="flex items-center justify-between gap-2 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-mono font-bold">
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-full ${
                 isLive ? 'bg-m3-mint animate-pulse' : 'bg-m3-outline'
               }`}
             />
@@ -258,17 +258,17 @@ export const LiveMatchView: React.FC = () => {
           </div>
 
           {matchState?.mapName && matchState.phase !== 'idle' && (
-            <span className="text-xs font-display font-bold text-m3-on-surface">
+            <span className="text-[11px] font-display font-bold text-m3-on-surface">
               {matchState.mapName} • {matchState.mode}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-1.5 ml-auto">
           <button
             onClick={loadState}
             disabled={loading}
-            className="h-8 px-3 rounded-xl bg-m3-surface-container hover:bg-m3-surface-container-high border border-m3-outline-subtle text-xs font-semibold text-m3-on-surface flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="h-7.5 px-2.5 rounded-lg bg-m3-surface-container hover:bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-semibold text-m3-on-surface flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-m3-primary' : ''}`} />
             <span>Refresh</span>
@@ -276,25 +276,25 @@ export const LiveMatchView: React.FC = () => {
 
           <button
             onClick={handleToggleEditMode}
-            className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+            className={`h-7.5 px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
               inEditMode
                 ? 'bg-m3-mint text-zinc-950 border-transparent shadow-md'
                 : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-primary/40 text-m3-primary'
             }`}
           >
-            {inEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
-            <span>{inEditMode ? 'Lock HUD (Play Mode)' : 'Edit In-Game HUD'}</span>
+            {inEditMode ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
+            <span>{inEditMode ? 'Lock HUD' : 'Edit In-Game HUD'}</span>
           </button>
 
           <button
             onClick={handleToggleOverlay}
-            className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+            className={`h-7.5 px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
               overlayOpen
                 ? 'bg-m3-coral/15 border-m3-coral/40 text-m3-coral hover:bg-m3-coral/25'
                 : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-outline-subtle text-m3-on-surface'
             }`}
           >
-            <Eye className="w-3.5 h-3.5" />
+            <Eye className="w-3 h-3" />
             <span>{overlayOpen ? 'Close Overlay' : 'Open Overlay'}</span>
           </button>
         </div>
@@ -333,7 +333,7 @@ export const LiveMatchView: React.FC = () => {
           onShowLoadout={openLoadout}
         />
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex-1 min-h-0 flex flex-col justify-between gap-1.5 overflow-hidden">
           <PlayerTable
             title="Your Team"
             accent="primary"
@@ -341,7 +341,7 @@ export const LiveMatchView: React.FC = () => {
             tierIcons={tierIcons}
             seasonNames={seasonNames}
             queueId={matchState?.queueId}
-          onShowLoadout={openLoadout}
+            onShowLoadout={openLoadout}
           />
 
           {matchState.phase === 'coregame' ? (
@@ -352,11 +352,11 @@ export const LiveMatchView: React.FC = () => {
               tierIcons={tierIcons}
               seasonNames={seasonNames}
               queueId={matchState?.queueId}
-          onShowLoadout={openLoadout}
+              onShowLoadout={openLoadout}
             />
           ) : (
-            <div className="p-4 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-center text-xs text-m3-outline flex items-center justify-center gap-2">
-              <Lock className="w-4 h-4 text-m3-outline" />
+            <div className="p-3 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-center text-[11px] text-m3-outline flex items-center justify-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-m3-outline" />
               <span>Opponent team details are hidden by Riot during Agent Select to prevent queue dodging.</span>
             </div>
           )}
@@ -391,9 +391,9 @@ const MatchStatusStrip: React.FC<{
   const units = (n: number) => `${n} Player${n === 1 ? '' : 's'}`;
 
   return (
-    <section className="rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle px-3.5 py-2.5 flex items-center gap-x-4 gap-y-2 flex-wrap text-[11px]">
+    <section className="rounded-xl bg-m3-surface-container-low border border-m3-outline-subtle px-3 py-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[10px]">
       <span className="flex items-center gap-1.5 font-mono text-m3-outline">
-        <Swords className="w-3.5 h-3.5 text-m3-primary" />
+        <Swords className="w-3 h-3 text-m3-primary" />
         <span className="font-bold text-m3-on-surface">{state.mapName || 'Unknown map'}</span>
         <span>•</span>
         <span>{state.mode}</span>
@@ -415,12 +415,12 @@ const MatchStatusStrip: React.FC<{
       )}
 
       <span className="flex items-center gap-1.5 font-mono text-m3-outline">
-        <Users className="w-3.5 h-3.5" />
+        <Users className="w-3 h-3" />
         <span>{units(state.blueTeam.length + state.redTeam.length)} in lobby</span>
       </span>
 
       <span className="flex items-center gap-1.5 font-mono text-m3-outline ml-auto">
-        <Clock className="w-3.5 h-3.5" />
+        <Clock className="w-3 h-3" />
         <span>synced {new Date(state.updatedAt || Date.now()).toLocaleTimeString()}</span>
       </span>
     </section>
@@ -431,7 +431,7 @@ const MatchStatusStrip: React.FC<{
 /* Player table — mirrors the Agent Select widget's columns            */
 /* ------------------------------------------------------------------ */
 
-const GRID = 'grid grid-cols-[32px_1fr_40px_40px_52px_48px_54px_48px_74px_52px] items-center gap-x-1';
+const GRID = 'grid grid-cols-[28px_1fr_36px_36px_48px_44px_48px_44px_68px_42px] items-center gap-x-1';
 
 const ACCENTS: Record<string, { tag: string; border: string }> = {
   primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
@@ -454,13 +454,13 @@ const PlayerTable: React.FC<{
 
   return (
     <section
-      className={`rounded-3xl bg-m3-surface-container-low border ${a.border} p-3 shadow-m3-1 flex flex-col gap-2`}
+      className={`flex-1 min-h-0 rounded-2xl bg-m3-surface-container-low border ${a.border} p-2 shadow-m3-1 flex flex-col justify-between overflow-hidden`}
     >
-      <div className="flex items-center justify-between px-1">
-        <span className={`text-[11px] font-bold font-display px-2.5 py-0.5 rounded-full border ${a.tag}`}>
+      <div className="flex items-center justify-between px-1 shrink-0">
+        <span className={`text-[10.5px] font-bold font-display px-2 py-0.5 rounded-full border ${a.tag}`}>
           {title}
         </span>
-        <span className="text-[10px] font-mono text-m3-outline">
+        <span className="text-[9.5px] font-mono text-m3-outline">
           {players.length} Players
         </span>
       </div>
@@ -468,7 +468,7 @@ const PlayerTable: React.FC<{
       {/* Column headers. Act-wide disclosure is deliberate: Riot exposes no
           live combat stats, so nothing here may imply "this match". */}
       <div
-        className={`${GRID} px-2 pb-1 text-[9px] font-mono uppercase tracking-wider text-m3-outline border-b border-m3-outline-subtle`}
+        className={`${GRID} px-2 pb-0.5 text-[8.5px] font-mono uppercase tracking-wider text-m3-outline border-b border-m3-outline-subtle shrink-0`}
       >
         <span className="text-center" title="Tracker Score tier">TS</span>
         <span>Player</span>
@@ -491,7 +491,7 @@ const PlayerTable: React.FC<{
         <span className="text-right">Lvl</span>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5 overflow-hidden">
         {[...players].sort(byAcsDesc).map((p) => (
           <PlayerRow
             key={p.puuid}
@@ -502,7 +502,7 @@ const PlayerTable: React.FC<{
           />
         ))}
         {players.length === 0 && (
-          <div className="px-2 py-3 text-center text-[11px] text-m3-outline font-mono">
+          <div className="flex-1 flex items-center justify-center p-2 text-center text-[10.5px] text-m3-outline font-mono">
             No players detected yet.
           </div>
         )}
@@ -527,7 +527,7 @@ const PlayerRow: React.FC<{
 
   return (
     <div
-      className={`${GRID} relative overflow-hidden rounded-2xl border px-2 py-1.5 transition-colors ${
+      className={`${GRID} flex-1 min-h-0 relative overflow-hidden rounded-xl border px-2 py-0.5 transition-colors ${
         party
           ? `${party.bg} border-m3-outline-subtle/40`
           : p.isMe
@@ -537,7 +537,7 @@ const PlayerRow: React.FC<{
     >
       {party && (
         <div
-          className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
+          className={`absolute left-0 top-0.5 bottom-0.5 w-[3px] rounded-r-full ${party.bar}`}
           title={`Queued together in ${party.name}`}
         />
       )}
@@ -551,25 +551,25 @@ const PlayerRow: React.FC<{
         }
       >
         {p.trnScore != null ? (
-          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={24} />
+          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={18} />
         ) : (
-          <span className="w-6 h-6 rounded-md border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[9px] font-mono text-m3-outline">
+          <span className="w-4.5 h-4.5 rounded border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[8px] font-mono text-m3-outline">
             —
           </span>
         )}
       </div>
 
       {/* Agent portrait + flag, name, badges */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         <div className="relative shrink-0">
           {p.agentIcon ? (
             <img
               src={p.agentIcon}
               alt={p.agentName}
-              className="w-8 h-8 rounded-xl object-cover bg-m3-surface-container-highest border border-m3-outline-subtle"
+              className="w-6 h-6 rounded-md object-cover bg-m3-surface-container-highest border border-m3-outline-subtle"
             />
           ) : (
-            <div className="w-8 h-8 rounded-xl bg-m3-surface-container-highest border border-m3-outline-subtle flex items-center justify-center text-xs font-bold text-m3-outline">
+            <div className="w-6 h-6 rounded-md bg-m3-surface-container-highest border border-m3-outline-subtle flex items-center justify-center text-[10px] font-bold text-m3-outline">
               ?
             </div>
           )}
@@ -578,7 +578,7 @@ const PlayerRow: React.FC<{
               src={flagUrl}
               alt={p.country || ''}
               title={`Country: ${p.country}`}
-              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-2.5 object-cover rounded-[2px] border border-m3-surface shadow-sm"
+              className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] border border-m3-surface shadow-xs"
             />
           )}
         </div>
@@ -587,27 +587,27 @@ const PlayerRow: React.FC<{
           <div className="flex items-center gap-1.5 min-w-0">
             {party && (
               <span
-                className={`w-2 h-2 rounded-full ${party.bar} shrink-0 shadow-xs`}
+                className={`w-1.5 h-1.5 rounded-full ${party.bar} shrink-0 shadow-xs`}
                 title={`Queued together in ${party.name}`}
               />
             )}
             <span
-              className="font-display font-extrabold text-[12px] text-m3-on-surface truncate"
+              className="font-display font-bold text-[11.5px] text-m3-on-surface truncate"
               title={`${p.name}${p.tag ? '#' + p.tag : ''}`}
             >
               {p.name}
             </span>
             {p.tag && (
-              <span className="text-[9px] font-mono text-m3-outline truncate">#{p.tag}</span>
+              <span className="text-[8.5px] font-mono text-m3-outline truncate">#{p.tag}</span>
             )}
             {p.isMe && (
-              <span className="px-1 py-px rounded bg-m3-primary text-m3-on-primary text-[8px] font-black uppercase shrink-0">
+              <span className="px-1 py-px rounded bg-m3-primary text-m3-on-primary text-[7.5px] font-black uppercase shrink-0">
                 You
               </span>
             )}
             {p.isIncognito && (
               <span
-                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[8px] font-mono font-bold uppercase shrink-0"
+                className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7.5px] font-mono font-bold uppercase shrink-0"
                 title={
                   p.nameResolved
                     ? 'Name hidden in Valorant — unmasked by Recon from account UUID'
@@ -628,12 +628,12 @@ const PlayerRow: React.FC<{
                 title={`View ${p.name}'s loadout`}
                 aria-label={`View ${p.name}'s loadout`}
               >
-                <Crosshair className="w-3 h-3" />
+                <Crosshair className="w-2.5 h-2.5" />
               </button>
             )}
           </div>
-          <div className="text-[10px] text-m3-outline truncate flex items-center gap-1">
-            <span className="font-semibold text-m3-on-surface-variant truncate">
+          <div className="text-[9px] text-m3-outline truncate flex items-center gap-1">
+            <span className="font-medium text-m3-on-surface-variant truncate">
               {p.agentName}
             </span>
             {p.agentRole && <span className="truncate">• {p.agentRole}</span>}
@@ -644,9 +644,9 @@ const PlayerRow: React.FC<{
       {/* Current rank — emblem only, per the "no rank text" rule */}
       <div className="flex items-center justify-center" title={rankTooltip(p, actLabel)}>
         {rankIcon ? (
-          <img src={rankIcon} alt={p.rank} className="w-8 h-8 object-contain" />
+          <img src={rankIcon} alt={p.rank} className="w-6.5 h-6.5 object-contain" />
         ) : (
-          <span className="text-[9px] font-mono text-m3-outline">—</span>
+          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
         )}
       </div>
 
@@ -656,19 +656,19 @@ const PlayerRow: React.FC<{
         title={p.peakTier > 0 ? `Peak ${p.peakRank}${actLabel ? ` (${shortAct(actLabel)})` : ''}` : 'Peak unavailable'}
       >
         {peakIcon ? (
-          <img src={peakIcon} alt={p.peakRank} className="w-7 h-7 object-contain opacity-90" />
+          <img src={peakIcon} alt={p.peakRank} className="w-5.5 h-5.5 object-contain opacity-90" />
         ) : (
-          <span className="text-[9px] font-mono text-m3-outline">—</span>
+          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
         )}
         {p.peakSeasonId && actLabel && (
-          <span className="text-[7px] font-mono text-m3-outline leading-none mt-px">
+          <span className="text-[6.5px] font-mono text-m3-outline leading-none mt-px">
             {shortAct(actLabel)}
           </span>
         )}
       </div>
 
       {/* ACS — the sort key, so it reads first among the numbers */}
-      <div className="text-right font-mono text-[11px] font-bold" title="Act-wide average combat score">
+      <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide average combat score">
         {p.acs != null ? (
           <span className={p.acs >= 200 ? 'text-m3-primary' : p.acs >= 150 ? 'text-m3-on-surface' : 'text-m3-outline'}>
             {p.acs}
@@ -679,12 +679,12 @@ const PlayerRow: React.FC<{
       </div>
 
       {/* K/D */}
-      <div className="text-right font-mono text-[11px] font-bold" title="Act-wide K/D">
+      <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide K/D">
         <span className={kd.color}>{kd.text}</span>
       </div>
 
       {/* Win % */}
-      <div className="text-right font-mono text-[11px]" title="Act-wide win rate">
+      <div className="text-right font-mono text-[10.5px]" title="Act-wide win rate">
         {p.winPct != null ? (
           <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
             {p.winPct.toFixed(0)}%
@@ -695,17 +695,17 @@ const PlayerRow: React.FC<{
       </div>
 
       {/* HS % */}
-      <div className="text-right font-mono text-[11px] text-amber-500" title="Act-wide headshot %">
+      <div className="text-right font-mono text-[10.5px] text-amber-500" title="Act-wide headshot %">
         {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-m3-outline">—</span>}
       </div>
 
       {/* Last 24h W/L */}
-      <div className="text-right font-mono text-[10px]" title="Wins / losses in the last 24 hours">
+      <div className="text-right font-mono text-[9.5px]" title="Wins / losses in the last 24 hours">
         {recent ? <span className={recent.color}>{recent.text}</span> : <span className="text-m3-outline">—</span>}
       </div>
 
       {/* Account level */}
-      <div className="text-right font-mono text-[10px] text-m3-outline" title="Account level">
+      <div className="text-right font-mono text-[9.5px] text-m3-outline" title="Account level">
         {p.accountLevel > 0 ? p.accountLevel : '—'}
       </div>
     </div>
