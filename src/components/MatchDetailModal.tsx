@@ -5,6 +5,7 @@ import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
 import { getPartyStyle } from '../utils/playerDisplay';
 import { PlayerOverviewModal, type SelectedPlayerInfo } from './PlayerOverviewModal';
+import { ScoreBadge, scoreTier } from './ScoreBadge';
 
 import defuseWin from '../assets/round-icons/defuse-win.png';
 import defuseLoss from '../assets/round-icons/defuse-loss.png';
@@ -705,23 +706,39 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
                 {/* Table */}
                 <div className="flex-1 overflow-x-auto min-h-0">
-                  <table className="w-full h-full text-left text-xs border-collapse">
+                  <table className="w-full h-full table-fixed text-left text-xs border-collapse">
+                    <colgroup>
+                      <col className="w-[52px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[44px]" />
+                      <col className="w-[50px]" />
+                      <col className="w-[88px]" />
+                      <col className="w-[44px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[38px]" />
+                      <col className="w-[38px]" />
+                      <col className="w-[38px]" />
+                    </colgroup>
                     <thead>
                       <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2 px-3 min-w-[44px]">Agent</th>
-                        <th className="py-2 px-3 min-w-[140px]">Player</th>
-                        <th className="py-2 px-2 text-center">TRS</th>
-                        <th className="py-2 px-2 text-center">ACS</th>
-                        <th className="py-2 px-2.5 text-center">K / D / A</th>
-                        <th className="py-2 px-2 text-center">+/-</th>
-                        <th className="py-2 px-2 text-center">K/D</th>
-                        <th className="py-2 px-2 text-center">DDΔ</th>
-                        <th className="py-2 px-2 text-center">ADR</th>
-                        <th className="py-2 px-2 text-center">HS%</th>
-                        <th className="py-2 px-2 text-center">KAST</th>
-                        <th className="py-2 px-2 text-center">FK</th>
-                        <th className="py-2 px-2 text-center">FD</th>
-                        <th className="py-2 px-2 text-center">MK</th>
+                        <th className="py-2 px-3">Agent</th>
+                        <th className="py-2 px-3">Player</th>
+                        <th className="py-2 px-1 text-center">TRS</th>
+                        <th className="py-2 px-1 text-center">ACS</th>
+                        <th className="py-2 px-2 text-center">K / D / A</th>
+                        <th className="py-2 px-1 text-center">+/-</th>
+                        <th className="py-2 px-1 text-center">K/D</th>
+                        <th className="py-2 px-1 text-center">DDΔ</th>
+                        <th className="py-2 px-1 text-center">ADR</th>
+                        <th className="py-2 px-1 text-center">HS%</th>
+                        <th className="py-2 px-1 text-center">KAST</th>
+                        <th className="py-2 px-1 text-center">FK</th>
+                        <th className="py-2 px-1 text-center">FD</th>
+                        <th className="py-2 px-1 text-center">MK</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-m3-outline-subtle/30 font-mono">
@@ -763,78 +780,93 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name (Clickable) */}
-                            <td className="py-1.5 px-3 font-sans">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <td className="py-1.5 px-3 font-sans truncate">
+                              <div className="flex items-center gap-1.5 min-w-0">
                                 <button
                                   type="button"
                                   onClick={() => openPlayer(p)}
-                                  className="font-bold text-xs truncate max-w-[130px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
+                                  className="font-bold text-xs truncate max-w-[115px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1 shrink min-w-0"
                                 >
-                                  <span className={p.isMe ? 'text-m3-primary font-black' : 'text-m3-on-surface'}>
+                                  <span className={p.isMe ? 'text-m3-primary font-black truncate' : 'text-m3-on-surface truncate'}>
                                     {p.displayName}
                                   </span>
                                   {p.displayTag ? (
-                                    <span className="text-[10px] text-m3-outline font-normal">#{p.displayTag}</span>
+                                    <span className="text-[10px] text-m3-outline font-normal shrink-0">#{p.displayTag}</span>
                                   ) : null}
                                 </button>
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain shrink-0" />
                                 ) : null}
                                 {isMatchMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
+                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40 shrink-0">
                                     Match MVP
                                   </span>
                                 ) : isTeamMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
+                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40 shrink-0">
                                     Team MVP
                                   </span>
                                 ) : null}
                               </div>
                             </td>
 
-                            {/* TRS */}
-                            <td className="py-1.5 px-2 text-center text-m3-outline font-bold text-xs">{p.trs}</td>
+                            {/* TRS - Tracker Badge */}
+                            <td className="py-1.5 px-1 text-center">
+                              <div
+                                className="flex items-center justify-center cursor-default"
+                                title={
+                                  p.trs > 0
+                                    ? `Tracker Score: ${p.trs} / 1000 — Tier ${scoreTier(p.trs).tier}`
+                                    : 'Tracker Score unavailable'
+                                }
+                              >
+                                {p.trs > 0 ? (
+                                  <ScoreBadge tier={scoreTier(p.trs).tier} size={20} />
+                                ) : (
+                                  <span className="text-[10px] font-mono text-zinc-500">—</span>
+                                )}
+                              </div>
+                            </td>
 
                             {/* ACS */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-extrabold text-xs">{p.acs}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-extrabold text-xs">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-1.5 px-2.5 text-center text-m3-on-surface text-xs">
+                            <td className="py-1.5 px-2 text-center text-m3-on-surface text-xs whitespace-nowrap">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-1.5 px-2 text-center font-bold text-xs ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-bold text-xs ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-1.5 px-2 text-center font-extrabold text-xs ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-extrabold text-xs ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-1.5 px-2 text-center font-bold text-xs ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-bold text-xs ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.adr}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-medium text-xs">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.hsPct}%</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-medium text-xs">{p.hsPct}%</td>
 
                             {/* KAST */}
-                            <td className="py-1.5 px-2 text-center text-m3-outline font-medium text-xs">{p.kast}%</td>
+                            <td className="py-1.5 px-1 text-center text-m3-outline font-medium text-xs">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-1.5 px-2 text-center text-m3-mint font-bold text-xs">{p.fk}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-mint font-bold text-xs">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-1.5 px-2 text-center text-m3-coral font-bold text-xs">{p.fd}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-coral font-bold text-xs">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-1.5 px-2 text-center text-m3-tertiary font-bold text-xs">{p.mk}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-tertiary font-bold text-xs">{p.mk}</td>
                           </tr>
                         );
                       })}
@@ -858,23 +890,39 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
                 {/* Table */}
                 <div className="flex-1 overflow-x-auto min-h-0">
-                  <table className="w-full h-full text-left text-xs border-collapse">
+                  <table className="w-full h-full table-fixed text-left text-xs border-collapse">
+                    <colgroup>
+                      <col className="w-[52px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[44px]" />
+                      <col className="w-[50px]" />
+                      <col className="w-[88px]" />
+                      <col className="w-[44px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[48px]" />
+                      <col className="w-[38px]" />
+                      <col className="w-[38px]" />
+                      <col className="w-[38px]" />
+                    </colgroup>
                     <thead>
                       <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
-                        <th className="py-2 px-3 min-w-[44px]">Agent</th>
-                        <th className="py-2 px-3 min-w-[140px]">Player</th>
-                        <th className="py-2 px-2 text-center">TRS</th>
-                        <th className="py-2 px-2 text-center">ACS</th>
-                        <th className="py-2 px-2.5 text-center">K / D / A</th>
-                        <th className="py-2 px-2 text-center">+/-</th>
-                        <th className="py-2 px-2 text-center">K/D</th>
-                        <th className="py-2 px-2 text-center">DDΔ</th>
-                        <th className="py-2 px-2 text-center">ADR</th>
-                        <th className="py-2 px-2 text-center">HS%</th>
-                        <th className="py-2 px-2 text-center">KAST</th>
-                        <th className="py-2 px-2 text-center">FK</th>
-                        <th className="py-2 px-2 text-center">FD</th>
-                        <th className="py-2 px-2 text-center">MK</th>
+                        <th className="py-2 px-3">Agent</th>
+                        <th className="py-2 px-3">Player</th>
+                        <th className="py-2 px-1 text-center">TRS</th>
+                        <th className="py-2 px-1 text-center">ACS</th>
+                        <th className="py-2 px-2 text-center">K / D / A</th>
+                        <th className="py-2 px-1 text-center">+/-</th>
+                        <th className="py-2 px-1 text-center">K/D</th>
+                        <th className="py-2 px-1 text-center">DDΔ</th>
+                        <th className="py-2 px-1 text-center">ADR</th>
+                        <th className="py-2 px-1 text-center">HS%</th>
+                        <th className="py-2 px-1 text-center">KAST</th>
+                        <th className="py-2 px-1 text-center">FK</th>
+                        <th className="py-2 px-1 text-center">FD</th>
+                        <th className="py-2 px-1 text-center">MK</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-m3-outline-subtle/30 font-mono">
@@ -916,78 +964,93 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </td>
 
                             {/* Player Name (Clickable) */}
-                            <td className="py-1.5 px-3 font-sans">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <td className="py-1.5 px-3 font-sans truncate">
+                              <div className="flex items-center gap-1.5 min-w-0">
                                 <button
                                   type="button"
                                   onClick={() => openPlayer(p)}
-                                  className="font-bold text-xs truncate max-w-[130px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
+                                  className="font-bold text-xs truncate max-w-[115px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1 shrink min-w-0"
                                 >
-                                  <span className={p.isMe ? 'text-m3-primary font-black' : 'text-m3-on-surface'}>
+                                  <span className={p.isMe ? 'text-m3-primary font-black truncate' : 'text-m3-on-surface truncate'}>
                                     {p.displayName}
                                   </span>
                                   {p.displayTag ? (
-                                    <span className="text-[10px] text-m3-outline font-normal">#{p.displayTag}</span>
+                                    <span className="text-[10px] text-m3-outline font-normal shrink-0">#{p.displayTag}</span>
                                   ) : null}
                                 </button>
                                 {rIcon ? (
-                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain shrink-0" />
                                 ) : null}
                                 {isMatchMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
+                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40 shrink-0">
                                     Match MVP
                                   </span>
                                 ) : isTeamMvp ? (
-                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40">
+                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-primary/15 text-m3-primary border border-m3-primary/40 shrink-0">
                                     Team MVP
                                   </span>
                                 ) : null}
                               </div>
                             </td>
 
-                            {/* TRS */}
-                            <td className="py-1.5 px-2 text-center text-m3-outline font-bold text-xs">{p.trs}</td>
+                            {/* TRS - Tracker Badge */}
+                            <td className="py-1.5 px-1 text-center">
+                              <div
+                                className="flex items-center justify-center cursor-default"
+                                title={
+                                  p.trs > 0
+                                    ? `Tracker Score: ${p.trs} / 1000 — Tier ${scoreTier(p.trs).tier}`
+                                    : 'Tracker Score unavailable'
+                                }
+                              >
+                                {p.trs > 0 ? (
+                                  <ScoreBadge tier={scoreTier(p.trs).tier} size={20} />
+                                ) : (
+                                  <span className="text-[10px] font-mono text-zinc-500">—</span>
+                                )}
+                              </div>
+                            </td>
 
                             {/* ACS */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-extrabold text-xs">{p.acs}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-extrabold text-xs">{p.acs}</td>
 
                             {/* K/D/A */}
-                            <td className="py-1.5 px-2.5 text-center text-m3-on-surface text-xs">
+                            <td className="py-1.5 px-2 text-center text-m3-on-surface text-xs whitespace-nowrap">
                               {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
                             </td>
 
                             {/* +/- */}
-                            <td className={`py-1.5 px-2 text-center font-bold text-xs ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-bold text-xs ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.diff > 0 ? `+${p.diff}` : p.diff}
                             </td>
 
                             {/* K/D */}
-                            <td className={`py-1.5 px-2 text-center font-extrabold text-xs ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-extrabold text-xs ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.kd.toFixed(2)}
                             </td>
 
                             {/* DDΔ */}
-                            <td className={`py-1.5 px-2 text-center font-bold text-xs ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                            <td className={`py-1.5 px-1 text-center font-bold text-xs ${p.ddPerRound >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
                               {p.ddPerRound > 0 ? `+${p.ddPerRound}` : p.ddPerRound}
                             </td>
 
                             {/* ADR */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.adr}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-medium text-xs">{p.adr}</td>
 
                             {/* HS% */}
-                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.hsPct}%</td>
+                            <td className="py-1.5 px-1 text-center text-m3-on-surface font-medium text-xs">{p.hsPct}%</td>
 
                             {/* KAST */}
-                            <td className="py-1.5 px-2 text-center text-m3-outline font-medium text-xs">{p.kast}%</td>
+                            <td className="py-1.5 px-1 text-center text-m3-outline font-medium text-xs">{p.kast}%</td>
 
                             {/* FK */}
-                            <td className="py-1.5 px-2 text-center text-m3-mint font-bold text-xs">{p.fk}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-mint font-bold text-xs">{p.fk}</td>
 
                             {/* FD */}
-                            <td className="py-1.5 px-2 text-center text-m3-coral font-bold text-xs">{p.fd}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-coral font-bold text-xs">{p.fd}</td>
 
                             {/* MK */}
-                            <td className="py-1.5 px-2 text-center text-m3-tertiary font-bold text-xs">{p.mk}</td>
+                            <td className="py-1.5 px-1 text-center text-m3-tertiary font-bold text-xs">{p.mk}</td>
                           </tr>
                         );
                       })}
