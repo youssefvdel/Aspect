@@ -1407,7 +1407,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       return idleState;
     }
 
-    // Extract live party mappings from local presence chat
+    // Extract live party mappings from local presence chat (checks puuid, pid, private, packedData, and parties)
     const presencePartyMap = new Map<string, string>(); // puuid (lowercase) -> partyId (lowercase)
     try {
       if (isTauri()) {
@@ -1415,24 +1415,40 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         const presData = JSON.parse(rawPres);
         const presencesList = Array.isArray(presData?.presences) ? presData.presences : [];
         for (const pr of presencesList) {
-          const pU = String(pr?.puuid ?? '').toLowerCase();
-          if (!pU || !pr?.private) continue;
-          try {
-            const blob = JSON.parse(decodeBase64Utf8(String(pr.private)));
-            const pId = String(
-              blob?.partyId ||
-              blob?.partyPresenceData?.partyId ||
-              ''
-            ).toLowerCase();
-            const pSize = Number(
-              blob?.partySize ||
-              blob?.partyPresenceData?.partySize ||
-              0
-            );
-            if (pId && (pSize > 1 || pId.length > 5)) {
-              presencePartyMap.set(pU, pId);
-            }
-          } catch {}
+          const pU = String(pr?.puuid || pr?.pid?.split?.('@')?.[0] || '').toLowerCase().trim();
+          if (!pU) continue;
+
+          let pId = '';
+
+          // 1. Check pr.private payload
+          if (pr.private) {
+            try {
+              const blob = JSON.parse(decodeBase64Utf8(String(pr.private)));
+              pId = String(
+                blob?.partyId ||
+                blob?.partyPresenceData?.partyId ||
+                ''
+              ).toLowerCase().trim();
+            } catch {}
+          }
+
+          // 2. Check pr.packedData payload
+          if (!pId && pr.packedData) {
+            try {
+              const packedBlob = JSON.parse(decodeBase64Utf8(String(pr.packedData)));
+              const rawId = String(packedBlob?.party?.id || '');
+              pId = rawId.replace(/^.*party:valorant:/i, '').toLowerCase().trim();
+            } catch {}
+          }
+
+          // 3. Check pr.parties array
+          if (!pId && Array.isArray(pr.parties) && pr.parties[0]?.partyId) {
+            pId = String(pr.parties[0].partyId).toLowerCase().trim();
+          }
+
+          if (pId && pId !== '0' && pId !== 'null' && pId !== 'undefined' && pId.length > 5) {
+            presencePartyMap.set(pU, pId);
+          }
         }
       }
     } catch {}
@@ -1453,7 +1469,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     if (phase === 'coregame' && Array.isArray(matchData.Players)) {
       for (const p of matchData.Players) {
         const sub = String(p.Subject || '').toLowerCase();
-        const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
+        const directParty = String(p.partyId || p.PartyId || p.PartyID || p.PlayerIdentity?.partyId || p.PlayerIdentity?.PartyId || p.PlayerIdentity?.PartyID || '').toLowerCase().trim();
         rawPlayers.push({
           puuid: p.Subject,
           team: p.TeamID === 'Red' ? 'Red' : 'Blue',
@@ -1470,7 +1486,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           const tId = (t.TeamID === 'Red' || t.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
           for (const p of t.Players || []) {
             const sub = String(p.Subject || '').toLowerCase();
-            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PartyID || p.PlayerIdentity?.partyId || p.PlayerIdentity?.PartyId || p.PlayerIdentity?.PartyID || '').toLowerCase().trim();
             rawPlayers.push({
               puuid: p.Subject,
               team: tId,
@@ -1490,7 +1506,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         for (const p of matchData.AllyTeam.Players) {
           if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
             const sub = String(p.Subject || '').toLowerCase();
-            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PartyID || p.PlayerIdentity?.partyId || p.PlayerIdentity?.PartyId || p.PlayerIdentity?.PartyID || '').toLowerCase().trim();
             rawPlayers.push({
               puuid: p.Subject,
               team: allyTeamId,
@@ -1510,7 +1526,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         for (const p of matchData.EnemyTeam.Players) {
           if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
             const sub = String(p.Subject || '').toLowerCase();
-            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PartyID || p.PlayerIdentity?.partyId || p.PlayerIdentity?.PartyId || p.PlayerIdentity?.PartyID || '').toLowerCase().trim();
             rawPlayers.push({
               puuid: p.Subject,
               team: enemyTeamId,
@@ -1631,8 +1647,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     // Identify parties across all players in the match (puuids sharing partyId, size >= 2)
     const livePartyCounts = new Map<string, number>();
     for (const rp of rawPlayers) {
-      const pId = rp.partyId || presencePartyMap.get(rp.puuid.toLowerCase());
-      if (pId) {
+      const pId = (rp.partyId || presencePartyMap.get(rp.puuid.toLowerCase()) || '').toLowerCase().trim();
+      if (pId && pId !== '0' && pId !== 'null' && pId !== 'undefined' && pId.length > 5) {
         livePartyCounts.set(pId, (livePartyCounts.get(pId) ?? 0) + 1);
       }
     }
@@ -1646,7 +1662,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
 
     // In Deathmatch / FFA, keep all players in one unified list (blueTeam) without grouping into teams
     rawPlayers.forEach((p, idx) => {
-      const pPartyId = p.partyId || presencePartyMap.get(p.puuid.toLowerCase());
+      const pPartyId = (p.partyId || presencePartyMap.get(p.puuid.toLowerCase()) || '').toLowerCase().trim();
       const pPartyIndex = pPartyId ? livePartyIdxMap.get(pPartyId) : undefined;
       const resolved = nameMap[p.puuid];
       const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);

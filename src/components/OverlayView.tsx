@@ -1662,14 +1662,20 @@ const PregameTeamColumn: React.FC<{
           return (
             <div
               key={p.puuid}
-              className={`grid grid-cols-[30px_1fr_36px_36px_42px_46px_42px_64px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
+              className={`relative overflow-hidden grid grid-cols-[30px_1fr_36px_36px_42px_46px_42px_64px] items-center px-2 py-1 rounded-xl border text-xs transition-colors ${
                 party
-                  ? `${party.border} ${party.bg} border-white/5`
+                  ? `${party.border} ${party.bg} border-white/10`
                   : p.isMe
                   ? 'bg-purple-500/15 border-purple-400/30 text-white shadow-xs'
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
             >
+              {party && (
+                <div
+                  className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md ${party.bar} shadow-[0_0_10px_rgba(255,255,255,0.35)]`}
+                  title={`Queued together in ${party.name}`}
+                />
+              )}
               {/* Tracker Score badge (hex tier emblem, never a raw number) */}
               <div
                 className="flex items-center justify-center shrink-0"
@@ -1724,6 +1730,12 @@ const PregameTeamColumn: React.FC<{
 
                 <div className="flex flex-col min-w-0 flex-1 leading-tight">
                   <div className="flex items-center gap-1 min-w-0">
+                    {party && (
+                      <span
+                        className={`w-2 h-2 rounded-full ${party.bar} shrink-0 shadow-xs`}
+                        title={`Queued together in ${party.name}`}
+                      />
+                    )}
                     <span className="font-bold text-[11px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
                       {p.name}
                     </span>
@@ -1884,7 +1896,7 @@ const VerticalSquadColumn: React.FC<{
           key={p.puuid}
           className={`relative overflow-hidden flex items-center gap-1.5 px-2 py-1 rounded-xl border text-xs transition-colors ${
             party
-              ? `${party.border} ${party.bg} border-white/5`
+              ? `${party.border} ${party.bg} border-white/10`
               : p.isMe
               ? 'bg-purple-950/30 border-purple-500/40 text-white shadow-xs'
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
@@ -1892,8 +1904,8 @@ const VerticalSquadColumn: React.FC<{
         >
           {party && (
             <div
-              className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
-              title="Queued together in party"
+              className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md ${party.bar} shadow-[0_0_10px_rgba(255,255,255,0.35)]`}
+              title={`Queued together in ${party.name}`}
             />
           )}
           {/* Tracker Score tier badge */}
@@ -1947,6 +1959,12 @@ const VerticalSquadColumn: React.FC<{
 
           {/* Player Name */}
           <div className="flex items-center gap-1 min-w-0 flex-1">
+            {party && (
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${party.bar} shrink-0 shadow-xs`}
+                title={`Queued together in ${party.name}`}
+              />
+            )}
             <span className="font-semibold truncate text-white text-[11px]" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
               {p.name}
             </span>
