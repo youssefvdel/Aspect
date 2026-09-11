@@ -36,12 +36,20 @@ const TRN_COOLDOWN_MAX_MS = 16 * 60 * 1000;
 let trnNextSlot = 0;
 let trnCooldownUntil = 0;
 let trnCooldownStep = 0;
+const TRN_COOLDOWN_KEY = 'recon_trn_cooldown_until_v1';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** ms left before tracker.gg will be tried again; 0 when ready. */
 export function trnCooldownRemainingMs(): number {
-  return Math.max(0, trnCooldownUntil - Date.now());
+  let until = trnCooldownUntil;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const stored = Number(localStorage.getItem(TRN_COOLDOWN_KEY) || 0);
+      if (stored > until) until = stored;
+    } catch {}
+  }
+  return Math.max(0, until - Date.now());
 }
 
 /** Reset cooldown so an explicit user retry fires immediately. */
@@ -49,6 +57,11 @@ export function resetTrnCooldown(): void {
   trnCooldownStep = 0;
   trnCooldownUntil = 0;
   trnNextSlot = 0;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(TRN_COOLDOWN_KEY);
+    } catch {}
+  }
 }
 
 async function trnGet(path: string): Promise<unknown> {
@@ -75,12 +88,22 @@ async function trnGet(path: string): Promise<unknown> {
     if (msg.includes('429') || msg.includes('403') || msg.includes('1015')) {
       trnCooldownStep = Math.min(trnCooldownStep + 1, 4);
       trnCooldownUntil = Date.now() + Math.min(TRN_COOLDOWN_MAX_MS, TRN_COOLDOWN_BASE_MS * 2 ** (trnCooldownStep - 1));
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(TRN_COOLDOWN_KEY, String(trnCooldownUntil));
+        } catch {}
+      }
     }
     throw new Error(msg);
   }
   // A clean response means we are welcome again.
   trnCooldownStep = 0;
   trnCooldownUntil = 0;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(TRN_COOLDOWN_KEY);
+    } catch {}
+  }
 
   try {
     return JSON.parse(raw);

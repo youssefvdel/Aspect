@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 import type { LiveMatchPlayer, LiveMatchState, LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
 import { getDevMockMatch, isDevNoClient } from './devTools';
@@ -1480,22 +1481,65 @@ export async function fetchPlayer24hRecord(
   return task;
 }
 
-const livePlayerStatsCache = new Map<
-  string,
-  {
-    kd?: number;
-    winPct?: number;
-    hsPct?: number;
-    trnScore?: number;
-    acs?: number;
-    recentWon?: number;
-    recentLost?: number;
-    streak?: number;
-    streakIsWin?: boolean;
-    country?: string;
-    fetchedAt: number;
+export interface LivePlayerStatsEntry {
+  kd?: number;
+  winPct?: number;
+  hsPct?: number;
+  trnScore?: number;
+  acs?: number;
+  recentWon?: number;
+  recentLost?: number;
+  streak?: number;
+  streakIsWin?: boolean;
+  country?: string;
+  fetchedAt: number;
+  retryAfter?: number;
+}
+
+const livePlayerStatsCache = new Map<string, LivePlayerStatsEntry>();
+const LIVE_STATS_CACHE_KEY = 'recon_live_player_stats_v2';
+const LIVE_STATS_TTL = 30 * 60 * 1000; // 30 mins
+
+export function getCachedLivePlayerStats(puuid: string): LivePlayerStatsEntry | undefined {
+  if (!puuid) return undefined;
+  const pU = puuid.toLowerCase();
+  const mem = livePlayerStatsCache.get(pU);
+  if (mem && Date.now() - mem.fetchedAt < LIVE_STATS_TTL) return mem;
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LIVE_STATS_CACHE_KEY);
+      if (raw) {
+        const store = JSON.parse(raw) as Record<string, LivePlayerStatsEntry>;
+        const entry = store[pU];
+        if (entry && Date.now() - entry.fetchedAt < LIVE_STATS_TTL) {
+          livePlayerStatsCache.set(pU, entry);
+          return entry;
+        }
+      }
+    } catch {}
   }
->();
+  return mem;
+}
+
+export function setCachedLivePlayerStats(puuid: string, entry: LivePlayerStatsEntry): void {
+  if (!puuid) return;
+  const pU = puuid.toLowerCase();
+  livePlayerStatsCache.set(pU, entry);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LIVE_STATS_CACHE_KEY);
+      const store: Record<string, LivePlayerStatsEntry> = raw ? JSON.parse(raw) : {};
+      store[pU] = entry;
+      const keys = Object.keys(store);
+      if (keys.length > 150) {
+        const sorted = keys.sort((a, b) => store[a].fetchedAt - store[b].fetchedAt);
+        for (let i = 0; i < 30; i++) delete store[sorted[i]];
+      }
+      localStorage.setItem(LIVE_STATS_CACHE_KEY, JSON.stringify(store));
+    } catch {}
+  }
+}
 
 /**
  * Queue id of the match the player is currently in ("competitive", "swiftplay",
@@ -1527,10 +1571,32 @@ export async function fetchLiveQueueId(): Promise<string> {
   }
 }
 
+const LIVE_MATCH_CACHE_KEY = 'recon_live_match_state_v2';
+let lastLiveMatchFetchTime = 0;
+let lastLiveMatchResult: LiveMatchState | null = null;
+
 export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
   // Dev dashboard simulator: canned match without Riot open (dev builds only).
   const devMock = getDevMockMatch();
   if (devMock) return devMock;
+
+  const now = Date.now();
+  if (lastLiveMatchResult && now - lastLiveMatchFetchTime < 2500) {
+    return lastLiveMatchResult;
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LIVE_MATCH_CACHE_KEY);
+      if (raw) {
+        const item = JSON.parse(raw) as { at: number; state: LiveMatchState };
+        if (item?.state && now - item.at < 2500) {
+          lastLiveMatchResult = item.state;
+          lastLiveMatchFetchTime = item.at;
+          return item.state;
+        }
+      }
+    } catch {}
+  }
 
   const idleState: LiveMatchState = {
     phase: 'idle',
@@ -1993,8 +2059,14 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       );
 
       // Asynchronously fetch TRN stats (KD & country) if not cached
-      const statsCached = livePlayerStatsCache.get(p.puuid);
-      if (!statsCached && realName && realTag) {
+      const statsCached = getCachedLivePlayerStats(p.puuid);
+      const needsStats =
+        !statsCached ||
+        (statsCached.kd == null &&
+          statsCached.acs == null &&
+          Date.now() > (statsCached.retryAfter ?? 0));
+
+      if (needsStats && realName && realTag) {
         import('./trn')
           .then(({ fetchTrnActStats }) => {
             fetchTrnActStats(realName, realTag)
@@ -2006,8 +2078,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                     ? res.countryCode.toUpperCase()
                     : undefined;
 
-                const prev = livePlayerStatsCache.get(p.puuid);
-                livePlayerStatsCache.set(p.puuid, {
+                const prev = getCachedLivePlayerStats(p.puuid);
+                setCachedLivePlayerStats(p.puuid, {
                   ...prev,
                   kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
                   winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
@@ -2016,12 +2088,15 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                   acs: res?.stats?.acs ? Math.round(res.stats.acs) : undefined,
                   country: realCountry,
                   fetchedAt: Date.now(),
+                  retryAfter: undefined,
                 });
               })
               .catch(() => {
-                livePlayerStatsCache.set(p.puuid, {
-                  ...livePlayerStatsCache.get(p.puuid),
-                  fetchedAt: Date.now(),
+                const prev = getCachedLivePlayerStats(p.puuid);
+                setCachedLivePlayerStats(p.puuid, {
+                  ...prev,
+                  fetchedAt: prev?.fetchedAt ?? Date.now(),
+                  retryAfter: Date.now() + 20000,
                 });
               });
           })
@@ -2032,12 +2107,20 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       // player in the lobby gets a real 24-hour win/loss line. Scoped to the
       // queue being played, so a ranked lobby never shows Swiftplay/Deathmatch
       // games in the column.
-      const cached24h = livePlayerStatsCache.get(p.puuid);
-      if (Date.now() - (cached24h?.fetchedAt ?? 0) > 10 * 60 * 1000) {
+      const cached24h = getCachedLivePlayerStats(p.puuid);
+      const needs24h =
+        !cached24h ||
+        (cached24h.recentWon == null &&
+          cached24h.recentLost == null &&
+          Date.now() > (cached24h.retryAfter ?? 0)) ||
+        Date.now() - (cached24h?.fetchedAt ?? 0) > 10 * 60 * 1000;
+
+      if (needs24h) {
         fetchPlayer24hRecord(p.puuid, region, liveQueue)
           .then((rec) => {
-            livePlayerStatsCache.set(p.puuid, {
-              ...livePlayerStatsCache.get(p.puuid),
+            const prev = getCachedLivePlayerStats(p.puuid);
+            setCachedLivePlayerStats(p.puuid, {
+              ...prev,
               recentWon: rec.won,
               recentLost: rec.lost,
               streak: rec.streak,
@@ -2049,6 +2132,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       }
 
       const targetTeam = isDeathmatch ? 'Blue' : p.team;
+      const playerStats = getCachedLivePlayerStats(p.puuid);
 
       const playerObj: LiveMatchPlayer = {
         puuid: p.puuid,
@@ -2074,16 +2158,16 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         isMe: p.puuid === ent.puuid,
         selectionState: p.selectionState,
         region: region.toUpperCase(),
-        country: statsCached?.country,
-        kd: statsCached?.kd,
-        winPct: statsCached?.winPct,
-        hsPct: statsCached?.hsPct,
-        trnScore: statsCached?.trnScore,
-        acs: statsCached?.acs,
-        recentWon: statsCached?.recentWon,
-        recentLost: statsCached?.recentLost,
-        streak: statsCached?.streak,
-        streakIsWin: statsCached?.streakIsWin,
+        country: playerStats?.country,
+        kd: playerStats?.kd,
+        winPct: playerStats?.winPct,
+        hsPct: playerStats?.hsPct,
+        trnScore: playerStats?.trnScore,
+        acs: playerStats?.acs,
+        recentWon: playerStats?.recentWon,
+        recentLost: playerStats?.recentLost,
+        streak: playerStats?.streak,
+        streakIsWin: playerStats?.streakIsWin,
         isIncognito: p.isIncognito ?? false,
         nameResolved: !!realName,
         partyId: pPartyId,
@@ -2103,7 +2187,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       ? 'Defense'
       : undefined;
 
-    return {
+    const finalState: LiveMatchState = {
       phase,
       matchId,
       mapId: rawMapId,
@@ -2118,6 +2202,24 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       redTeam,
       updatedAt: Date.now(),
     };
+
+    lastLiveMatchResult = finalState;
+    lastLiveMatchFetchTime = Date.now();
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(
+          LIVE_MATCH_CACHE_KEY,
+          JSON.stringify({ at: lastLiveMatchFetchTime, state: finalState })
+        );
+      } catch {}
+    }
+
+    // Broadcast across windows via Tauri event
+    if (isTauri()) {
+      emit('recon:live-match-sync', finalState).catch(() => {});
+    }
+
+    return finalState;
   } catch (err) {
     return {
       ...idleState,

@@ -35,7 +35,7 @@ import {
   byAcsDesc,
   queueLabel,
 } from '../utils/playerDisplay';
-import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode } from '../utils/ipc';
+import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode, isTauri } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 /* In-app Live Match page.
@@ -94,11 +94,10 @@ export const LiveMatchView: React.FC = () => {
     };
   }, [loadState]);
 
-  // Background live sync: paused while the app is hidden (in-game the main
-  // window sits in the tray/background — no point re-rendering tables).
+  // Background live sync: synchronized with in-game overlay via events,
+  // refreshed instantly on focus/visibility, and polled in background.
   useEffect(() => {
     const poll = () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
       fetchLiveMatchState()
         .then((s) => {
           // Match just ended: hidden names are released by Riot only now.
@@ -109,8 +108,36 @@ export const LiveMatchView: React.FC = () => {
         })
         .catch(() => {});
     };
-    const interval = setInterval(poll, 8000);
-    return () => clearInterval(interval);
+
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) poll();
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVis);
+      window.addEventListener('focus', onVis);
+    }
+
+    const unlistenSync = isTauri()
+      ? listen<LiveMatchState>('recon:live-match-sync', (event) => {
+          if (event.payload) {
+            const s = event.payload;
+            const harvest = matchEndHarvest(prevStateRef.current, s);
+            if (harvest) harvestMatchNames(harvest).catch(() => {});
+            prevStateRef.current = s;
+            setMatchState(s);
+          }
+        })
+      : null;
+
+    const interval = setInterval(poll, 6000);
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+        window.removeEventListener('focus', onVis);
+      }
+      unlistenSync?.then((fn) => fn()).catch(() => {});
+    };
   }, []);
 
   /**

@@ -14,7 +14,7 @@ import {
   queueLabel,
 } from '../utils/playerDisplay';
 import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
-import { getOverlayEditMode, setOverlayEditMode, isTabDown } from '../utils/ipc';
+import { getOverlayEditMode, setOverlayEditMode, isTabDown, isTauri } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 import elimWin from '../assets/round-icons/elimination-win.png';
 import elimLoss from '../assets/round-icons/elimination-loss.png';
@@ -623,11 +623,26 @@ export const OverlayView: React.FC = () => {
       document.addEventListener('visibilitychange', onVis);
     }
     const id = setInterval(tick, 4500);
+
+    const unlistenSync = isTauri()
+      ? listen<LiveMatchState>('recon:live-match-sync', (event) => {
+          if (event.payload) {
+            const s = event.payload;
+            const harvest = matchEndHarvest(prevStateRef.current, s);
+            if (harvest) harvestMatchNames(harvest).catch(() => {});
+            prevStateRef.current = s;
+            phaseRef.current = s.phase;
+            setMatchState(s);
+          }
+        })
+      : null;
+
     return () => {
       clearInterval(id);
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVis);
       }
+      unlistenSync?.then((fn) => fn()).catch(() => {});
     };
   }, []);
 
@@ -1087,7 +1102,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[270px] will-change-transform z-10 ${
+          } select-none w-[330px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_30px_rgba(168,85,247,0.45)] ring-2 ring-white/30'
               : ''
@@ -1182,13 +1197,13 @@ export const OverlayView: React.FC = () => {
             <div className="flex items-center gap-1 px-1.5 text-[8.5px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
               <span className="shrink-0 w-4 text-center" title="Tracker Score tier">TS</span>
               <span className="shrink-0 w-8 text-center" title="Agent">Agent</span>
-              <span className="shrink-0 w-6 text-center">Rank</span>
+              <span className="shrink-0 w-7 text-center">Rank</span>
               <span className="shrink-0 w-6 text-center">Peak</span>
-              <span className="shrink-0 w-8 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
-              <span className="shrink-0 w-7 text-right">K/D</span>
-              <span className="shrink-0 w-8 text-right" title="Act-wide win rate">Win%</span>
+              <span className="shrink-0 w-9 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
+              <span className="shrink-0 w-8 text-right">K/D</span>
+              <span className="shrink-0 w-9 text-right" title="Act-wide win rate">Win%</span>
               <span className="shrink-0 w-8 text-right" title="Act-wide headshot %">HS%</span>
-              <span className="shrink-0 w-9 text-right" title="Wins / losses in the last 24 hours">24H</span>
+              <span className="shrink-0 w-11 text-right" title="Wins / losses in the last 24 hours">24H</span>
             </div>
 
             {/* Vertical Compact Teams / Player Stack */}
@@ -2408,7 +2423,7 @@ const VerticalSquadColumn: React.FC<{
           </div>
 
           {/* Last 24h W/L */}
-          <div className="shrink-0 w-9 text-right font-mono text-[9px]" title="Wins / losses in the last 24 hours">
+          <div className="shrink-0 w-11 text-right font-mono text-[9px]" title="Wins / losses in the last 24 hours">
             {p.recentWon != null || p.recentLost != null ? (
               <span className={(p.recentWon ?? 0) >= (p.recentLost ?? 0) ? 'text-m3-mint' : 'text-rose-400'}>
                 {p.recentWon ?? 0}W-{p.recentLost ?? 0}L
