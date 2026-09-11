@@ -431,7 +431,7 @@ const MatchStatusStrip: React.FC<{
 /* Player table — mirrors the Agent Select widget's columns            */
 /* ------------------------------------------------------------------ */
 
-const GRID = 'grid grid-cols-[1fr_28px_40px_34px_44px_40px_44px_40px_64px_36px_54px] items-center gap-x-1.5';
+const GRID = 'grid grid-cols-[1fr_64px_28px_70px_68px_42px_38px_42px_38px_60px_34px] items-center gap-x-1.5';
 
 const ACCENTS: Record<string, { tag: string; border: string }> = {
   primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
@@ -471,14 +471,11 @@ const PlayerTable: React.FC<{
         className={`${GRID} px-2 pb-0.5 text-[8.5px] font-mono uppercase tracking-wider text-m3-outline border-b border-m3-outline-subtle shrink-0`}
       >
         <span>Player</span>
+        <span className="text-center" title="Equipped weapon skins & cosmetics">Skins</span>
         <span className="text-center" title="Tracker Score tier">TS</span>
-        <span className="text-center">Rank</span>
-        <span className="text-center" title="Peak rank — the act it was earned in is shown under the emblem">
-          Peak
-        </span>
-        <span className="text-right" title="Act-wide average combat score — the column this board is sorted by">
-          ACS
-        </span>
+        <span className="text-left pl-1">Rank</span>
+        <span className="text-left pl-1" title="Peak rank — the act it was earned in is shown under the emblem">Peak</span>
+        <span className="text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
         <span className="text-right" title="Act-wide K/D (Riot exposes no live kill data)">K/D</span>
         <span className="text-right" title="Act-wide win rate">Win%</span>
         <span className="text-right" title="Act-wide headshot %">HS%</span>
@@ -489,7 +486,6 @@ const PlayerTable: React.FC<{
           {scope ? `24h ${scope}` : 'Last 24h'}
         </span>
         <span className="text-right">Lvl</span>
-        <span className="text-center" title="Equipped weapon skins & cosmetics">Skins</span>
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5 overflow-hidden">
@@ -623,7 +619,25 @@ const PlayerRow: React.FC<{
         </div>
       </div>
 
-      {/* 2. Tracker Score badge — placed next to Rank on the left */}
+      {/* 2. Skins / Loadout button — between Player and TS so it pops out */}
+      <div className="flex items-center justify-center">
+        {onShowLoadout && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onShowLoadout(p);
+            }}
+            className="h-6 px-2.5 rounded-lg bg-gradient-to-r from-purple-500/20 to-purple-600/30 hover:from-purple-500/35 hover:to-purple-600/50 border border-purple-400/40 hover:border-purple-300 text-purple-100 hover:text-white transition-all flex items-center justify-center gap-1.5 text-[9.5px] font-bold font-display shadow-xs hover:shadow-[0_0_8px_rgba(192,132,252,0.4)] cursor-pointer active:scale-95 shrink-0"
+            title={`View ${p.name}'s weapon skins & loadout`}
+            aria-label={`View ${p.name}'s loadout`}
+          >
+            <Sparkles className="w-2.5 h-2.5 text-purple-300 animate-pulse" />
+            <span>Skins</span>
+          </button>
+        )}
+      </div>
+
+      {/* 3. Tracker Score badge — unified 20px size, right next to Rank */}
       <div
         className="flex items-center justify-center"
         title={
@@ -633,48 +647,58 @@ const PlayerRow: React.FC<{
         }
       >
         {p.trnScore != null ? (
-          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={18} />
+          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={20} />
         ) : (
-          <span className="w-4.5 h-4.5 rounded border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[8px] font-mono text-m3-outline">
+          <span className="w-5 h-5 rounded border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[8px] font-mono text-m3-outline">
             —
           </span>
         )}
       </div>
 
-      {/* 3. Current rank emblem + live RR */}
-      <div className="flex flex-col items-center justify-center leading-none" title={rankTooltip(p, actLabel)}>
+      {/* 4. Current rank: icon on left (20px), text on right (rank + RR) */}
+      <div className="flex items-center gap-1.5 min-w-0" title={rankTooltip(p, actLabel)}>
         {rankIcon ? (
-          <img src={rankIcon} alt={p.rank} className="w-5.5 h-5.5 object-contain" />
+          <img src={rankIcon} alt={p.rank} className="w-5 h-5 object-contain shrink-0" />
         ) : (
-          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
+          <span className="w-5 text-center text-[8.5px] font-mono text-m3-outline shrink-0">—</span>
         )}
-        {p.tier > 2 ? (
-          <span className="text-[7.5px] font-mono font-bold text-m3-primary/90 mt-0.5 tracking-tight">
-            {p.rr}<span className="text-[6.5px] text-m3-outline font-normal ml-0.5">RR</span>
+        <div className="flex flex-col min-w-0 leading-none">
+          <span className="text-[8.5px] font-display font-bold text-m3-on-surface truncate">
+            {p.rank}
           </span>
-        ) : (
-          <span className="text-[7.5px] font-mono text-m3-outline mt-0.5">—</span>
-        )}
+          {p.tier > 2 ? (
+            <span className="text-[7.5px] font-mono font-bold text-m3-primary tracking-tight mt-0.5">
+              {p.rr} RR
+            </span>
+          ) : (
+            <span className="text-[7.5px] font-mono text-m3-outline mt-0.5">—</span>
+          )}
+        </div>
       </div>
 
-      {/* 4. Peak rank — emblem with the act it was earned in beneath it */}
+      {/* 5. Peak rank: icon on left (20px), text on right (peak + act) */}
       <div
-        className="flex flex-col items-center justify-center"
+        className="flex items-center gap-1.5 min-w-0"
         title={p.peakTier > 0 ? `Peak ${p.peakRank}${actLabel ? ` (${shortAct(actLabel)})` : ''}` : 'Peak unavailable'}
       >
         {peakIcon ? (
-          <img src={peakIcon} alt={p.peakRank} className="w-5 h-5 object-contain opacity-90" />
+          <img src={peakIcon} alt={p.peakRank} className="w-5 h-5 object-contain opacity-90 shrink-0" />
         ) : (
-          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
+          <span className="w-5 text-center text-[8.5px] font-mono text-m3-outline shrink-0">—</span>
         )}
-        {p.peakSeasonId && actLabel && (
-          <span className="text-[6.5px] font-mono text-m3-outline leading-none mt-px">
-            {shortAct(actLabel)}
+        <div className="flex flex-col min-w-0 leading-none">
+          <span className="text-[8.5px] font-display font-semibold text-m3-outline truncate">
+            {p.peakRank}
           </span>
-        )}
+          {p.peakSeasonId && actLabel && (
+            <span className="text-[7px] font-mono text-m3-outline/80 mt-0.5">
+              {shortAct(actLabel)}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* 5. ACS — the sort key, so it reads first among the numbers */}
+      {/* 6. ACS — the sort key, so it reads first among the numbers */}
       <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide average combat score">
         {p.acs != null ? (
           <span className={p.acs >= 200 ? 'text-m3-primary' : p.acs >= 150 ? 'text-m3-on-surface' : 'text-m3-outline'}>
@@ -685,12 +709,12 @@ const PlayerRow: React.FC<{
         )}
       </div>
 
-      {/* 6. K/D */}
+      {/* 7. K/D */}
       <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide K/D">
         <span className={kd.color}>{kd.text}</span>
       </div>
 
-      {/* 7. Win % */}
+      {/* 8. Win % */}
       <div className="text-right font-mono text-[10.5px]" title="Act-wide win rate">
         {p.winPct != null ? (
           <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
@@ -701,37 +725,19 @@ const PlayerRow: React.FC<{
         )}
       </div>
 
-      {/* 8. HS % */}
+      {/* 9. HS % */}
       <div className="text-right font-mono text-[10.5px] text-amber-500" title="Act-wide headshot %">
         {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-m3-outline">—</span>}
       </div>
 
-      {/* 9. Last 24h W/L */}
+      {/* 10. Last 24h W/L */}
       <div className="text-right font-mono text-[9.5px]" title="Wins / losses in the last 24 hours">
         {recent ? <span className={recent.color}>{recent.text}</span> : <span className="text-m3-outline">—</span>}
       </div>
 
-      {/* 10. Account level */}
+      {/* 11. Account level */}
       <div className="text-right font-mono text-[9.5px] text-m3-outline" title="Account level">
         {p.accountLevel > 0 ? p.accountLevel : '—'}
-      </div>
-
-      {/* 11. Skins / Loadout button */}
-      <div className="flex items-center justify-center">
-        {onShowLoadout && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onShowLoadout(p);
-            }}
-            className="px-2 py-0.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/30 border border-purple-400/35 hover:border-purple-400/70 text-purple-200 hover:text-white transition-all flex items-center justify-center gap-1 text-[9px] font-bold font-display shadow-xs cursor-pointer active:scale-95"
-            title={`View ${p.name}'s weapon skins & loadout`}
-            aria-label={`View ${p.name}'s loadout`}
-          >
-            <Sparkles className="w-2.5 h-2.5 text-purple-300" />
-            <span>Skins</span>
-          </button>
-        )}
       </div>
     </div>
   );
