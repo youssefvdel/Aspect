@@ -1792,14 +1792,6 @@ const PregameTeamColumn: React.FC<{
                         Hidden
                       </span>
                     )}
-                    {party && (
-                      <span
-                        className={`px-1 py-px rounded text-[7px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
-                        title={party.name}
-                      >
-                        {party.name}
-                      </span>
-                    )}
                   </div>
                   <span className="text-[8px] font-mono font-semibold">
                     {locked ? (
@@ -2014,14 +2006,6 @@ const VerticalSquadColumn: React.FC<{
                 title="Name Hidden in Valorant (Unmasked by Recon)"
               >
                 <EyeOff className="w-2.5 h-2.5" />
-              </span>
-            )}
-            {party && (
-              <span
-                className={`px-1 py-px rounded text-[7px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
-                title={party.name}
-              >
-                {party.name}
               </span>
             )}
           </div>

@@ -192,23 +192,6 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     [playerStats]
   );
 
-  // Group detected parties in each team (size >= 2)
-  const blueParties = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const p of teamBlue) {
-      if (p.partyIndex) counts.set(p.partyIndex, (counts.get(p.partyIndex) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => a[0] - b[0]);
-  }, [teamBlue]);
-
-  const redParties = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const p of teamRed) {
-      if (p.partyIndex) counts.set(p.partyIndex, (counts.get(p.partyIndex) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => a[0] - b[0]);
-  }, [teamRed]);
-
   // Overall Match MVP and Team MVPs
   const matchMvpPuuid = useMemo(() => {
     if (playerStats.length === 0) return '';
@@ -431,21 +414,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               {/* Team Blue Table */}
               <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
                 {/* Team Blue Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint flex-wrap gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint">
+                  <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-mint" />
                     <span>Team Blue • {teamBlueScore} Rounds</span>
-                    {blueParties.map(([idx, count]) => {
-                      const style = getPartyStyle(idx);
-                      return style ? (
-                        <span
-                          key={idx}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${style.badge}`}
-                        >
-                          {style.name} ({count}-stack)
-                        </span>
-                      ) : null;
-                    })}
                   </div>
                   <span className="text-m3-outline font-medium text-[11px]">
                     Avg. Rank: {avgRankName(teamBlue)}
@@ -484,15 +456,19 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                           <tr
                             key={p.puuid || idx}
                             className={`hover:bg-m3-surface-container-high/60 transition-colors ${
-                              party
-                                ? `${party.border} ${party.bg}`
-                                : p.isMe
-                                ? 'bg-m3-primary/10 border-l-2 border-m3-primary'
-                                : ''
+                              party ? party.bg : p.isMe ? 'bg-m3-primary/10' : ''
                             }`}
                           >
                             {/* Agent */}
-                            <td className="py-2 px-3">
+                            <td className="relative py-2 px-3">
+                              {party ? (
+                                <div
+                                  className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+                                  title="Queued together"
+                                />
+                              ) : p.isMe ? (
+                                <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-m3-primary" />
+                              ) : null}
                               <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
@@ -525,14 +501,6 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                                 {rIcon ? (
                                   <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                                 ) : null}
-                                {party && (
-                                  <span
-                                    className={`px-1.5 py-px rounded text-[8px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
-                                    title={`In ${party.name}`}
-                                  >
-                                    {party.name}
-                                  </span>
-                                )}
                                 {isMatchMvp ? (
                                   <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
                                     Match MVP
@@ -599,21 +567,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               {/* Team Red Table */}
               <div className="rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container">
                 {/* Team Red Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral flex-wrap gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral">
+                  <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-coral" />
                     <span>Team Red • {teamRedScore} Rounds</span>
-                    {redParties.map(([idx, count]) => {
-                      const style = getPartyStyle(idx);
-                      return style ? (
-                        <span
-                          key={idx}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${style.badge}`}
-                        >
-                          {style.name} ({count}-stack)
-                        </span>
-                      ) : null;
-                    })}
                   </div>
                   <span className="text-m3-outline font-medium text-[11px]">
                     Avg. Rank: {avgRankName(teamRed)}
@@ -652,15 +609,19 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                           <tr
                             key={p.puuid || idx}
                             className={`hover:bg-m3-surface-container-high/60 transition-colors ${
-                              party
-                                ? `${party.border} ${party.bg}`
-                                : p.isMe
-                                ? 'bg-m3-primary/10 border-l-2 border-m3-primary'
-                                : ''
+                              party ? party.bg : p.isMe ? 'bg-m3-primary/10' : ''
                             }`}
                           >
                             {/* Agent */}
-                            <td className="py-2 px-3">
+                            <td className="relative py-2 px-3">
+                              {party ? (
+                                <div
+                                  className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+                                  title="Queued together"
+                                />
+                              ) : p.isMe ? (
+                                <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-m3-primary" />
+                              ) : null}
                               <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
                                 {p.agIcon ? (
                                   <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
@@ -693,14 +654,6 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                                 {rIcon ? (
                                   <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                                 ) : null}
-                                {party && (
-                                  <span
-                                    className={`px-1.5 py-px rounded text-[8px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
-                                    title={`In ${party.name}`}
-                                  >
-                                    {party.name}
-                                  </span>
-                                )}
                                 {isMatchMvp ? (
                                   <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-m3-tertiary/15 text-m3-tertiary border border-m3-tertiary/40">
                                     Match MVP

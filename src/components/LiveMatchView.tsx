@@ -126,25 +126,6 @@ export const LiveMatchView: React.FC = () => {
     [matchState]
   );
 
-  const allPlayers = useMemo(
-    () => [...(matchState?.blueTeam ?? []), ...(matchState?.redTeam ?? [])],
-    [matchState]
-  );
-
-  // Distinct parties (size ≥2) so the header can summarise who queued together.
-  const partyGroups = useMemo(() => {
-    const byIndex = new Map<number, LiveMatchPlayer[]>();
-    for (const p of allPlayers) {
-      if (!p.partyIndex) continue;
-      const list = byIndex.get(p.partyIndex) ?? [];
-      list.push(p);
-      byIndex.set(p.partyIndex, list);
-    }
-    return [...byIndex.entries()]
-      .filter(([, list]) => list.length >= 2)
-      .sort((a, b) => a[0] - b[0]);
-  }, [allPlayers]);
-
   return (
     <div className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-10">
       {/* Top Header & Actions Bar */}
@@ -210,7 +191,7 @@ export const LiveMatchView: React.FC = () => {
 
       {/* Match status strip — what Riot actually tells us about the live game. */}
       {isLive && matchState && (
-        <MatchStatusStrip state={matchState} partyGroups={partyGroups} />
+        <MatchStatusStrip state={matchState} />
       )}
 
       {/* Main Content Area */}
@@ -277,8 +258,7 @@ export const LiveMatchView: React.FC = () => {
 
 const MatchStatusStrip: React.FC<{
   state: LiveMatchState;
-  partyGroups: [number, LiveMatchPlayer[]][];
-}> = ({ state, partyGroups }) => {
+}> = ({ state }) => {
   const units = (n: number) => `${n} Player${n === 1 ? '' : 's'}`;
 
   return (
@@ -309,19 +289,6 @@ const MatchStatusStrip: React.FC<{
         <Users className="w-3.5 h-3.5" />
         <span>{units(state.blueTeam.length + state.redTeam.length)} in lobby</span>
       </span>
-
-      {partyGroups.length > 0 && (
-        <span className="flex items-center gap-1.5 font-mono text-m3-outline">
-          {partyGroups.map(([idx, list]) => {
-            const style = getPartyStyle(idx);
-            return (
-              <span key={idx} className={`px-1.5 py-px rounded border font-bold ${style?.badge ?? ''}`}>
-                {list.length} stack
-              </span>
-            );
-          })}
-        </span>
-      )}
 
       <span className="flex items-center gap-1.5 font-mono text-m3-outline ml-auto">
         <Clock className="w-3.5 h-3.5" />
@@ -496,14 +463,6 @@ const PlayerRow: React.FC<{
               >
                 <EyeOff className="w-2.5 h-2.5" />
                 Hidden
-              </span>
-            )}
-            {party && (
-              <span
-                className={`px-1 py-px rounded text-[8px] font-mono font-bold uppercase shrink-0 border ${party.badge}`}
-                title={`Queued together with ${party.name}`}
-              >
-                {party.name}
               </span>
             )}
           </div>
