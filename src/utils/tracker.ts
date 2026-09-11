@@ -1244,6 +1244,28 @@ export const glzHostFor = (region: string): string => {
   return map[r] ?? 'glz-eu-1.eu.a.pvp.net';
 };
 
+/**
+ * Equipped skins + sprays for everyone in the IN-PROGRESS match.
+ *
+ * Only valid while the match is live — Riot exposes loadouts nowhere else
+ * (the per-player personalization routes 404). Returns the raw `Loadouts`
+ * array; `src/utils/loadout.ts` parses it. Never throws: the caller is a
+ * poll/UI path, so a miss returns `[]`.
+ */
+export async function fetchMatchLoadouts(matchId: string, region: string): Promise<unknown[]> {
+  if (!matchId) return [];
+  try {
+    const glz = glzHostFor(region);
+    const raw = await riotGet(glz, `/core-game/v1/matches/${matchId}/loadouts`).catch(() =>
+      riotGet(glz, `/coregame/v1/matches/${matchId}/loadouts`)
+    );
+    const list = raw?.Loadouts ?? raw?.loadouts;
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 const liveMmrCache = new Map<
   string,
   {

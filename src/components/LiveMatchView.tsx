@@ -11,9 +11,17 @@ import {
   Swords,
   Users,
   Clock,
+  Crosshair,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
-import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames } from '../utils/tracker';
+import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames, fetchMatchLoadouts } from '../utils/tracker';
+import {
+  loadWeaponCatalog,
+  parseLoadouts,
+  resolveLoadoutForPlayer,
+  type PlayerLoadout,
+} from '../utils/loadout';
+import { LoadoutViewer } from './LoadoutViewer';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import {
@@ -46,6 +54,13 @@ import { listen } from '@tauri-apps/api/event';
 
 export const LiveMatchView: React.FC = () => {
   const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
+  // Loadout viewer — Riot only serves equipped skins while a match is live, so
+  // the data is fetched on demand rather than polled with the rest of the HUD.
+  const [loadoutFor, setLoadoutFor] = useState<LiveMatchPlayer | null>(null);
+  const [loadoutData, setLoadoutData] = useState<PlayerLoadout | null>(null);
+  const [loadoutLoading, setLoadoutLoading] = useState(false);
+  const [loadoutAmbiguous, setLoadoutAmbiguous] = useState(false);
+  const [loadoutReason, setLoadoutReason] = useState<string | null>(null);
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const prevStateRef = useRef<LiveMatchState | null>(null);
@@ -97,6 +112,66 @@ export const LiveMatchView: React.FC = () => {
     const interval = setInterval(poll, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  /**
+   * Open a player's loadout.
+   *
+   * Riot serves equipped skins only from the in-progress match route, so this
+   * needs a live `matchId`. Pre-match the endpoint returns nothing, and the
+   * viewer says so rather than rendering an empty grid as if it were real.
+   */
+  const openLoadout = useCallback(
+    async (p: LiveMatchPlayer) => {
+      setLoadoutFor(p);
+      setLoadoutData(null);
+      setLoadoutAmbiguous(false);
+      setLoadoutReason(null);
+
+      const matchId = matchState?.matchId ?? '';
+      if (!matchId || matchState?.phase !== 'coregame') {
+        setLoadoutReason(
+          matchState?.phase === 'pregame'
+            ? 'Loadouts only become available once the match is in progress (not during agent select).'
+            : 'Loadouts are available only while a match is in progress.'
+        );
+        return;
+      }
+
+      setLoadoutLoading(true);
+      try {
+        const region = (p.region || 'eu').replace(/[0-9]+$/, '').toLowerCase();
+        const [raw, catalog] = await Promise.all([
+          fetchMatchLoadouts(matchId, region),
+          loadWeaponCatalog(),
+        ]);
+        const all = parseLoadouts(raw, catalog);
+        if (all.length === 0) {
+          setLoadoutReason('Riot returned no loadout data for this match yet.');
+          return;
+        }
+        const teammates = [...(matchState?.blueTeam ?? []), ...(matchState?.redTeam ?? [])];
+        const index = teammates.findIndex((t) => t.puuid === p.puuid);
+        const { loadout, ambiguous } = resolveLoadoutForPlayer(all, {
+          puuid: p.puuid,
+          characterId: p.agentId,
+          index: index >= 0 ? index : undefined,
+        });
+        setLoadoutAmbiguous(ambiguous);
+        if (!loadout) {
+          setLoadoutReason(
+            'No loadout entry matched this player. Riot keys loadouts by agent, so duplicate agents can make the match ambiguous.'
+          );
+          return;
+        }
+        setLoadoutData(loadout);
+      } catch {
+        setLoadoutReason('Could not read the loadout from the Riot client.');
+      } finally {
+        setLoadoutLoading(false);
+      }
+    },
+    [matchState]
+  );
 
   const handleToggleOverlay = async () => {
     const isVis = await isOverlayVisible();
@@ -228,6 +303,7 @@ export const LiveMatchView: React.FC = () => {
           tierIcons={tierIcons}
           seasonNames={seasonNames}
           queueId={matchState?.queueId}
+          onShowLoadout={openLoadout}
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -238,6 +314,7 @@ export const LiveMatchView: React.FC = () => {
             tierIcons={tierIcons}
             seasonNames={seasonNames}
             queueId={matchState?.queueId}
+          onShowLoadout={openLoadout}
           />
 
           {matchState.phase === 'coregame' ? (
@@ -248,6 +325,7 @@ export const LiveMatchView: React.FC = () => {
               tierIcons={tierIcons}
               seasonNames={seasonNames}
               queueId={matchState?.queueId}
+          onShowLoadout={openLoadout}
             />
           ) : (
             <div className="p-4 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle text-center text-xs text-m3-outline flex items-center justify-center gap-2">
@@ -256,6 +334,21 @@ export const LiveMatchView: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {loadoutFor && (
+        <LoadoutViewer
+          player={loadoutFor}
+          loadout={loadoutData}
+          loading={loadoutLoading}
+          ambiguous={loadoutAmbiguous}
+          unavailableReason={loadoutReason}
+          onClose={() => {
+            setLoadoutFor(null);
+            setLoadoutData(null);
+            setLoadoutReason(null);
+          }}
+        />
       )}
     </div>
   );
@@ -327,7 +420,8 @@ const PlayerTable: React.FC<{
   seasonNames: Record<string, string>;
   /** Queue being played — captions the Last-24h column so it reads mode-scoped. */
   queueId?: string;
-}> = ({ title, accent, players, tierIcons, seasonNames, queueId }) => {
+  onShowLoadout?: (p: LiveMatchPlayer) => void;
+}> = ({ title, accent, players, tierIcons, seasonNames, queueId, onShowLoadout }) => {
   const a = ACCENTS[accent] ?? ACCENTS.primary;
   const scope = queueLabel(queueId);
 
@@ -372,7 +466,13 @@ const PlayerTable: React.FC<{
 
       <div className="flex flex-col gap-1">
         {[...players].sort(byAcsDesc).map((p) => (
-          <PlayerRow key={p.puuid} p={p} tierIcons={tierIcons} seasonNames={seasonNames} />
+          <PlayerRow
+            key={p.puuid}
+            p={p}
+            tierIcons={tierIcons}
+            seasonNames={seasonNames}
+            onShowLoadout={onShowLoadout}
+          />
         ))}
         {players.length === 0 && (
           <div className="px-2 py-3 text-center text-[11px] text-m3-outline font-mono">
@@ -388,7 +488,8 @@ const PlayerRow: React.FC<{
   p: LiveMatchPlayer;
   tierIcons: Record<number, string>;
   seasonNames: Record<string, string>;
-}> = ({ p, tierIcons, seasonNames }) => {
+  onShowLoadout?: (p: LiveMatchPlayer) => void;
+}> = ({ p, tierIcons, seasonNames, onShowLoadout }) => {
   const rankIcon = tierIcons[p.tier];
   const peakIcon = tierIcons[p.peakTier];
   const kd = formatKd(p.kd);
@@ -489,6 +590,19 @@ const PlayerRow: React.FC<{
                 <EyeOff className="w-2.5 h-2.5" />
                 {p.nameResolved ? 'Unmasked' : 'Hidden'}
               </span>
+            )}
+            {onShowLoadout && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShowLoadout(p);
+                }}
+                className="ml-0.5 shrink-0 rounded p-0.5 text-m3-outline hover:text-m3-primary hover:bg-m3-primary/10 transition-colors"
+                title={`View ${p.name}'s loadout`}
+                aria-label={`View ${p.name}'s loadout`}
+              >
+                <Crosshair className="w-3 h-3" />
+              </button>
             )}
           </div>
           <div className="text-[10px] text-m3-outline truncate flex items-center gap-1">

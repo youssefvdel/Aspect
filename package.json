@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "lint": "oxlint",
     "preview": "vite preview",
-    "bump": "node scripts/bump-version.js"
+    "bump": "node scripts/bump-version.js",
+    "test:loadout": "bun scripts/loadout-check.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
