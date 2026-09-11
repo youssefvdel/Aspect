@@ -39,30 +39,41 @@ export interface OverlayConfig {
 }
 
 export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
-  const w = typeof window !== 'undefined' ? window.innerWidth : 2088;
+  const w = typeof window !== 'undefined' ? window.innerWidth : 2560;
   const h = typeof window !== 'undefined' ? window.innerHeight : 1440;
+
+  // Exact coordinates requested:
+  // Agent Select (pregame): X: 717, Y: 417
+  // Match Status (lobby): X: 24, Y: 653
+  // Top Agents (topAgents): X: 1696, Y: 837
+  if (w === 2560 && h === 1440) {
+    return {
+      lobby: { x: 24, y: 653 },
+      pregame: { x: 717, y: 417 },
+      topAgents: { x: 1696, y: 837 },
+    };
+  }
 
   return {
     lobby: {
-      x: Math.max(16, Math.round(w * 0.02)),
-      y: Math.max(80, Math.round(h * 0.18)),
+      x: Math.max(16, Math.round(w * (24 / 2560))),
+      y: Math.max(40, Math.round(h * (653 / 1440))),
     },
     pregame: {
-      x: Math.max(20, Math.round(w * 0.165)),
-      y: Math.max(60, Math.round(h * 0.235)),
+      x: Math.max(20, Math.round(w * (717 / 2560))),
+      y: Math.max(40, Math.round(h * (417 / 1440))),
     },
     topAgents: {
-      x: Math.max(20, Math.round(w * 0.74)),
-      y: Math.max(60, Math.round(h * 0.735)),
+      x: Math.max(20, Math.round(w * (1696 / 2560))),
+      y: Math.max(40, Math.round(h * (837 / 1440))),
     },
   };
 }
 
 export function getDefaultOverlayConfig(): OverlayConfig {
   return {
-    // Match Status (the in-match scoreboard) is OFF by default — it is the
-    // noisiest widget and belongs on screen only when the player asks for it.
-    showLobby: false,
+    // All 3 widgets ON by default
+    showLobby: true,
     showPregame: true,
     showTopAgents: true,
     positions: getDefaultOverlayPositions(),
@@ -358,27 +369,22 @@ export const OverlayView: React.FC = () => {
 
   // Widget config + positions (persisted)
   const [config, setConfig] = useState<OverlayConfig>(() => {
+    const MIGRATION_KEY = 'recon_overlay_cfg_v5_defaults';
     try {
-      const saved = localStorage.getItem('aspect_overlay_cfg_v4') || localStorage.getItem('aspect_overlay_cfg_v3');
+      if (!localStorage.getItem(MIGRATION_KEY)) {
+        localStorage.setItem(MIGRATION_KEY, '1');
+        localStorage.setItem('recon_overlay_cfg_v5', JSON.stringify(DEFAULT_OVERLAY_CONFIG));
+        return DEFAULT_OVERLAY_CONFIG;
+      }
+      const saved = localStorage.getItem('recon_overlay_cfg_v5') || localStorage.getItem('aspect_overlay_cfg_v4');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const merged: OverlayConfig = {
+        return {
           ...DEFAULT_OVERLAY_CONFIG,
           ...parsed,
           positions: { ...DEFAULT_OVERLAY_CONFIG.positions, ...(parsed.positions || {}) },
           scales: { ...DEFAULT_OVERLAY_CONFIG.scales, ...(parsed.scales || {}) },
         };
-        // One-time migration: Match Status becomes opt-in. Applied once so that
-        // a player who deliberately re-adds it from the dock keeps it.
-        const MIGRATION_KEY = 'aspect_overlay_matchstatus_default_off';
-        if (!localStorage.getItem(MIGRATION_KEY)) {
-          localStorage.setItem(MIGRATION_KEY, '1');
-          merged.showLobby = false;
-          try {
-            localStorage.setItem('aspect_overlay_cfg_v4', JSON.stringify(merged));
-          } catch {}
-        }
-        return merged;
       }
     } catch {}
     return DEFAULT_OVERLAY_CONFIG;
@@ -387,7 +393,7 @@ export const OverlayView: React.FC = () => {
   const saveConfig = (next: OverlayConfig) => {
     setConfig(next);
     try {
-      localStorage.setItem('aspect_overlay_cfg_v4', JSON.stringify(next));
+      localStorage.setItem('recon_overlay_cfg_v5', JSON.stringify(next));
     } catch {}
   };
 
