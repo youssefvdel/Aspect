@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { DisplayInfo, DisplayMode } from '../types';
 import { CustomResolution } from './CustomResolution';
+import { logger } from '../utils/logger';
 import {
   fetchPreferredStretchedRes,
   savePreferredStretchedRes,
@@ -85,7 +86,7 @@ export const Settings: React.FC<SettingsProps> = ({
       setCustomInputH(res[1].toString());
       setSupportedModes(modes);
     } catch (e) {
-      console.error('Failed to load settings data', e);
+      if (import.meta.env.DEV) logger.error('Failed to load settings data', e);
     }
   };
 

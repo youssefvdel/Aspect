@@ -12,6 +12,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import type { DisplayInfo } from '../types';
+import { logger } from '../utils/logger';
 import {
   applyResolution,
   savePreferredStretchedRes,
@@ -198,7 +199,7 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
       try {
         await applyResolution(safeMode.width, safeMode.height, safeMode.hz);
       } catch (err) {
-        console.error('Failed to revert resolution:', err);
+        if (import.meta.env.DEV) logger.error('Failed to revert resolution:', err);
       }
     }
 

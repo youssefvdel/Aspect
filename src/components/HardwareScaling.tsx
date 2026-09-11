@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { GpuInfo, GpuSettingsReport, GpuSettingItem } from '../types';
 import { autoConfigureGpuScaling, fetchGpuSettings, setGpuSetting } from '../utils/ipc';
+import { logger } from '../utils/logger';
 
 interface HardwareScalingProps {
   gpuInfo: GpuInfo | null;
@@ -28,7 +29,9 @@ export const HardwareScaling: React.FC<HardwareScalingProps> = ({ gpuInfo }) => 
       .then((report) => {
         if (mounted) setSettingsReport(report);
       })
-      .catch((err) => console.error('Failed to fetch GPU settings:', err));
+      .catch((err) => {
+        if (import.meta.env.DEV) logger.error('Failed to fetch GPU settings:', err);
+      });
     return () => {
       mounted = false;
     };

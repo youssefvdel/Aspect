@@ -10,6 +10,7 @@ import { DevDashboard } from './components/DevDashboard';
 import { OverlayView } from './components/OverlayView';
 import { UpdateModal } from './components/UpdateModal';
 import type { DisplayInfo, ShortcutBinding, GpuInfo, TabType } from './types';
+import { logger } from './utils/logger';
 import { checkForUpdate } from './utils/updater';
 import {
   fetchDisplayInfo,
@@ -118,7 +119,7 @@ export const App: React.FC = () => {
         setPreferredStretched(prefRes);
       }
     } catch (e) {
-      console.error('Failed to load telemetry', e);
+      if (import.meta.env.DEV) logger.error('Failed to load telemetry', e);
     }
   };
 

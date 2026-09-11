@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { LiveMatchPlayer, LiveMatchState, LocalRiotAccount, TrackerDuel, TrackerMatchDetail, TrackerMmrPoint, TrackerPlayer, TrackerProfile } from '../types';
 import { isTauri } from './ipc';
 import { getDevMockMatch, isDevNoClient } from './devTools';
+import { logger } from './logger';
 
 /* Keyless tracker: everything comes straight from Riot using the local
    client's own session. No API keys, no third party. Needs Riot Client open.
@@ -742,7 +743,7 @@ export async function resolvePlayerNames(
       } catch {}
     }
   } catch (e) {
-    console.warn('Failed to resolve player names:', e);
+    if (import.meta.env.DEV) logger.warn('Failed to resolve player names:', e);
   }
 
   return cache;

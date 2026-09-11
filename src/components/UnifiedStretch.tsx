@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { DisplayInfo, ShortcutBinding, WindowInfo } from '../types';
 import { listen } from '@tauri-apps/api/event';
+import { logger } from '../utils/logger';
 import {
   formatShortcut,
   vkToName,
@@ -179,7 +180,7 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
         }
       }
     } catch (e) {
-      console.error(e);
+      if (import.meta.env.DEV) logger.error(e);
     } finally {
       setBlLoading(false);
     }
@@ -234,7 +235,7 @@ export const UnifiedStretch: React.FC<UnifiedStretchProps> = ({
           setAutoBlState('done');
         }
       } catch (e) {
-        console.error('auto-borderless poll', e);
+        if (import.meta.env.DEV) logger.error('auto-borderless poll', e);
       }
     };
     tick();
