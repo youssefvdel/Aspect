@@ -1933,7 +1933,7 @@ const VerticalSquadColumn: React.FC<{
       return (
         <div
           key={p.puuid}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border text-xs transition-colors ${
+          className={`relative overflow-hidden flex items-center gap-1.5 px-2 py-1 rounded-xl border text-xs transition-colors ${
             party
               ? `${party.border} ${party.bg} border-white/5`
               : p.isMe
@@ -1941,6 +1941,12 @@ const VerticalSquadColumn: React.FC<{
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
+          {party && (
+            <div
+              className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+              title="Queued together in party"
+            />
+          )}
           {/* Tracker Score tier badge */}
           <div
             className="shrink-0 w-5 flex items-center justify-center"

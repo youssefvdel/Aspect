@@ -6,6 +6,15 @@ import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
 import { getPartyStyle } from '../utils/playerDisplay';
 import { PlayerOverviewModal, type SelectedPlayerInfo } from './PlayerOverviewModal';
 
+import defuseWin from '../assets/round-icons/defuse-win.png';
+import defuseLoss from '../assets/round-icons/defuse-loss.png';
+import elimWin from '../assets/round-icons/elimination-win.png';
+import elimLoss from '../assets/round-icons/elimination-loss.png';
+import detonateWin from '../assets/round-icons/detonate-win.png';
+import detonateLoss from '../assets/round-icons/detonate-loss.png';
+import timeWin from '../assets/round-icons/time-win.png';
+import timeLoss from '../assets/round-icons/time-loss.png';
+
 interface MatchDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -197,6 +206,15 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     [playerStats]
   );
 
+  const isDeathmatch = useMemo(() => {
+    const q = (queue || detail?.queue || '').toLowerCase();
+    return q.includes('deathmatch') || (teamBlue.length === 0 && teamRed.length === 0 && playerStats.length > 0);
+  }, [queue, detail, teamBlue, teamRed, playerStats]);
+
+  const ffaPlayers = useMemo(() => {
+    return [...playerStats].sort((a, b) => (b.kills !== a.kills ? b.kills - a.kills : b.score - a.score));
+  }, [playerStats]);
+
   // Overall Match MVP and Team MVPs
   const matchMvpPuuid = useMemo(() => {
     if (playerStats.length === 0) return '';
@@ -221,20 +239,12 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     return { count, pairs, top, mism };
   }, [detail, teamBlue, teamRed]);
 
-  // Official Valorant / TRN round outcome icons
-  const ROUND_OUTCOME_ICONS: Record<string, string> = {
-    defuse: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/diffusewin1.png',
-    elimination: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/eliminationwin1.png',
-    detonate: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/spike.png',
-    time: 'https://trackercdn.com/cdn/tracker.gg/valorant/icons/timewin1.png',
-  };
-
-  const getRoundOutcomeIcon = (result?: string): string => {
+  const getRoundOutcomeIcon = (result?: string, isWin = true): string => {
     const r = (result || '').toLowerCase();
-    if (r.includes('defuse')) return ROUND_OUTCOME_ICONS.defuse;
-    if (r.includes('detonate') || r.includes('bomb') || r.includes('exploded')) return ROUND_OUTCOME_ICONS.detonate;
-    if (r.includes('time')) return ROUND_OUTCOME_ICONS.time;
-    return ROUND_OUTCOME_ICONS.elimination;
+    if (r.includes('defuse')) return isWin ? defuseWin : defuseLoss;
+    if (r.includes('detonate') || r.includes('bomb') || r.includes('exploded')) return isWin ? detonateWin : detonateLoss;
+    if (r.includes('time')) return isWin ? timeWin : timeLoss;
+    return isWin ? elimWin : elimLoss;
   };
 
   // Personal Duels (You vs Opponents)
@@ -302,10 +312,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     }
     const total = detail.rounds.length;
     return [
-      { name: 'Elimination', count: elim, pct: Math.round((elim / total) * 100), icon: ROUND_OUTCOME_ICONS.elimination },
-      { name: 'Spike Defused', count: defuse, pct: Math.round((defuse / total) * 100), icon: ROUND_OUTCOME_ICONS.defuse },
-      { name: 'Spike Detonated', count: detonate, pct: Math.round((detonate / total) * 100), icon: ROUND_OUTCOME_ICONS.detonate },
-      { name: 'Time Expired', count: time, pct: Math.round((time / total) * 100), icon: ROUND_OUTCOME_ICONS.time },
+      { name: 'Elimination', count: elim, pct: Math.round((elim / total) * 100), icon: elimWin },
+      { name: 'Spike Defused', count: defuse, pct: Math.round((defuse / total) * 100), icon: defuseWin },
+      { name: 'Spike Detonated', count: detonate, pct: Math.round((detonate / total) * 100), icon: detonateWin },
+      { name: 'Time Expired', count: time, pct: Math.round((time / total) * 100), icon: timeWin },
     ];
   }, [detail]);
 
@@ -413,15 +423,27 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
             </div>
 
             {/* Match Score (M3 Semantic Tones) */}
-            <div className="flex items-center gap-2 bg-m3-surface-container-high border border-m3-outline-subtle px-3 py-1.5 rounded-2xl shrink-0">
-              <span className="font-display font-black text-lg text-m3-mint">
-                Team Blue {teamBlueScore}
-              </span>
-              <span className="text-m3-outline font-bold text-sm">:</span>
-              <span className="font-display font-black text-lg text-m3-coral">
-                {teamRedScore} Team Red
-              </span>
-            </div>
+            {isDeathmatch ? (
+              <div className="flex items-center gap-2 bg-m3-surface-container-high border border-m3-outline-subtle px-3 py-1.5 rounded-2xl shrink-0">
+                <span className="font-display font-black text-sm text-amber-300">
+                  Free For All
+                </span>
+                <span className="text-m3-outline text-xs">•</span>
+                <span className="text-xs font-mono font-bold text-m3-outline">
+                  {ffaPlayers.length} Players
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-m3-surface-container-high border border-m3-outline-subtle px-3 py-1.5 rounded-2xl shrink-0">
+                <span className="font-display font-black text-lg text-m3-mint">
+                  Team Blue {teamBlueScore}
+                </span>
+                <span className="text-m3-outline font-bold text-sm">:</span>
+                <span className="font-display font-black text-lg text-m3-coral">
+                  {teamRedScore} Team Red
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Right side: Round Timeline Strip + Close Button */}
@@ -436,19 +458,19 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <div className="flex items-center gap-0.5">
                     {detail.rounds.map((r, i) => {
                       const isWin = r.winningTeam === 'Blue';
-                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult);
+                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult, true);
                       return (
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className={`w-3.5 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
+                          className={`w-4 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
                             isWin
-                              ? 'bg-m3-mint/20 border border-m3-mint/50 text-m3-mint'
-                              : 'bg-white/[0.04] text-m3-outline/25'
+                              ? 'bg-m3-mint/15 border border-m3-mint/40 text-m3-mint'
+                              : 'bg-white/[0.03] text-m3-outline/25'
                           }`}
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-2.5 h-2.5 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
                           ) : (
                             '·'
                           )}
@@ -466,19 +488,19 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   <div className="flex items-center gap-0.5">
                     {detail.rounds.map((r, i) => {
                       const isWin = r.winningTeam === 'Red';
-                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult);
+                      const outcomeIcon = getRoundOutcomeIcon(r.roundResult, false);
                       return (
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className={`w-3.5 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
+                          className={`w-4 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
                             isWin
-                              ? 'bg-m3-coral/20 border border-m3-coral/50 text-m3-coral'
-                              : 'bg-white/[0.04] text-m3-outline/25'
+                              ? 'bg-m3-coral/15 border border-m3-coral/40 text-m3-coral'
+                              : 'bg-white/[0.03] text-m3-outline/25'
                           }`}
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-2.5 h-2.5 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
                           ) : (
                             '·'
                           )}
@@ -545,8 +567,138 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col">
           {/* Tab 1: Scoreboard */}
           {activeTab === 'scoreboard' && (
-            <div className="flex-1 flex flex-col justify-between gap-3 sm:gap-4 min-h-0">
-              {/* Team Blue Table */}
+            isDeathmatch ? (
+              /* Deathmatch / Free For All Unified Table */
+              <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
+                {/* Banner */}
+                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-amber-300 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>Free For All • Deathmatch ({ffaPlayers.length} Players)</span>
+                  </div>
+                  <span className="text-m3-outline font-medium text-[11px]">
+                    Parties indicated by edge color bars
+                  </span>
+                </div>
+
+                {/* Table */}
+                <div className="flex-1 overflow-x-auto min-h-0">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-m3-outline-subtle/60 bg-m3-surface-container-highest/40 text-[10px] font-bold uppercase tracking-wider text-m3-outline select-none">
+                        <th className="py-2 px-3 min-w-[36px]">#</th>
+                        <th className="py-2 px-3 min-w-[44px]">Agent</th>
+                        <th className="py-2 px-3 min-w-[140px]">Player</th>
+                        <th className="py-2 px-2 text-center">Score</th>
+                        <th className="py-2 px-2.5 text-center">K / D / A</th>
+                        <th className="py-2 px-2 text-center">+/-</th>
+                        <th className="py-2 px-2 text-center">K/D</th>
+                        <th className="py-2 px-2 text-center">Damage</th>
+                        <th className="py-2 px-2 text-center">HS%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-m3-outline-subtle/30 font-mono">
+                      {ffaPlayers.map((p, idx) => {
+                        const rIcon = p.tier && tierIcons[p.tier] ? tierIcons[p.tier] : '';
+                        const party = getPartyStyle(p.partyIndex);
+                        const isFirst = idx === 0;
+
+                        return (
+                          <tr
+                            key={p.puuid || idx}
+                            className={`hover:bg-m3-surface-container-high/60 transition-colors ${
+                              party ? party.bg : p.isMe ? 'bg-m3-primary/10' : ''
+                            }`}
+                          >
+                            {/* Rank Place */}
+                            <td className="py-2 px-3 font-bold text-xs text-m3-outline">
+                              {idx + 1}
+                            </td>
+
+                            {/* Agent */}
+                            <td className="relative py-1.5 px-3">
+                              {party && (
+                                <div
+                                  className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+                                  title="Queued together in party"
+                                />
+                              )}
+                              {p.isMe && !party && (
+                                <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-m3-primary" />
+                              )}
+                              <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-m3-outline-subtle bg-m3-surface-container-highest">
+                                {p.agIcon ? (
+                                  <img src={p.agIcon} alt={p.agent} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-m3-surface-container-highest" />
+                                )}
+                                {p.accountLevel ? (
+                                  <span className="absolute bottom-0 right-0 text-[7px] bg-black/80 px-0.5 rounded-tl font-bold text-white leading-tight">
+                                    {p.accountLevel}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+
+                            {/* Player Name */}
+                            <td className="py-1.5 px-3 font-sans">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openPlayer(p)}
+                                  className="font-bold text-xs truncate max-w-[140px] text-left hover:underline hover:text-m3-primary transition-colors cursor-pointer group flex items-center gap-1"
+                                >
+                                  <span className={p.isMe ? 'text-m3-primary font-black' : 'text-m3-on-surface'}>
+                                    {p.displayName}
+                                  </span>
+                                  {p.displayTag ? (
+                                    <span className="text-[10px] text-m3-outline font-normal">#{p.displayTag}</span>
+                                  ) : null}
+                                </button>
+                                {rIcon ? (
+                                  <img src={rIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                                ) : null}
+                                {isFirst && (
+                                  <span className="px-1 py-px rounded text-[8px] font-black uppercase tracking-wider bg-amber-400/15 text-amber-300 border border-amber-400/40">
+                                    Winner
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Score */}
+                            <td className="py-1.5 px-2 text-center text-m3-outline font-bold text-xs">{p.score}</td>
+
+                            {/* K/D/A */}
+                            <td className="py-1.5 px-2.5 text-center text-m3-on-surface text-xs">
+                              {p.kills} <span className="text-m3-outline">/</span> {p.deaths} <span className="text-m3-outline">/</span> {p.assists}
+                            </td>
+
+                            {/* +/- */}
+                            <td className={`py-1.5 px-2 text-center font-bold text-xs ${p.diff >= 0 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                              {p.diff > 0 ? `+${p.diff}` : p.diff}
+                            </td>
+
+                            {/* K/D */}
+                            <td className={`py-1.5 px-2 text-center font-extrabold text-xs ${p.kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}`}>
+                              {p.kd.toFixed(2)}
+                            </td>
+
+                            {/* Damage */}
+                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.damage}</td>
+
+                            {/* HS% */}
+                            <td className="py-1.5 px-2 text-center text-m3-on-surface font-medium text-xs">{p.hsPct}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col justify-between gap-3 sm:gap-4 min-h-0">
+                {/* Team Blue Table */}
               <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
                 {/* Team Blue Banner */}
                 <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint shrink-0">
@@ -852,6 +1004,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* Tab 2: Duels — head-to-head kill matrix */}

@@ -390,7 +390,7 @@ const PlayerRow: React.FC<{
 
   return (
     <div
-      className={`${GRID} rounded-2xl border px-2 py-1.5 transition-colors ${
+      className={`${GRID} relative overflow-hidden rounded-2xl border px-2 py-1.5 transition-colors ${
         party
           ? `${party.border} ${party.bg} border-m3-outline-subtle`
           : p.isMe
@@ -398,6 +398,12 @@ const PlayerRow: React.FC<{
           : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
       }`}
     >
+      {party && (
+        <div
+          className={`absolute left-0 top-1 bottom-1 w-1 rounded-r-full ${party.bar}`}
+          title="Queued together in party"
+        />
+      )}
       {/* Tracker Score badge (hex tier emblem, never a raw number) */}
       <div
         className="flex items-center justify-center"

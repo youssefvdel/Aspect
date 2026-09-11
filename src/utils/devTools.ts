@@ -21,7 +21,6 @@ const readFlag = (key: string): string | null => {
 };
 
 export const getDevMockPhase = (): DevMockPhase => {
-  if (!IS_DEV) return 'off';
   const v = readFlag(DEV_MOCK_KEY);
   return v === 'pregame' || v === 'coregame' || v === 'deathmatch' ? v : 'off';
 };
@@ -146,8 +145,16 @@ function mockCoregame(): LiveMatchState {
 
 function mockDeathmatch(): LiveMatchState {
   mockIdx = 0;
+  // Duo 1: Fragger 1 (You) + Fragger 3 in Party 1 (Amber)
+  // Duo 2: Fragger 7 + Fragger 8 in Party 2 (Cyan)
+  const dmParties: Record<number, number> = { 1: 1, 3: 1, 7: 2, 8: 2 };
   const mkDm = (n: number, team: 'Blue' | 'Red'): LiveMatchPlayer =>
-    mk(`Fragger${n}`, team, 18 + (n % 5), 'Gold 3', n === 1 ? { isMe: true, name: 'You' } : undefined);
+    mk(`Fragger${n}`, team, 18 + (n % 5), 'Gold 3', {
+      isMe: n === 1,
+      name: n === 1 ? 'You' : `Fragger${n}`,
+      partyIndex: dmParties[n],
+      partyId: dmParties[n] ? `dev-dm-party-${dmParties[n]}` : undefined,
+    });
   return {
     phase: 'coregame',
     matchId: 'dev-match-deathmatch',
