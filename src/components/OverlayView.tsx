@@ -1153,7 +1153,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[510px] max-w-[96vw] will-change-transform z-10 ${
+          } select-none w-[580px] max-w-[96vw] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_35px_rgba(168,85,247,0.5)] ring-2 ring-white/30'
               : ''
@@ -1201,7 +1201,7 @@ export const OverlayView: React.FC = () => {
             </>
           )}
           <div
-            className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-1.5 transition-all ${
+            className={`rounded-2xl border p-3 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
                 ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
                 : 'bg-[#0c0816]/75 border-white/10'
@@ -1635,7 +1635,7 @@ const PregameTeamColumn: React.FC<{
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
       {/* Table Column Headers: Score badge, Agent, Player, Rank, Peak, K/D, Win%, HS%, Recent */}
-      <div className="grid grid-cols-[22px_1fr_30px_30px_36px_40px_36px_56px] items-center px-2 py-0.5 text-[8.5px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/5">
+      <div className="grid grid-cols-[26px_1fr_36px_36px_44px_46px_44px_64px] items-center px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/10">
         <span className="text-center" title="Tracker Score tier">TS</span>
         <span>Player</span>
         <span className="text-center">Rank</span>
@@ -1649,7 +1649,7 @@ const PregameTeamColumn: React.FC<{
       </div>
 
       {/* Teammate Rows */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         {players.map((p) => {
           const icon = tierIcons[p.tier];
           const peakIcon = tierIcons[p.peakTier];
@@ -1662,9 +1662,9 @@ const PregameTeamColumn: React.FC<{
           return (
             <div
               key={p.puuid}
-              className={`relative overflow-hidden grid grid-cols-[22px_1fr_30px_30px_36px_40px_36px_56px] items-center px-2 py-0.5 rounded-lg border text-xs transition-colors ${
+              className={`relative overflow-hidden grid grid-cols-[26px_1fr_36px_36px_44px_46px_44px_64px] items-center px-2.5 py-1 rounded-xl border text-xs transition-colors ${
                 party
-                  ? `${party.border} ${party.bg} border-white/10`
+                  ? `${party.bg} border-white/10`
                   : p.isMe
                   ? 'bg-purple-500/15 border-purple-400/30 text-white shadow-xs'
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
@@ -1672,7 +1672,7 @@ const PregameTeamColumn: React.FC<{
             >
               {party && (
                 <div
-                  className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${party.bar} shadow-[0_0_8px_rgba(255,255,255,0.3)]`}
+                  className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
                   title={`Queued together in ${party.name}`}
                 />
               )}
@@ -1686,16 +1686,16 @@ const PregameTeamColumn: React.FC<{
                 }
               >
                 {p.trnScore != null ? (
-                  <ScoreBadge tier={scoreTier(p.trnScore).tier} size={16} />
+                  <ScoreBadge tier={scoreTier(p.trnScore).tier} size={20} />
                 ) : (
-                  <span className="w-4 h-4 rounded border border-white/10 bg-white/[0.03] flex items-center justify-center text-[8px] font-mono text-zinc-600">
+                  <span className="w-5 h-5 rounded border border-white/10 bg-white/[0.03] flex items-center justify-center text-[9px] font-mono text-zinc-600">
                     —
                   </span>
                 )}
               </div>
 
               {/* Agent Icon (with Flag overlay) + Player Name & Pick State */}
-              <div className="flex items-center gap-1.5 min-w-0 pr-1">
+              <div className="flex items-center gap-2 min-w-0 pr-1">
                 <div className="relative shrink-0">
                   {p.agentIcon ? (
                     <img
@@ -1705,12 +1705,12 @@ const PregameTeamColumn: React.FC<{
                       onError={(e) => {
                         (e.currentTarget as HTMLElement).style.display = 'none';
                       }}
-                      className={`w-5 h-5 rounded-md object-cover border ${
+                      className={`w-[26px] h-[26px] rounded-lg object-cover border ${
                         locked ? 'border-m3-mint/60' : hasPick ? 'border-amber-300/60' : 'border-white/10'
                       } pointer-events-none select-none`}
                     />
                   ) : (
-                    <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-black text-zinc-400">
+                    <div className="w-[26px] h-[26px] rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center text-[10px] font-black text-zinc-400">
                       ?
                     </div>
                   )}
@@ -1723,46 +1723,46 @@ const PregameTeamColumn: React.FC<{
                       onError={(e) => {
                         (e.currentTarget as HTMLElement).style.display = 'none';
                       }}
-                      className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1px] shadow-sm border border-black/80 pointer-events-none select-none"
+                      className="absolute -bottom-0.5 -right-0.5 w-3.5 h-2.5 object-cover rounded-[1.5px] shadow-sm border border-black/80 pointer-events-none select-none"
                     />
                   )}
                 </div>
 
                 <div className="flex flex-col min-w-0 flex-1 leading-tight">
-                  <div className="flex items-center gap-1 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     {party && (
                       <span
-                        className={`w-1.5 h-1.5 rounded-full ${party.bar} shrink-0 shadow-xs`}
+                        className={`w-2 h-2 rounded-full ${party.bar} shrink-0 shadow-xs`}
                         title={`Queued together in ${party.name}`}
                       />
                     )}
-                    <span className="font-bold text-[10.5px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
+                    <span className="font-bold text-[12.5px] text-white truncate" title={`${p.name}${p.tag ? '#' + p.tag : ''}`}>
                       {p.name}
                     </span>
                     {p.isMe && (
-                      <span className="px-1 py-px rounded bg-purple-500/80 text-[6.5px] font-black text-white uppercase shrink-0">
+                      <span className="px-1.5 py-0.5 rounded bg-purple-500/80 text-[7.5px] font-black text-white uppercase shrink-0">
                         You
                       </span>
                     )}
                     {p.isIncognito && (
                       <span
-                        className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[6.5px] font-mono font-bold uppercase shrink-0"
+                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[7.5px] font-mono font-bold uppercase shrink-0"
                         title="Name Hidden in Valorant (Unmasked by Recon)"
                       >
-                        <EyeOff className="w-2 h-2" />
+                        <EyeOff className="w-2.5 h-2.5" />
                         Hidden
                       </span>
                     )}
                   </div>
-                  <span className="text-[7.5px] font-mono font-semibold">
+                  <span className="text-[9.5px] font-mono font-semibold">
                     {locked ? (
-                      <span className="flex items-center gap-0.5 text-m3-mint">
-                        <Check className="w-2 h-2 stroke-[3]" />
+                      <span className="flex items-center gap-1 text-m3-mint">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
                         {p.agentName}
                       </span>
                     ) : hasPick ? (
-                      <span className="flex items-center gap-0.5 text-amber-300">
-                        <Clock className="w-2 h-2" />
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <Clock className="w-2.5 h-2.5" />
                         {p.agentName}
                       </span>
                     ) : (
@@ -1778,12 +1778,12 @@ const PregameTeamColumn: React.FC<{
                 title={rankTooltip(p, seasons?.[p.peakSeasonId?.toLowerCase() ?? ''])}
               >
                 {icon ? (
-                  <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0" />
+                  <img src={icon} alt="" draggable={false} className="w-[22px] h-[22px] object-contain shrink-0" />
                 ) : (
-                  <span className="text-[9px] font-mono text-zinc-500">—</span>
+                  <span className="text-[10px] font-mono text-zinc-500">—</span>
                 )}
                 {p.rr > 0 && (
-                  <span className="text-[7.5px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
+                  <span className="text-[8.5px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
                 )}
               </div>
 
@@ -1797,24 +1797,24 @@ const PregameTeamColumn: React.FC<{
                 }`}
               >
                 {peakIcon ? (
-                  <img src={peakIcon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain opacity-75 shrink-0" />
+                  <img src={peakIcon} alt="" draggable={false} className="w-[18px] h-[18px] object-contain opacity-75 shrink-0" />
                 ) : (
-                  <span className="text-[9px] font-mono text-zinc-500">—</span>
+                  <span className="text-[10px] font-mono text-zinc-500">—</span>
                 )}
                 {p.peakSeasonId && seasons?.[p.peakSeasonId.toLowerCase()] && (
-                  <span className="text-[6.5px] font-mono font-bold text-zinc-400 mt-0.5 tracking-tight">
+                  <span className="text-[7.5px] font-mono font-bold text-zinc-400 mt-0.5 tracking-tight">
                     {shortAct(seasons[p.peakSeasonId.toLowerCase()])}
                   </span>
                 )}
               </div>
 
               {/* K/D */}
-              <div className="text-right font-mono text-[9.5px] font-bold" title="K/D Ratio">
+              <div className="text-right font-mono text-[11px] font-bold" title="K/D Ratio">
                 <span className={kd.color}>{kd.text}</span>
               </div>
 
               {/* Win % */}
-              <div className="text-right font-mono text-[9.5px] font-semibold" title="Act Win Rate">
+              <div className="text-right font-mono text-[11px] font-semibold" title="Act Win Rate">
                 {p.winPct != null ? (
                   <span className={p.winPct >= 50 ? 'text-m3-mint' : 'text-zinc-400'}>
                     {p.winPct}%
@@ -1825,7 +1825,7 @@ const PregameTeamColumn: React.FC<{
               </div>
 
               {/* HS % */}
-              <div className="text-right font-mono text-[9.5px]" title="Headshot %">
+              <div className="text-right font-mono text-[11px]" title="Headshot %">
                 {p.hsPct != null ? (
                   <span className="text-amber-200/90 font-medium">{p.hsPct}%</span>
                 ) : (
@@ -1835,31 +1835,30 @@ const PregameTeamColumn: React.FC<{
 
               {/* Last 24h record (W/L) + current streak */}
               <div
-                className="flex flex-col items-end leading-none font-mono"
+                className="flex flex-col items-end leading-none font-mono text-[10px]"
                 title={`Last 24 hours: ${p.recentWon ?? 0}W - ${p.recentLost ?? 0}L${
                   p.streak && p.streak > 0 ? ` • ${p.streak} ${p.streakIsWin ? 'win' : 'loss'} streak` : ''
                 }`}
               >
                 {p.recentWon != null || p.recentLost != null ? (
                   <>
-                    <span className="text-[9px] font-bold">
-                      <span className={p.recentWon ? 'text-m3-mint' : 'text-zinc-500'}>{p.recentWon ?? 0}W</span>
-                      <span className="text-zinc-600"> - </span>
-                      <span className={p.recentLost ? 'text-rose-400' : 'text-zinc-500'}>{p.recentLost ?? 0}L</span>
+                    <span className="font-bold whitespace-nowrap">
+                      <span className="text-m3-mint">{p.recentWon ?? 0}W</span>
+                      <span className="text-zinc-500 mx-0.5">-</span>
+                      <span className="text-rose-400">{p.recentLost ?? 0}L</span>
                     </span>
-                    {p.streak && p.streak > 1 && p.streakIsWin !== undefined ? (
+                    {p.streak && p.streak > 0 ? (
                       <span
                         className={`text-[8px] font-bold mt-0.5 ${
                           p.streakIsWin ? 'text-m3-mint' : 'text-rose-400'
                         }`}
                       >
-                        {p.streak}
-                        {p.streakIsWin ? 'W' : 'L'} Strk
+                        {p.streak}{p.streakIsWin ? 'W' : 'L'}
                       </span>
                     ) : null}
                   </>
                 ) : (
-                  <span className="text-[10px] text-zinc-600">—</span>
+                  <span className="text-zinc-600">—</span>
                 )}
               </div>
             </div>
@@ -1896,7 +1895,7 @@ const VerticalSquadColumn: React.FC<{
           key={p.puuid}
           className={`relative overflow-hidden flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-xs transition-colors ${
             party
-              ? `${party.border} ${party.bg} border-white/10`
+              ? `${party.bg} border-white/10`
               : p.isMe
               ? 'bg-purple-950/30 border-purple-500/40 text-white shadow-xs'
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
@@ -1904,7 +1903,7 @@ const VerticalSquadColumn: React.FC<{
         >
           {party && (
             <div
-              className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${party.bar} shadow-[0_0_8px_rgba(255,255,255,0.3)]`}
+              className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
               title={`Queued together in ${party.name}`}
             />
           )}
