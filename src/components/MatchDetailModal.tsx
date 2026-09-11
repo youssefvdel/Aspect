@@ -463,16 +463,12 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className={`w-4 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
-                            isWin
-                              ? 'bg-m3-mint/15 border border-m3-mint/40 text-m3-mint'
-                              : 'bg-white/[0.03] text-m3-outline/25'
-                          }`}
+                          className="w-4 h-4 flex items-center justify-center shrink-0"
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                           ) : (
-                            '·'
+                            <span className="text-[9px] text-white/15 leading-none select-none">·</span>
                           )}
                         </div>
                       );
@@ -493,16 +489,12 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className={`w-4 h-4 rounded-xs flex items-center justify-center text-[8px] font-bold ${
-                            isWin
-                              ? 'bg-m3-coral/15 border border-m3-coral/40 text-m3-coral'
-                              : 'bg-white/[0.03] text-m3-outline/25'
-                          }`}
+                          className="w-4 h-4 flex items-center justify-center shrink-0"
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3.5 h-3.5 object-contain" />
                           ) : (
-                            '·'
+                            <span className="text-[9px] text-white/15 leading-none select-none">·</span>
                           )}
                         </div>
                       );
