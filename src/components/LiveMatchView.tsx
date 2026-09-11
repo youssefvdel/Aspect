@@ -11,7 +11,7 @@ import {
   Swords,
   Users,
   Clock,
-  Crosshair,
+  Sparkles,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames, fetchMatchLoadouts } from '../utils/tracker';
@@ -431,7 +431,7 @@ const MatchStatusStrip: React.FC<{
 /* Player table — mirrors the Agent Select widget's columns            */
 /* ------------------------------------------------------------------ */
 
-const GRID = 'grid grid-cols-[28px_1fr_36px_36px_48px_44px_48px_44px_68px_42px] items-center gap-x-1';
+const GRID = 'grid grid-cols-[1fr_28px_40px_34px_44px_40px_44px_40px_64px_36px_54px] items-center gap-x-1.5';
 
 const ACCENTS: Record<string, { tag: string; border: string }> = {
   primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
@@ -470,8 +470,8 @@ const PlayerTable: React.FC<{
       <div
         className={`${GRID} px-2 pb-0.5 text-[8.5px] font-mono uppercase tracking-wider text-m3-outline border-b border-m3-outline-subtle shrink-0`}
       >
-        <span className="text-center" title="Tracker Score tier">TS</span>
         <span>Player</span>
+        <span className="text-center" title="Tracker Score tier">TS</span>
         <span className="text-center">Rank</span>
         <span className="text-center" title="Peak rank — the act it was earned in is shown under the emblem">
           Peak
@@ -489,6 +489,7 @@ const PlayerTable: React.FC<{
           {scope ? `24h ${scope}` : 'Last 24h'}
         </span>
         <span className="text-right">Lvl</span>
+        <span className="text-center" title="Equipped weapon skins & cosmetics">Skins</span>
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5 overflow-hidden">
@@ -552,25 +553,8 @@ const PlayerRow: React.FC<{
           />
         </svg>
       )}
-      {/* Tracker Score badge (hex tier emblem, never a raw number) */}
-      <div
-        className="flex items-center justify-center"
-        title={
-          p.trnScore != null
-            ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
-            : 'Tracker Score unavailable'
-        }
-      >
-        {p.trnScore != null ? (
-          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={18} />
-        ) : (
-          <span className="w-4.5 h-4.5 rounded border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[8px] font-mono text-m3-outline">
-            —
-          </span>
-        )}
-      </div>
 
-      {/* Agent portrait + flag, name, badges */}
+      {/* 1. Agent portrait + flag, name, badges */}
       <div className="flex items-center gap-2 min-w-0">
         <div className="relative shrink-0">
           {p.agentIcon ? (
@@ -629,19 +613,6 @@ const PlayerRow: React.FC<{
                 {p.nameResolved ? 'Unmasked' : 'Hidden'}
               </span>
             )}
-            {onShowLoadout && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onShowLoadout(p);
-                }}
-                className="ml-0.5 shrink-0 rounded p-0.5 text-m3-outline hover:text-m3-primary hover:bg-m3-primary/10 transition-colors"
-                title={`View ${p.name}'s loadout`}
-                aria-label={`View ${p.name}'s loadout`}
-              >
-                <Crosshair className="w-2.5 h-2.5" />
-              </button>
-            )}
           </div>
           <div className="text-[9px] text-m3-outline truncate flex items-center gap-1">
             <span className="font-medium text-m3-on-surface-variant truncate">
@@ -652,22 +623,47 @@ const PlayerRow: React.FC<{
         </div>
       </div>
 
-      {/* Current rank — emblem only, per the "no rank text" rule */}
-      <div className="flex items-center justify-center" title={rankTooltip(p, actLabel)}>
-        {rankIcon ? (
-          <img src={rankIcon} alt={p.rank} className="w-6.5 h-6.5 object-contain" />
+      {/* 2. Tracker Score badge — placed next to Rank on the left */}
+      <div
+        className="flex items-center justify-center"
+        title={
+          p.trnScore != null
+            ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
+            : 'Tracker Score unavailable'
+        }
+      >
+        {p.trnScore != null ? (
+          <ScoreBadge tier={scoreTier(p.trnScore).tier} size={18} />
         ) : (
-          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
+          <span className="w-4.5 h-4.5 rounded border border-m3-outline-subtle bg-m3-surface-container flex items-center justify-center text-[8px] font-mono text-m3-outline">
+            —
+          </span>
         )}
       </div>
 
-      {/* Peak rank — emblem with the act it was earned in beneath it */}
+      {/* 3. Current rank emblem + live RR */}
+      <div className="flex flex-col items-center justify-center leading-none" title={rankTooltip(p, actLabel)}>
+        {rankIcon ? (
+          <img src={rankIcon} alt={p.rank} className="w-5.5 h-5.5 object-contain" />
+        ) : (
+          <span className="text-[8.5px] font-mono text-m3-outline">—</span>
+        )}
+        {p.tier > 2 ? (
+          <span className="text-[7.5px] font-mono font-bold text-m3-primary/90 mt-0.5 tracking-tight">
+            {p.rr}<span className="text-[6.5px] text-m3-outline font-normal ml-0.5">RR</span>
+          </span>
+        ) : (
+          <span className="text-[7.5px] font-mono text-m3-outline mt-0.5">—</span>
+        )}
+      </div>
+
+      {/* 4. Peak rank — emblem with the act it was earned in beneath it */}
       <div
         className="flex flex-col items-center justify-center"
         title={p.peakTier > 0 ? `Peak ${p.peakRank}${actLabel ? ` (${shortAct(actLabel)})` : ''}` : 'Peak unavailable'}
       >
         {peakIcon ? (
-          <img src={peakIcon} alt={p.peakRank} className="w-5.5 h-5.5 object-contain opacity-90" />
+          <img src={peakIcon} alt={p.peakRank} className="w-5 h-5 object-contain opacity-90" />
         ) : (
           <span className="text-[8.5px] font-mono text-m3-outline">—</span>
         )}
@@ -678,7 +674,7 @@ const PlayerRow: React.FC<{
         )}
       </div>
 
-      {/* ACS — the sort key, so it reads first among the numbers */}
+      {/* 5. ACS — the sort key, so it reads first among the numbers */}
       <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide average combat score">
         {p.acs != null ? (
           <span className={p.acs >= 200 ? 'text-m3-primary' : p.acs >= 150 ? 'text-m3-on-surface' : 'text-m3-outline'}>
@@ -689,12 +685,12 @@ const PlayerRow: React.FC<{
         )}
       </div>
 
-      {/* K/D */}
+      {/* 6. K/D */}
       <div className="text-right font-mono text-[10.5px] font-bold" title="Act-wide K/D">
         <span className={kd.color}>{kd.text}</span>
       </div>
 
-      {/* Win % */}
+      {/* 7. Win % */}
       <div className="text-right font-mono text-[10.5px]" title="Act-wide win rate">
         {p.winPct != null ? (
           <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
@@ -705,19 +701,37 @@ const PlayerRow: React.FC<{
         )}
       </div>
 
-      {/* HS % */}
+      {/* 8. HS % */}
       <div className="text-right font-mono text-[10.5px] text-amber-500" title="Act-wide headshot %">
         {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-m3-outline">—</span>}
       </div>
 
-      {/* Last 24h W/L */}
+      {/* 9. Last 24h W/L */}
       <div className="text-right font-mono text-[9.5px]" title="Wins / losses in the last 24 hours">
         {recent ? <span className={recent.color}>{recent.text}</span> : <span className="text-m3-outline">—</span>}
       </div>
 
-      {/* Account level */}
+      {/* 10. Account level */}
       <div className="text-right font-mono text-[9.5px] text-m3-outline" title="Account level">
         {p.accountLevel > 0 ? p.accountLevel : '—'}
+      </div>
+
+      {/* 11. Skins / Loadout button */}
+      <div className="flex items-center justify-center">
+        {onShowLoadout && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onShowLoadout(p);
+            }}
+            className="px-2 py-0.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/30 border border-purple-400/35 hover:border-purple-400/70 text-purple-200 hover:text-white transition-all flex items-center justify-center gap-1 text-[9px] font-bold font-display shadow-xs cursor-pointer active:scale-95"
+            title={`View ${p.name}'s weapon skins & loadout`}
+            aria-label={`View ${p.name}'s loadout`}
+          >
+            <Sparkles className="w-2.5 h-2.5 text-purple-300" />
+            <span>Skins</span>
+          </button>
+        )}
       </div>
     </div>
   );
