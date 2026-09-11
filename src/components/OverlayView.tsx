@@ -2064,12 +2064,26 @@ const PregameTeamColumn: React.FC<{
                   : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-200'
               }`}
             >
-              {party && (
-                <div
-                  className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
-                  title={`Queued together in ${party.name}`}
-                />
-              )}
+              {/* Team / Party rounded bow arc indicator on the left of the player row */}
+              <div
+                className="absolute left-0.5 top-0 bottom-0 flex items-center justify-center pointer-events-none"
+                title={party ? `Queued together in ${party.name}` : 'Solo'}
+              >
+                <svg
+                  className={`w-2 h-4 shrink-0 transition-colors ${
+                    party ? party.text : 'text-purple-300/60'
+                  }`}
+                  viewBox="0 0 8 20"
+                  fill="none"
+                >
+                  <path
+                    d="M 1.5 2 C 6.5 6, 6.5 14, 1.5 18"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
               {/* Tracker Score badge (hex tier emblem, never a raw number) */}
               <div
                 className="flex items-center justify-center shrink-0"
@@ -2300,12 +2314,26 @@ const VerticalSquadColumn: React.FC<{
               : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
           }`}
         >
-          {party && (
-            <div
-              className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
-              title={`Queued together in ${party.name}`}
-            />
-          )}
+          {/* Team / Party rounded bow arc indicator on the left of the player row */}
+          <div
+            className="absolute left-0.5 top-0 bottom-0 flex items-center justify-center pointer-events-none"
+            title={party ? `Queued together in ${party.name}` : 'Solo'}
+          >
+            <svg
+              className={`w-1.5 h-3.5 shrink-0 transition-colors ${
+                party ? party.text : 'text-purple-300/60'
+              }`}
+              viewBox="0 0 8 20"
+              fill="none"
+            >
+              <path
+                d="M 1.5 2 C 6.5 6, 6.5 14, 1.5 18"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
           {/* Tracker Score tier badge */}
           <div
             className="shrink-0 w-4 flex items-center justify-center"

@@ -496,6 +496,7 @@ const PlayerTable: React.FC<{
           <PlayerRow
             key={p.puuid}
             p={p}
+            accent={accent}
             tierIcons={tierIcons}
             seasonNames={seasonNames}
             onShowLoadout={onShowLoadout}
@@ -513,10 +514,11 @@ const PlayerTable: React.FC<{
 
 const PlayerRow: React.FC<{
   p: LiveMatchPlayer;
+  accent: keyof typeof ACCENTS;
   tierIcons: Record<number, string>;
   seasonNames: Record<string, string>;
   onShowLoadout?: (p: LiveMatchPlayer) => void;
-}> = ({ p, tierIcons, seasonNames, onShowLoadout }) => {
+}> = ({ p, accent, tierIcons, seasonNames, onShowLoadout }) => {
   const rankIcon = tierIcons[p.tier];
   const peakIcon = tierIcons[p.peakTier];
   const kd = formatKd(p.kd);
@@ -535,12 +537,32 @@ const PlayerRow: React.FC<{
           : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
       }`}
     >
-      {party && (
-        <div
-          className={`absolute left-0 top-0.5 bottom-0.5 w-[3px] rounded-r-full ${party.bar}`}
-          title={`Queued together in ${party.name}`}
-        />
-      )}
+      {/* Team / Party rounded bow arc indicator on the left of the player row */}
+      <div
+        className="absolute left-0.5 top-0 bottom-0 flex items-center justify-center pointer-events-none"
+        title={party ? `Queued together in ${party.name}` : accent === 'coral' ? 'Enemy Team' : 'Your Team'}
+      >
+        <svg
+          className={`w-2 h-4 shrink-0 transition-colors ${
+            party
+              ? party.text
+              : accent === 'coral'
+              ? 'text-rose-400/80'
+              : accent === 'gold'
+              ? 'text-amber-400/80'
+              : 'text-purple-300/80'
+          }`}
+          viewBox="0 0 8 20"
+          fill="none"
+        >
+          <path
+            d="M 1.5 2 C 6.5 6, 6.5 14, 1.5 18"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
       {/* Tracker Score badge (hex tier emblem, never a raw number) */}
       <div
         className="flex items-center justify-center"
