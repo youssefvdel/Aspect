@@ -723,10 +723,15 @@ export async function resolvePlayerNames(
  * Immutable → cached forever. Throws when unusable.
  */
 export async function fetchMatchDetailDirect(region: string, matchId: string): Promise<TrackerMatchDetail> {
-  const cacheKey = `aspect_match_v5_${matchId}`;
+  const cacheKey = `recon_match_v6_${matchId}`;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (raw) return JSON.parse(raw) as TrackerMatchDetail;
+    const legacyRaw = localStorage.getItem(`aspect_match_v5_${matchId}`);
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw) as TrackerMatchDetail;
+      if (parsed.players?.[0]?.partyId) return parsed;
+    }
   } catch {}
   const shard = shardFor(region);
   const j = await riotGet(shard, `/match-details/v1/matches/${matchId}`);
