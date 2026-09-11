@@ -84,6 +84,80 @@ fn local_get(port: &str, password: &str, path: &str) -> Result<serde_json::Value
         .map_err(|_| "Unexpected local response.".to_string())
 }
 
+/// POST a JSON body to the local Riot Client. Same trust boundary as
+/// `local_get` (loopback + lockfile credentials).
+fn local_post(port: &str, password: &str, path: &str, body: &str) -> Result<serde_json::Value, String> {
+    let url = format!("https://127.0.0.1:{}{}", port, path);
+    let output = curl_args()
+        .args([
+            "-s",
+            "-k",
+            "--connect-timeout",
+            "1",
+            "--max-time",
+            "3",
+            "-u",
+            &format!("riot:{}", password),
+            "-H",
+            "Content-Type: application/json",
+            "-X",
+            "POST",
+            "-d",
+            body,
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("Local query failed: {}", e))?;
+    if !output.status.success() {
+        return Err("Riot Client not responding — launch it and retry.".to_string());
+    }
+    serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+        .map_err(|_| "Unexpected local response.".to_string())
+}
+
+/// Resolve PUUIDs to Riot IDs through the Riot Client's OWN account service
+/// (`/player-account/lookup/v2/namesets-for-puuids`), not the game's
+/// name-service.
+///
+/// Why this exists: it is a single batched local call — no entitlements token,
+/// no `pd.*` round trip, no Cloudflare, no 1015 rate limit. It also reports an
+/// explicit per-PUUID `error` string ("Nameset V2 not found for puuid.") which
+/// lets the UI tell "no name exists" apart from "the call failed" — the remote
+/// endpoint returns a blank string with no marker, which is why HIDDEN and
+/// FAILED were previously indistinguishable.
+///
+/// Returns the raw `namesets` array so the caller keeps `error` alongside
+/// `alias`. PUUIDs are chunked because a whole lobby is small but the request
+/// is unrouted for very large inputs.
+fn riot_local_namesets_blocking(puuids: Vec<String>) -> Result<String, String> {
+    if puuids.is_empty() {
+        return Ok("[]".to_string());
+    }
+    let (port, password) = lockfile_auth()?;
+    let mut all: Vec<serde_json::Value> = Vec::new();
+    for chunk in puuids.chunks(25) {
+        let body = serde_json::json!({ "puuids": chunk }).to_string();
+        let v = local_post(
+            &port,
+            &password,
+            "/player-account/lookup/v2/namesets-for-puuids",
+            &body,
+        )?;
+        if let Some(items) = v.get("namesets").and_then(|n| n.as_array()) {
+            all.extend(items.iter().cloned());
+        }
+    }
+    serde_json::to_string(&all).map_err(|e| format!("Serialize failed: {}", e))
+}
+
+/// Local, batched PUUID -> Riot ID lookup via the Riot Client account service.
+#[tauri::command]
+pub async fn riot_local_namesets(puuids: Vec<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || riot_local_namesets_blocking(puuids))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
 /// Reads the logged-in Riot account from the local Riot Client lockfile —
 /// the same technique desktop trackers use.
 fn detect_local_account_blocking() -> Result<LocalRiotAccount, String> {

@@ -717,13 +717,45 @@ export async function resolvePlayerNames(
   const missing = puuids.filter((p) => !cachedFor(p)?.name);
   if (missing.length === 0) return cache;
 
+  // Path 1 — the Riot Client's own account service. Local, batched, no
+  // entitlements token, no remote round trip, no 1015 rate limit. It also
+  // reports an explicit per-PUUID error, so a blank name here is a real
+  // "unknown", not a silent failure. This is the primary path; the remote
+  // name-service below is the fallback.
+  try {
+    const localRes = await invoke<string>('riot_local_namesets', { puuids: missing });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const localParsed = JSON.parse(localRes) as any[];
+    if (Array.isArray(localParsed)) {
+      for (const item of localParsed) {
+        const sub = String(item?.puuid ?? item?.Subject ?? '').trim();
+        const gn = String(item?.alias?.gameName ?? item?.alias?.game_name ?? '').trim();
+        const tl = String(item?.alias?.tagLine ?? item?.alias?.tag_line ?? '').trim();
+        if (sub && gn) {
+          cache[sub] = { name: gn, tag: tl };
+          cache[sub.toLowerCase()] = { name: gn, tag: tl };
+          cache[sub.toUpperCase()] = { name: gn, tag: tl };
+        }
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(cache));
+      } catch {}
+    }
+  } catch (e) {
+    if (import.meta.env.DEV) logger.warn('Local nameset lookup failed:', e);
+  }
+
+  // Only PUUIDs the local service could not answer go to the remote call.
+  const stillMissing = puuids.filter((p) => !cachedFor(p)?.name);
+  if (stillMissing.length === 0) return cache;
+
   try {
     // Accept either a short region ('eu') or a full pd host — Rust
     // normalizes both, but short codes are unambiguous.
     const short = shard.replace(/^pd\./i, '').replace(/\.a\.pvp\.net$/i, '').toLowerCase() || 'eu';
     const res = await invoke<string>('riot_resolve_names', {
       shard: short,
-      puuids: missing,
+      puuids: stillMissing,
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = JSON.parse(res) as any[];

@@ -1022,6 +1022,7 @@ pub fn run() {
             tracker::local_client_version,
             tracker::riot_direct_get,
             tracker::riot_resolve_names,
+            tracker::riot_local_namesets,
             tracker::trn_get,
             get_quick_shortcuts,
             check_requested_tab,
