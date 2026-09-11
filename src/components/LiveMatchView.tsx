@@ -537,32 +537,19 @@ const PlayerRow: React.FC<{
           : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
       }`}
     >
-      {/* Team / Party rounded bow arc indicator on the left of the player row */}
+      {/* Curved bow cap wrapping the outer left edge and corners of the player row */}
       <div
-        className="absolute left-0.5 top-0 bottom-0 flex items-center justify-center pointer-events-none"
+        className={`absolute left-0 top-0 bottom-0 w-3 rounded-l-xl border-l-[3.5px] border-t-[3.5px] border-b-[3.5px] border-r-0 pointer-events-none transition-colors ${
+          party
+            ? party.bar.replace('bg-', 'border-')
+            : accent === 'coral'
+            ? 'border-rose-400/60'
+            : accent === 'gold'
+            ? 'border-amber-400/60'
+            : 'border-purple-400/60'
+        }`}
         title={party ? `Queued together in ${party.name}` : accent === 'coral' ? 'Enemy Team' : 'Your Team'}
-      >
-        <svg
-          className={`w-2 h-4 shrink-0 transition-colors ${
-            party
-              ? party.text
-              : accent === 'coral'
-              ? 'text-rose-400/80'
-              : accent === 'gold'
-              ? 'text-amber-400/80'
-              : 'text-purple-300/80'
-          }`}
-          viewBox="0 0 8 20"
-          fill="none"
-        >
-          <path
-            d="M 1.5 2 C 6.5 6, 6.5 14, 1.5 18"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
+      />
       {/* Tracker Score badge (hex tier emblem, never a raw number) */}
       <div
         className="flex items-center justify-center"
