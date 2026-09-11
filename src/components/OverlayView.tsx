@@ -39,33 +39,33 @@ export interface OverlayConfig {
 }
 
 export function getDefaultOverlayPositions(): OverlayConfig['positions'] {
-  const w = typeof window !== 'undefined' ? window.innerWidth : 2560;
+  const w = typeof window !== 'undefined' ? window.innerWidth : 2088;
   const h = typeof window !== 'undefined' ? window.innerHeight : 1440;
 
   // Exact coordinates requested:
-  // Agent Select (pregame): X: 717, Y: 417
-  // Match Status (lobby): X: 24, Y: 653
-  // Top Agents (topAgents): X: 1696, Y: 837
-  if (w === 2560 && h === 1440) {
+  // Agent Select (pregame): X: 767, Y: 447
+  // Match Status (lobby): X: 22, Y: 654
+  // Top Agents (topAgents): X: 1691, Y: 836
+  if (w <= 2088 || (w >= 2080 && w <= 2090)) {
     return {
-      lobby: { x: 24, y: 653 },
-      pregame: { x: 717, y: 417 },
-      topAgents: { x: 1696, y: 837 },
+      lobby: { x: 22, y: 654 },
+      pregame: { x: 767, y: 447 },
+      topAgents: { x: 1691, y: 836 },
     };
   }
 
   return {
     lobby: {
-      x: Math.max(16, Math.round(w * (24 / 2560))),
-      y: Math.max(40, Math.round(h * (653 / 1440))),
+      x: Math.max(16, Math.round(w * (22 / 2088))),
+      y: Math.max(40, Math.round(h * (654 / 1440))),
     },
     pregame: {
-      x: Math.max(20, Math.round(w * (717 / 2560))),
-      y: Math.max(40, Math.round(h * (417 / 1440))),
+      x: Math.max(20, Math.round(w * (767 / 2088))),
+      y: Math.max(40, Math.round(h * (447 / 1440))),
     },
     topAgents: {
-      x: Math.max(20, Math.round(w * (1696 / 2560))),
-      y: Math.max(40, Math.round(h * (837 / 1440))),
+      x: Math.max(20, Math.round(w * (1691 / 2088))),
+      y: Math.max(40, Math.round(h * (836 / 1440))),
     },
   };
 }
@@ -369,14 +369,14 @@ export const OverlayView: React.FC = () => {
 
   // Widget config + positions (persisted)
   const [config, setConfig] = useState<OverlayConfig>(() => {
-    const MIGRATION_KEY = 'recon_overlay_cfg_v5_defaults';
+    const MIGRATION_KEY = 'recon_overlay_cfg_v6_defaults';
     try {
       if (!localStorage.getItem(MIGRATION_KEY)) {
         localStorage.setItem(MIGRATION_KEY, '1');
-        localStorage.setItem('recon_overlay_cfg_v5', JSON.stringify(DEFAULT_OVERLAY_CONFIG));
+        localStorage.setItem('recon_overlay_cfg_v6', JSON.stringify(DEFAULT_OVERLAY_CONFIG));
         return DEFAULT_OVERLAY_CONFIG;
       }
-      const saved = localStorage.getItem('recon_overlay_cfg_v5') || localStorage.getItem('aspect_overlay_cfg_v4');
+      const saved = localStorage.getItem('recon_overlay_cfg_v6') || localStorage.getItem('recon_overlay_cfg_v5') || localStorage.getItem('aspect_overlay_cfg_v4');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -393,7 +393,7 @@ export const OverlayView: React.FC = () => {
   const saveConfig = (next: OverlayConfig) => {
     setConfig(next);
     try {
-      localStorage.setItem('recon_overlay_cfg_v5', JSON.stringify(next));
+      localStorage.setItem('recon_overlay_cfg_v6', JSON.stringify(next));
     } catch {}
   };
 
