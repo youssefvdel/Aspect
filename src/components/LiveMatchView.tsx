@@ -392,7 +392,7 @@ const PlayerRow: React.FC<{
     <div
       className={`${GRID} relative overflow-hidden rounded-2xl border px-2 py-1.5 transition-colors ${
         party
-          ? `${party.border} ${party.bg} border-m3-outline-subtle/40`
+          ? `${party.bg} border-m3-outline-subtle/40`
           : p.isMe
           ? 'bg-m3-primary/10 border-m3-primary/40 shadow-xs'
           : 'bg-m3-surface-container border-m3-outline-subtle hover:bg-m3-surface-container-high'
@@ -400,7 +400,7 @@ const PlayerRow: React.FC<{
     >
       {party && (
         <div
-          className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md ${party.bar} shadow-[0_0_10px_rgba(255,255,255,0.35)]`}
+          className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full ${party.bar}`}
           title={`Queued together in ${party.name}`}
         />
       )}

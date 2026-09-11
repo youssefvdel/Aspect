@@ -1759,7 +1759,10 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       }
     }
 
-    // 2. Union players sharing recent matches (Tracker.gg match prediction algorithm)
+    // 2. Union players sharing recent matches (Tracker.gg match prediction algorithm).
+    // Require 2+ shared past matches: a single shared match is usually a
+    // requeue echo (Valorant requeues the same lobby), not a real party.
+    // Presence unions above stay as-is — a live partyId is certain.
     const currentMatchIdLower = String(matchId || '').toLowerCase().trim();
     for (let i = 0; i < rawPlayers.length; i++) {
       const uA = rawPlayers[i].puuid.toLowerCase();
@@ -1767,10 +1770,14 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       for (let j = i + 1; j < rawPlayers.length; j++) {
         const uB = rawPlayers[j].puuid.toLowerCase();
         const matchesB = playerMatchesMap.get(uB) || [];
-        const hasSharedMatch = matchesA.some(
-          (mA) => mA && mA !== currentMatchIdLower && matchesB.includes(mA)
-        );
-        if (hasSharedMatch) {
+        let sharedCount = 0;
+        for (const mA of matchesA) {
+          if (mA && mA !== currentMatchIdLower && matchesB.includes(mA)) {
+            sharedCount++;
+            if (sharedCount >= 2) break;
+          }
+        }
+        if (sharedCount >= 2) {
           unionPlayers(uA, uB);
         }
       }
@@ -1786,12 +1793,13 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       clusters.set(root, list);
     }
 
-    // Assign party index (1..6) to clusters with size >= 2
+    // Assign party index to clusters of 2-5. Max queue party is 5, so a
+    // bigger cluster is a requeue echo, never a real party.
     const playerPartyIndexMap = new Map<string, number>();
     const playerPartyIdMap = new Map<string, string>();
     let nextPartyIdx = 1;
     for (const [root, members] of clusters.entries()) {
-      if (members.length >= 2) {
+      if (members.length >= 2 && members.length <= 5) {
         const pIdx = nextPartyIdx++;
         for (const m of members) {
           playerPartyIndexMap.set(m, pIdx);
