@@ -14,7 +14,15 @@ import {
   shortMapName,
   type AggStats,
 } from '../utils/tracker';
-import { fetchTrnActStats, fetchTrnAgents, fetchTrnMaps, type TrnActStats, type TrnAgentStat, type TrnMapStat } from '../utils/trn';
+import {
+  fetchTrnActStats,
+  fetchTrnAgents,
+  fetchTrnMaps,
+  fetchTrnMatches,
+  type TrnActStats,
+  type TrnAgentStat,
+  type TrnMapStat,
+} from '../utils/trn';
 
 /* Stale-while-revalidate singleton store:
    Cached data is loaded into memory on script load and shared across all
@@ -40,6 +48,7 @@ type Snapshot = {
   trnAgents: TrnAgentStat[];
   trnMaps: TrnMapStat[];
   trnPrev: Record<string, { kd: number; matches: number }>;
+  trnMatchTrs?: Record<string, number>;
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
 };
@@ -93,6 +102,7 @@ export interface TrackerData {
   trnAgents: TrnAgentStat[];
   trnMaps: TrnMapStat[];
   trnPrev: Record<string, { kd: number; matches: number }>;
+  trnMatchTrs: Record<string, number>;
   detailsById: Record<string, TrackerMatchDetail>;
   detailsReady: number;
   detailsTotal: number;
@@ -154,6 +164,7 @@ function initStore(): TrackerData {
     trnAgents: snap?.trnAgents ?? [],
     trnMaps: snap?.trnMaps ?? [],
     trnPrev: snap?.trnPrev ?? {},
+    trnMatchTrs: snap?.trnMatchTrs ?? {},
     detailsById: snap?.detailsById ?? {},
     detailsReady: snap?.detailsReady ?? 0,
     detailsTotal: snap?.games?.length ?? 0,
@@ -225,6 +236,7 @@ async function runRefresh(): Promise<void> {
           trnAgents: newSnap.trnAgents ?? [],
           trnMaps: newSnap.trnMaps ?? [],
           trnPrev: newSnap.trnPrev ?? {},
+          trnMatchTrs: newSnap.trnMatchTrs ?? {},
           detailsById: newSnap.detailsById ?? {},
           detailsReady: newSnap.detailsReady ?? 0,
           detailsTotal: newSnap.games?.length ?? 0,
@@ -242,6 +254,7 @@ async function runRefresh(): Promise<void> {
           trnAgents: [],
           trnMaps: [],
           trnPrev: {},
+          trnMatchTrs: {},
           detailsById: {},
           detailsReady: 0,
           detailsTotal: 0,
@@ -296,6 +309,7 @@ async function runRefresh(): Promise<void> {
       trnAgents: store.trnAgents,
       trnMaps: store.trnMaps,
       trnPrev: store.trnPrev,
+      trnMatchTrs: store.trnMatchTrs,
       detailsById: store.detailsById,
       detailsReady: store.detailsReady,
     });
@@ -304,6 +318,9 @@ async function runRefresh(): Promise<void> {
     if (accName) {
       fetchTrnActStats(accName, accTag, prof.currentSeasonId)
         .then(({ stats }) => updateStore({ trn: stats }))
+        .catch(() => {});
+      fetchTrnMatches(accName, accTag)
+        .then((matchTrs) => updateStore({ trnMatchTrs: matchTrs }))
         .catch(() => {});
       if (prof.currentSeasonId) {
         fetchTrnAgents(accName, accTag, prof.currentSeasonId)

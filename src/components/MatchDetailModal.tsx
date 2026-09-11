@@ -6,6 +6,8 @@ import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
 import { getPartyStyle } from '../utils/playerDisplay';
 import { PlayerOverviewModal, type SelectedPlayerInfo } from './PlayerOverviewModal';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
+import { calculateTrsFallback, fetchTrnMatchDetails } from '../utils/trn';
+import { useTrackerData } from '../hooks/useTrackerData';
 
 import defuseWin from '../assets/round-icons/defuse-win.png';
 import defuseLoss from '../assets/round-icons/defuse-loss.png';
@@ -70,14 +72,24 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
   agentInfo,
   onSelectProfile,
 }) => {
+  const { trnMatchTrs } = useTrackerData();
   const [activeTab, setActiveTab] = useState<ModalTab>('scoreboard');
   const [resolvedNames, setResolvedNames] = useState<Record<string, { name: string; tag: string }>>({});
   const [selectedPlayer, setSelectedPlayer] = useState<SelectedPlayerInfo | null>(null);
   const [weaponMap, setWeaponMap] = useState<Record<string, string>>({});
+  const [trnTrsMap, setTrnTrsMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     gameData().then((d) => setWeaponMap(d.weapons || {})).catch(() => {});
   }, []);
+
+  const currentMatchId = detail?.matchId || game?.matchId || '';
+
+  // Fetch real lobby TRS from Tracker.gg when modal opens
+  useEffect(() => {
+    if (!isOpen || !currentMatchId) return;
+    fetchTrnMatchDetails(currentMatchId).then(setTrnTrsMap).catch(() => {});
+  }, [isOpen, currentMatchId]);
 
   // Keyboard escape listener to close modal
   useEffect(() => {
@@ -151,13 +163,6 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       }
 
       const kast = Math.round((kastRounds / roundsCount) * 100);
-      const trs = Math.max(
-        50,
-        Math.min(
-          999,
-          Math.round(350 + (kd - 1) * 200 + ddPerRound * 2.5 + (kast - 70) * 2.5 + mk * 20 + fk * 15)
-        )
-      );
 
       const agIcon =
         Object.values(agentInfo).find(
@@ -167,6 +172,27 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       const resolved = resolvedNames[p.puuid];
       const rawName = resolved?.name || p.name;
       const rawTag = resolved?.tag || p.tag;
+
+      const playerHandle = rawName && rawTag ? `${rawName}#${rawTag}`.toLowerCase() : '';
+      const fallbackHandle = p.name && p.tag ? `${p.name}#${p.tag}`.toLowerCase() : '';
+      const agentKey = `agent:${p.agent.toLowerCase()}`;
+      const won = (detail.teamScore[p.team] ?? 0) > (detail.teamScore[p.team === 'Blue' ? 'Red' : 'Blue'] ?? 0);
+
+      const fallbackTrs = calculateTrsFallback({
+        kd,
+        acs,
+        ddPerRound,
+        kast,
+        won,
+      });
+
+      // Real Tracker Score from TRN: matches outside match card exactly for the player,
+      // and resolves each teammate/opponent from TRN match details.
+      const realTrs = isMe
+        ? (trnMatchTrs?.[currentMatchId] ?? trnTrsMap[playerHandle] ?? trnTrsMap[fallbackHandle] ?? trnTrsMap[agentKey])
+        : (trnTrsMap[playerHandle] ?? trnTrsMap[fallbackHandle] ?? trnTrsMap[agentKey]);
+
+      const trs = typeof realTrs === 'number' && realTrs > 0 ? realTrs : fallbackTrs;
 
       const displayName = isMe
         ? myAccountName || rawName || 'You'
@@ -195,7 +221,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         trs,
       };
     });
-  }, [detail, puuid, myAccountName, myAccountTag, agentInfo, resolvedNames, roundsCount]);
+  }, [detail, puuid, myAccountName, myAccountTag, agentInfo, resolvedNames, roundsCount, currentMatchId, trnMatchTrs, trnTrsMap]);
 
   // Split into Team Blue and Team Red
   const teamBlue = useMemo(

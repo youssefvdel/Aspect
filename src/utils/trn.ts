@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from './ipc';
+import { logger } from './logger';
 
 /* TRN enrichment: tracker.gg's public read API through the bundled trnfetch
    sidecar (Chrome TLS fingerprint — passes their Cloudflare wall with no key,
@@ -828,5 +829,110 @@ export function mergeMapStats(all: TrnMapStat[][]): TrnMapStat[] {
     });
   }
   return out.sort((a, b) => b.winPct - a.winPct);
+}
+
+/**
+ * Harmonized fallback formula for Tracker Score (0-1000 scale).
+ * Calibrated against TRN's core performance pillars (ACS, Damage Delta, KAST, Win%, K/D).
+ */
+export function calculateTrsFallback(params: {
+  kd: number;
+  acs: number;
+  ddPerRound: number;
+  kast: number;
+  won: boolean;
+}): number {
+  const { kd, acs, ddPerRound, kast, won } = params;
+  const winScore = won ? 140 : 50;
+  const acsScore = Math.min(340, Math.max(0, acs * 1.15));
+  const ddScore = Math.min(220, Math.max(-100, ddPerRound * 2.2));
+  const kastScore = Math.min(240, Math.max(0, (kast / 100) * 240));
+  const kdBonus = Math.min(80, Math.max(-40, (kd - 1) * 70));
+
+  const total = Math.round(winScore + acsScore + ddScore + kastScore + kdBonus);
+  return Math.max(50, Math.min(999, total));
+}
+
+/**
+ * Fetches recent competitive matches for a player from Tracker.gg and extracts
+ * the real `trnPerformanceScore` (TRS) for each match.
+ * Returns a map of matchId -> TRS.
+ */
+export async function fetchTrnMatches(
+  name: string,
+  tag: string,
+  playlist = 'competitive'
+): Promise<Record<string, number>> {
+  const key = `matches:${name.toLowerCase()}#${tag.toLowerCase()}:${playlist}`;
+  const cached = readPersisted<Record<string, number>>(key, 2 * 3600 * 1000); // 2 hours
+  if (cached) return cached;
+
+  const path = `/api/v2/valorant/standard/matches/riot/${encodeURIComponent(name)}%23${encodeURIComponent(tag)}?type=${encodeURIComponent(playlist)}`;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (await trnGet(path)) as any;
+    const matches = raw?.data?.matches;
+    if (!Array.isArray(matches)) return {};
+
+    const out: Record<string, number> = {};
+    for (const m of matches) {
+      const matchId = String(m?.attributes?.id ?? '');
+      const trs = m?.segments?.[0]?.stats?.trnPerformanceScore?.value;
+      if (matchId && typeof trs === 'number') {
+        out[matchId] = Math.round(trs);
+      }
+    }
+    writePersisted(key, out);
+    return out;
+  } catch (e) {
+    if (import.meta.env.DEV) logger.warn('Failed to fetch TRN matches:', e);
+    return {};
+  }
+}
+
+/**
+ * Fetches full match details from Tracker.gg to extract the real TRS for EVERY player in the lobby.
+ * Returns a map keyed by lowercase Riot ID ("name#tag") and lowercase agent name -> TRS.
+ */
+export async function fetchTrnMatchDetails(
+  matchId: string
+): Promise<Record<string, number>> {
+  if (!matchId) return {};
+  const key = `match_detail_trs:${matchId}`;
+  const cached = readPersisted<Record<string, number>>(key, 7 * 24 * 3600 * 1000); // 7 days (past matches are immutable)
+  if (cached) return cached;
+
+  const path = `/api/v2/valorant/standard/matches/${encodeURIComponent(matchId)}`;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (await trnGet(path)) as any;
+    const segments = raw?.data?.segments;
+    if (!Array.isArray(segments)) return {};
+
+    const out: Record<string, number> = {};
+    for (const s of segments) {
+      if (s?.type !== 'player-summary') continue;
+      const trs = s?.stats?.trnPerformanceScore?.value;
+      if (typeof trs !== 'number') continue;
+      const roundedTrs = Math.round(trs);
+
+      const handle = String(
+        s?.attributes?.platformUserIdentifier ||
+        s?.metadata?.platformInfo?.platformUserHandle ||
+        s?.metadata?.platformUserHandle ||
+        ''
+      ).toLowerCase().trim();
+
+      const agent = String(s?.metadata?.agentName || '').toLowerCase().trim();
+
+      if (handle) out[handle] = roundedTrs;
+      if (agent) out[`agent:${agent}`] = roundedTrs;
+    }
+    writePersisted(key, out);
+    return out;
+  } catch (e) {
+    if (import.meta.env.DEV) logger.warn('Failed to fetch TRN match detail:', e);
+    return {};
+  }
 }
 

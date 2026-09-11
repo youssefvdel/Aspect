@@ -166,6 +166,7 @@ export interface TrackerPlayer {
 }
 
 export interface TrackerMatchDetail {
+  matchId?: string;
   rounds: { winningTeam: string; roundResult?: string; ceremony?: string }[];
   players: TrackerPlayer[];
   kills: TrackerDuel[];

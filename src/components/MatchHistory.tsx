@@ -4,6 +4,7 @@ import { Check, Lightbulb } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { matchCard, queueLabel, shortMapName, tierName } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
+import { calculateTrsFallback } from '../utils/trn';
 import { buildTips } from '../utils/trackerTips';
 import { HistorySkeletons } from './TrackerSkeletons';
 import { CustomDropdown } from './ValorantConfig';
@@ -52,12 +53,6 @@ interface Row {
   aces: number;
   trs: number;
 }
-
-/** Local per-match performance estimate (0-1000 scale, same shape as TRN's TRS). */
-const trsFor = (kd: number, ddPerRound: number, kast: number, k3: number, k4: number, aces: number, cw: number): number => {
-  const v = 320 + (kd - 1) * 220 + ddPerRound * 2.2 + (kast - 70) * 2.5 + k3 * 8 + k4 * 15 + aces * 40 + cw * 25;
-  return Math.max(50, Math.min(999, Math.round(v)));
-};
 
 /** Count clutch rounds fought alone (won vs lost). Mirrors matchCard's clutch rule. */
 const countClutch = (detail: TrackerMatchDetail, puuid: string): { won: number; lost: number } => {
@@ -352,7 +347,7 @@ const MatchRow: React.FC<{
 };
 
 export const MatchHistory: React.FC = () => {
-  const { profile, games, queueById, mapById, detailsById, agentInfo, tierIcons, isLoading, banner, setBanner } =
+  const { profile, games, queueById, mapById, detailsById, agentInfo, tierIcons, trnMatchTrs, isLoading, banner, setBanner } =
     useTrackerData();
   const [agentFilter, setAgentFilter] = useState('All');
   const [mapFilter, setMapFilter] = useState('All');
@@ -439,14 +434,28 @@ export const MatchHistory: React.FC = () => {
       }
       const kd = d > 0 ? k / d : k;
       const ddPr = me && me.rounds > 0 ? (me.damage - me.damageTaken) / me.rounds : 0;
+
+      // Real Tracker Score from TRN (exact), falling back to harmonized formula
+      const realTrs = trnMatchTrs?.[g.matchId];
+      const fallbackTrs = detail
+        ? calculateTrsFallback({
+            kd,
+            acs,
+            ddPerRound: ddPr,
+            kast,
+            won,
+          })
+        : 0;
+      const trs = typeof realTrs === 'number' && realTrs > 0 ? realTrs : fallbackTrs;
+
       out.push({
         g, detail, agent, won, us, them, k, d, a, acs, dd, hsPct, place,
         kast, cw, cl, k3, k4, aces,
-        trs: detail ? trsFor(kd, ddPr, kast, k3, k4, aces, cw) : 0,
+        trs,
       });
     }
     return out;
-  }, [games, detailsById, puuid, mapById, queueById, agentFilter, mapFilter]);
+  }, [games, detailsById, puuid, mapById, queueById, trnMatchTrs, agentFilter, mapFilter]);
 
   const agentsPlayed = useMemo(
     () => [...new Set(rows.map((r) => r.agent).filter((a) => a && a !== '?'))].sort(),
