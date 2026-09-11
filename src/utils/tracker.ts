@@ -260,7 +260,7 @@ async function resolveVersion(): Promise<string> {
       return v;
     }
   } catch {}
-  return '';
+  return 'release-13.05-shipping-11-5350494';
 }
 
 /* Global gate for Riot's local API: one choke point so every caller
@@ -1200,6 +1200,7 @@ export interface Recent24hRecord {
 
 const recent24hCache = new Map<string, Recent24hRecord>();
 const recent24hInflight = new Map<string, Promise<Recent24hRecord>>();
+const livePlayerRecentMatchesCache = new Map<string, { matches: string[]; fetchedAt: number }>();
 
 /**
  * Real win/loss record for a player over the last 24 hours, newest match first.
@@ -1644,26 +1645,119 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const blueTeam: LiveMatchPlayer[] = [];
     const redTeam: LiveMatchPlayer[] = [];
 
-    // Identify parties across all players in the match (puuids sharing partyId, size >= 2)
-    const livePartyCounts = new Map<string, number>();
+    // Cross-reference recent matches + presence to accurately detect parties across ALL players (same proven algorithm as Tracker.gg)
+    const playerMatchesMap = new Map<string, string[]>();
+    await mapLimit(rawPlayers, 4, async (rp) => {
+      const pU = rp.puuid.toLowerCase();
+      const cached = livePlayerRecentMatchesCache.get(pU);
+      if (cached && Date.now() - cached.fetchedAt < 10 * 60 * 1000) {
+        playerMatchesMap.set(pU, cached.matches);
+        return;
+      }
+      try {
+        const j = await riotGet(
+          shardFor(region),
+          `/match-history/v1/history/${rp.puuid}?startIndex=0&endIndex=5`
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows = (Array.isArray(j?.History) ? j.History : []).map((h: any) => String(h?.MatchID ?? '').toLowerCase()).filter(Boolean);
+        livePlayerRecentMatchesCache.set(pU, { matches: rows, fetchedAt: Date.now() });
+        playerMatchesMap.set(pU, rows);
+      } catch {}
+    });
+
+    // Disjoint Set Union (DSU) to group players into party clusters
+    const parentMap = new Map<string, string>();
+    const findRoot = (id: string): string => {
+      let root = id;
+      while (parentMap.has(root) && parentMap.get(root) !== root) {
+        root = parentMap.get(root)!;
+      }
+      let curr = id;
+      while (curr !== root) {
+        const next = parentMap.get(curr) ?? root;
+        parentMap.set(curr, root);
+        curr = next;
+      }
+      return root;
+    };
+    const unionPlayers = (a: string, b: string) => {
+      const rootA = findRoot(a);
+      const rootB = findRoot(b);
+      if (rootA !== rootB) {
+        parentMap.set(rootB, rootA);
+      }
+    };
+
+    // Initialize each player as their own parent
     for (const rp of rawPlayers) {
-      const pId = (rp.partyId || presencePartyMap.get(rp.puuid.toLowerCase()) || '').toLowerCase().trim();
+      const pU = rp.puuid.toLowerCase();
+      parentMap.set(pU, pU);
+    }
+
+    // 1. Union players sharing identical Riot presence partyId
+    const presenceGroups = new Map<string, string[]>();
+    for (const rp of rawPlayers) {
+      const pU = rp.puuid.toLowerCase();
+      const pId = (rp.partyId || presencePartyMap.get(pU) || '').toLowerCase().trim();
       if (pId && pId !== '0' && pId !== 'null' && pId !== 'undefined' && pId.length > 5) {
-        livePartyCounts.set(pId, (livePartyCounts.get(pId) ?? 0) + 1);
+        const list = presenceGroups.get(pId) || [];
+        list.push(pU);
+        presenceGroups.set(pId, list);
       }
     }
-    const livePartyIdxMap = new Map<string, number>();
-    let nextLivePartyIdx = 1;
-    for (const [pId, count] of livePartyCounts.entries()) {
-      if (count >= 2) {
-        livePartyIdxMap.set(pId, nextLivePartyIdx++);
+    for (const members of presenceGroups.values()) {
+      for (let i = 1; i < members.length; i++) {
+        unionPlayers(members[0], members[i]);
+      }
+    }
+
+    // 2. Union players sharing recent matches (Tracker.gg match prediction algorithm)
+    const currentMatchIdLower = String(matchId || '').toLowerCase().trim();
+    for (let i = 0; i < rawPlayers.length; i++) {
+      const uA = rawPlayers[i].puuid.toLowerCase();
+      const matchesA = playerMatchesMap.get(uA) || [];
+      for (let j = i + 1; j < rawPlayers.length; j++) {
+        const uB = rawPlayers[j].puuid.toLowerCase();
+        const matchesB = playerMatchesMap.get(uB) || [];
+        const hasSharedMatch = matchesA.some(
+          (mA) => mA && mA !== currentMatchIdLower && matchesB.includes(mA)
+        );
+        if (hasSharedMatch) {
+          unionPlayers(uA, uB);
+        }
+      }
+    }
+
+    // Group players by connected root
+    const clusters = new Map<string, string[]>();
+    for (const rp of rawPlayers) {
+      const pU = rp.puuid.toLowerCase();
+      const root = findRoot(pU);
+      const list = clusters.get(root) || [];
+      list.push(pU);
+      clusters.set(root, list);
+    }
+
+    // Assign party index (1..6) to clusters with size >= 2
+    const playerPartyIndexMap = new Map<string, number>();
+    const playerPartyIdMap = new Map<string, string>();
+    let nextPartyIdx = 1;
+    for (const [root, members] of clusters.entries()) {
+      if (members.length >= 2) {
+        const pIdx = nextPartyIdx++;
+        for (const m of members) {
+          playerPartyIndexMap.set(m, pIdx);
+          playerPartyIdMap.set(m, `party_${root}`);
+        }
       }
     }
 
     // In Deathmatch / FFA, keep all players in one unified list (blueTeam) without grouping into teams
     rawPlayers.forEach((p, idx) => {
-      const pPartyId = (p.partyId || presencePartyMap.get(p.puuid.toLowerCase()) || '').toLowerCase().trim();
-      const pPartyIndex = pPartyId ? livePartyIdxMap.get(pPartyId) : undefined;
+      const pU = p.puuid.toLowerCase();
+      const pPartyIndex = playerPartyIndexMap.get(pU);
+      const pPartyId = playerPartyIdMap.get(pU) || p.partyId || presencePartyMap.get(pU);
       const resolved = nameMap[p.puuid];
       const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);
       const tag = resolved?.tag || '';

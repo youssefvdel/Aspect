@@ -175,9 +175,7 @@ fn local_client_version_blocking() -> Result<String, String> {
         })
         .map_err(|_| "VALORANT logs not found.".to_string())?;
     let content = std::fs::read_to_string(&log_path).map_err(|_| "Game log missing.".to_string())?;
-    // Scan the tail: newest version line wins.
-    let tail: String = content.chars().rev().take(200_000).collect::<String>().chars().rev().collect();
-    for line in tail.lines().rev() {
+    for line in content.lines() {
         if let Some(i) = line.find("CI server version:") {
             let v = line[i + "CI server version:".len()..].trim().to_string();
             if !v.is_empty() {
