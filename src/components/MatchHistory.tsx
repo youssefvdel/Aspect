@@ -8,6 +8,7 @@ import { buildTips } from '../utils/trackerTips';
 import { HistorySkeletons } from './TrackerSkeletons';
 import { CustomDropdown } from './ValorantConfig';
 import { MatchDetailModal } from './MatchDetailModal';
+import { ScoreBadge, scoreTier } from './ScoreBadge';
 
 const ago = (ms: number): string => {
   if (!ms) return '';
@@ -94,10 +95,15 @@ const Pill: React.FC<{ label: string; tone: 'gold' | 'red' }> = ({ label, tone }
   </span>
 );
 
-const Stat: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className = '' }) => (
-  <div className={`flex flex-col items-center min-w-0 ${className}`}>
+const Stat: React.FC<{ label: string; children: React.ReactNode; className?: string; width?: string }> = ({
+  label,
+  children,
+  className = '',
+  width = 'w-12',
+}) => (
+  <div className={`flex flex-col items-center shrink-0 ${width} ${className}`}>
     <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline whitespace-nowrap">{label}</span>
-    <span className="text-[15px] font-mono font-bold tabular-nums whitespace-nowrap">{children}</span>
+    <span className="text-[14px] font-mono font-bold tabular-nums whitespace-nowrap">{children}</span>
   </div>
 );
 
@@ -190,11 +196,13 @@ const MatchRow: React.FC<{
         </div>
 
         {/* Rank */}
-        {rankIcon ? (
-          <img src={rankIcon} alt={r.g.tier} title={r.g.tier} className="w-7 h-7 object-contain shrink-0 hidden sm:block" />
-        ) : (
-          <span className="w-7 shrink-0 hidden sm:block" />
-        )}
+        <div className="w-8 shrink-0 hidden sm:flex items-center justify-center">
+          {rankIcon ? (
+            <img src={rankIcon} alt={r.g.tier} title={r.g.tier} className="w-7 h-7 object-contain" />
+          ) : (
+            <span className="w-7 h-7" />
+          )}
+        </div>
 
         {/* Score */}
         <div className="flex flex-col items-center shrink-0 w-16">
@@ -209,39 +217,51 @@ const MatchRow: React.FC<{
         {/* TRS */}
         <div className="flex-col items-center shrink-0 w-12 hidden md:flex">
           <span className="text-[9px] font-bold uppercase tracking-wider text-m3-outline">TRS</span>
-          <span className="text-[15px] font-mono font-extrabold text-m3-on-surface tabular-nums" title="Local performance estimate">
-            {r.trs}
-          </span>
+          <div
+            className="flex items-center justify-center h-6 cursor-default"
+            title={
+              r.trs > 0
+                ? `Tracker Rating Score: ${r.trs} / 1000 — Tier ${scoreTier(r.trs).tier}`
+                : 'Tracker Rating Score unavailable'
+            }
+          >
+            {r.trs > 0 ? (
+              <ScoreBadge tier={scoreTier(r.trs).tier} size={22} />
+            ) : (
+              <span className="text-[10px] font-mono text-m3-outline">—</span>
+            )}
+          </div>
         </div>
 
         {/* Heroic pills */}
-        {pills.length > 0 && (
-          <div className="hidden xl:flex items-center gap-1 flex-wrap flex-1 min-w-0 max-w-56">
-            {pills.map((b, i) => (
-              <Pill key={`${b.label}-${i}`} label={b.label} tone={b.tone} />
-            ))}
-          </div>
-        )}
+        <div className="hidden xl:flex items-center gap-1 flex-wrap flex-1 min-w-0 pr-2">
+          {pills.map((b, i) => (
+            <Pill key={`${b.label}-${i}`} label={b.label} tone={b.tone} />
+          ))}
+        </div>
+
+        {/* Spacer on smaller screens where pills are hidden, keeping stats pinned to right */}
+        <div className="flex-1 xl:hidden" />
 
         {/* Stat columns */}
-        <div className="hidden sm:flex items-center gap-3 sm:gap-4 ml-auto shrink-0">
-          <Stat label="K/D">
+        <div className="hidden sm:flex items-center gap-2 md:gap-3 lg:gap-4 shrink-0">
+          <Stat label="K/D" width="w-12">
             <span className={kd >= 1 ? 'text-m3-mint' : 'text-m3-coral'}>{kd.toFixed(1)}</span>
           </Stat>
-          <Stat label="K/D/A">
+          <Stat label="K/D/A" width="w-[84px]">
             <span className="text-m3-on-surface">
               {r.k} <span className="text-m3-outline">/</span> {r.d} <span className="text-m3-outline">/</span> {r.a}
             </span>
           </Stat>
-          <Stat label="DDΔ">
+          <Stat label="DDΔ" width="w-14">
             <span className={r.dd >= 0 ? 'text-m3-mint' : 'text-m3-coral'}>
               {r.dd > 0 ? `+${r.dd}` : r.dd}
             </span>
           </Stat>
-          <Stat label="HS%" className="hidden lg:flex">
+          <Stat label="HS%" width="w-12" className="hidden lg:flex">
             <span className="text-m3-on-surface">{r.hsPct > 0 ? Math.round(r.hsPct) : '—'}</span>
           </Stat>
-          <Stat label="ACS">
+          <Stat label="ACS" width="w-12">
             <span className="text-m3-on-surface">{r.acs}</span>
           </Stat>
         </div>
