@@ -161,6 +161,8 @@ export interface TrackerPlayer {
   legshots: number;
   accountLevel?: number;
   tier?: number;
+  partyId?: string;
+  partyIndex?: number;
 }
 
 export interface TrackerMatchDetail {

@@ -99,8 +99,24 @@ const FOE = ['ReynaMain', 'Silent', 'Headshot', 'EcoFrag', 'Smurf'];
 
 function mockPregame(): LiveMatchState {
   mockIdx = 0;
-  const blueTeam = FIVE.map((n, i) => mk(n, 'Blue', 21 - (i % 2), i % 2 ? 'Diamond 2' : 'Diamond 1', i === 0 ? { isMe: true } : undefined));
-  const redTeam = FOE.map((n, i) => mk(n, 'Red', 20 + (i % 3), 'Platinum 3'));
+  // Duo 1: You + Shadow in Party 1; Duo 2: Clutch + Phantom in Party 2
+  const bluePartyMap: Record<number, number> = { 0: 1, 1: 1, 3: 2, 4: 2 };
+  // Trio: ReynaMain + Silent + Headshot in Party 3; Duo: EcoFrag + Smurf in Party 4
+  const redPartyMap: Record<number, number> = { 0: 3, 1: 3, 2: 3, 3: 4, 4: 4 };
+
+  const blueTeam = FIVE.map((n, i) =>
+    mk(n, 'Blue', 21 - (i % 2), i % 2 ? 'Diamond 2' : 'Diamond 1', {
+      isMe: i === 0,
+      partyIndex: bluePartyMap[i],
+      partyId: bluePartyMap[i] ? `dev-party-${bluePartyMap[i]}` : undefined,
+    })
+  );
+  const redTeam = FOE.map((n, i) =>
+    mk(n, 'Red', 20 + (i % 3), 'Platinum 3', {
+      partyIndex: redPartyMap[i],
+      partyId: redPartyMap[i] ? `dev-party-${redPartyMap[i]}` : undefined,
+    })
+  );
   return {
     phase: 'pregame',
     matchId: 'dev-match-pregame',

@@ -755,9 +755,30 @@ export async function fetchMatchDetailDirect(region: string, matchId: string): P
       legshots: 0,
       accountLevel: Number(p?.accountLevel ?? 0),
       tier: Number(p?.competitiveTier ?? 0),
+      partyId: String(p?.partyId ?? ''),
     };
   });
   if (players.length === 0) throw new Error('Empty scoreboard.');
+
+  // Identify parties (players with the same partyId where party size >= 2)
+  const matchPartyCounts = new Map<string, number>();
+  for (const p of players) {
+    if (p.partyId) {
+      matchPartyCounts.set(p.partyId, (matchPartyCounts.get(p.partyId) ?? 0) + 1);
+    }
+  }
+  const matchPartyIdxMap = new Map<string, number>();
+  let nextMatchPartyIdx = 1;
+  for (const [pId, count] of matchPartyCounts.entries()) {
+    if (count >= 2) {
+      matchPartyIdxMap.set(pId, nextMatchPartyIdx++);
+    }
+  }
+  for (const p of players) {
+    if (p.partyId && matchPartyIdxMap.has(p.partyId)) {
+      p.partyIndex = matchPartyIdxMap.get(p.partyId);
+    }
+  }
 
   // Resolve real player names from PUUIDs using Riot name-service
   try {
@@ -1381,6 +1402,36 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       return idleState;
     }
 
+    // Extract live party mappings from local presence chat
+    const presencePartyMap = new Map<string, string>(); // puuid (lowercase) -> partyId (lowercase)
+    try {
+      if (isTauri()) {
+        const rawPres = await invoke<string>('local_presences');
+        const presData = JSON.parse(rawPres);
+        const presencesList = Array.isArray(presData?.presences) ? presData.presences : [];
+        for (const pr of presencesList) {
+          const pU = String(pr?.puuid ?? '').toLowerCase();
+          if (!pU || !pr?.private) continue;
+          try {
+            const blob = JSON.parse(decodeBase64Utf8(String(pr.private)));
+            const pId = String(
+              blob?.partyId ||
+              blob?.partyPresenceData?.partyId ||
+              ''
+            ).toLowerCase();
+            const pSize = Number(
+              blob?.partySize ||
+              blob?.partyPresenceData?.partySize ||
+              0
+            );
+            if (pId && (pSize > 1 || pId.length > 5)) {
+              presencePartyMap.set(pU, pId);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
     interface RawPlayer {
       puuid: string;
       team: 'Blue' | 'Red';
@@ -1389,12 +1440,15 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       cardId: string;
       selectionState?: string;
       isIncognito?: boolean;
+      partyId?: string;
     }
 
     const rawPlayers: RawPlayer[] = [];
 
     if (phase === 'coregame' && Array.isArray(matchData.Players)) {
       for (const p of matchData.Players) {
+        const sub = String(p.Subject || '').toLowerCase();
+        const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
         rawPlayers.push({
           puuid: p.Subject,
           team: p.TeamID === 'Red' ? 'Red' : 'Blue',
@@ -1402,6 +1456,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           accountLevel: p.PlayerIdentity?.AccountLevel || 0,
           cardId: p.PlayerIdentity?.PlayerCardID || '',
           isIncognito: !!(p.PlayerIdentity?.Incognito),
+          partyId: directParty || presencePartyMap.get(sub),
         });
       }
     } else if (phase === 'pregame') {
@@ -1409,6 +1464,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         for (const t of matchData.Teams) {
           const tId = (t.TeamID === 'Red' || t.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
           for (const p of t.Players || []) {
+            const sub = String(p.Subject || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
             rawPlayers.push({
               puuid: p.Subject,
               team: tId,
@@ -1417,6 +1474,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
               isIncognito: !!(p.PlayerIdentity?.Incognito),
+              partyId: directParty || presencePartyMap.get(sub),
             });
           }
         }
@@ -1426,6 +1484,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         const allyTeamId = (matchData.AllyTeam.TeamID === 'Red' || matchData.AllyTeam.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
         for (const p of matchData.AllyTeam.Players) {
           if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
+            const sub = String(p.Subject || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
             rawPlayers.push({
               puuid: p.Subject,
               team: allyTeamId,
@@ -1434,6 +1494,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
               isIncognito: !!(p.PlayerIdentity?.Incognito),
+              partyId: directParty || presencePartyMap.get(sub),
             });
           }
         }
@@ -1443,6 +1504,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         const enemyTeamId = (matchData.EnemyTeam.TeamID === 'Red' || matchData.EnemyTeam.TeamID === 'TeamTwo') ? 'Red' : 'Blue';
         for (const p of matchData.EnemyTeam.Players) {
           if (!rawPlayers.some((rp) => rp.puuid === p.Subject)) {
+            const sub = String(p.Subject || '').toLowerCase();
+            const directParty = String(p.partyId || p.PartyId || p.PlayerIdentity?.partyId || '').toLowerCase();
             rawPlayers.push({
               puuid: p.Subject,
               team: enemyTeamId,
@@ -1451,6 +1514,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
               cardId: p.PlayerIdentity?.PlayerCardID || '',
               selectionState: p.CharacterSelectionState || '',
               isIncognito: !!(p.PlayerIdentity?.Incognito),
+              partyId: directParty || presencePartyMap.get(sub),
             });
           }
         }
@@ -1559,8 +1623,26 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     const blueTeam: LiveMatchPlayer[] = [];
     const redTeam: LiveMatchPlayer[] = [];
 
+    // Identify parties across all players in the match (puuids sharing partyId, size >= 2)
+    const livePartyCounts = new Map<string, number>();
+    for (const rp of rawPlayers) {
+      const pId = rp.partyId || presencePartyMap.get(rp.puuid.toLowerCase());
+      if (pId) {
+        livePartyCounts.set(pId, (livePartyCounts.get(pId) ?? 0) + 1);
+      }
+    }
+    const livePartyIdxMap = new Map<string, number>();
+    let nextLivePartyIdx = 1;
+    for (const [pId, count] of livePartyCounts.entries()) {
+      if (count >= 2) {
+        livePartyIdxMap.set(pId, nextLivePartyIdx++);
+      }
+    }
+
     // In Deathmatch / FFA, keep all players in one unified list (blueTeam) without grouping into teams
     rawPlayers.forEach((p, idx) => {
+      const pPartyId = p.partyId || presencePartyMap.get(p.puuid.toLowerCase());
+      const pPartyIndex = pPartyId ? livePartyIdxMap.get(pPartyId) : undefined;
       const resolved = nameMap[p.puuid];
       const name = resolved?.name || (p.puuid === ent.puuid ? 'You' : `Player ${idx + 1}`);
       const tag = resolved?.tag || '';
@@ -1663,6 +1745,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
         streak: statsCached?.streak,
         streakIsWin: statsCached?.streakIsWin,
         isIncognito: p.isIncognito ?? false,
+        partyId: pPartyId,
+        partyIndex: pPartyIndex,
       };
 
       if (targetTeam === 'Blue') {

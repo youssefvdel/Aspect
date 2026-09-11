@@ -92,7 +92,42 @@ export const PARTY_STYLES: Record<
     badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40',
     name: 'Party 3',
   },
+  4: {
+    border: 'border-l-[3px] border-l-emerald-400',
+    bg: 'bg-emerald-500/10',
+    dot: 'bg-emerald-400',
+    text: 'text-emerald-300',
+    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
+    name: 'Party 4',
+  },
+  5: {
+    border: 'border-l-[3px] border-l-indigo-400',
+    bg: 'bg-indigo-500/10',
+    dot: 'bg-indigo-400',
+    text: 'text-indigo-300',
+    badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-400/40',
+    name: 'Party 5',
+  },
+  6: {
+    border: 'border-l-[3px] border-l-rose-400',
+    bg: 'bg-rose-500/10',
+    dot: 'bg-rose-400',
+    text: 'text-rose-300',
+    badge: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
+    name: 'Party 6',
+  },
 };
+
+/** Safe party style resolver with wraparound if party count exceeds 6 */
+export function getPartyStyle(partyIndex?: number) {
+  if (!partyIndex || partyIndex <= 0) return null;
+  const idx = ((partyIndex - 1) % 6) + 1;
+  const base = PARTY_STYLES[idx] || PARTY_STYLES[1];
+  if (partyIndex > 6) {
+    return { ...base, name: `Party ${partyIndex}` };
+  }
+  return base;
+}
 
 /** Human label for a Riot queue id — captions the queue-scoped columns so a
  *  "24H — Ranked" column can't be mistaken for all modes. */

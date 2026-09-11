@@ -22,7 +22,7 @@ import {
   shortAct,
   formatKd,
   recentLabel,
-  PARTY_STYLES,
+  getPartyStyle,
   splitTeams,
   byAcsDesc,
   queueLabel,
@@ -313,7 +313,7 @@ const MatchStatusStrip: React.FC<{
       {partyGroups.length > 0 && (
         <span className="flex items-center gap-1.5 font-mono text-m3-outline">
           {partyGroups.map(([idx, list]) => {
-            const style = PARTY_STYLES[idx];
+            const style = getPartyStyle(idx);
             return (
               <span key={idx} className={`px-1.5 py-px rounded border font-bold ${style?.badge ?? ''}`}>
                 {list.length} stack
@@ -417,7 +417,7 @@ const PlayerRow: React.FC<{
   const peakIcon = tierIcons[p.peakTier];
   const kd = formatKd(p.kd);
   const recent = recentLabel(p);
-  const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+  const party = getPartyStyle(p.partyIndex);
   const flagUrl = getFlagUrl(p.country);
   const actLabel = p.peakSeasonId ? seasonNames[p.peakSeasonId] : undefined;
 

@@ -9,7 +9,7 @@ import {
   rankTooltip,
   shortAct,
   formatKd,
-  PARTY_STYLES,
+  getPartyStyle,
   byAcsDesc,
   queueLabel,
 } from '../utils/playerDisplay';
@@ -1707,7 +1707,7 @@ const PregameTeamColumn: React.FC<{
           const kd = formatKd(p.kd);
           const locked = (p.selectionState || '').toLowerCase().includes('lock');
           const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
-          const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+          const party = getPartyStyle(p.partyIndex);
           const flagUrl = getFlagUrl(p.country);
 
           return (
@@ -1935,7 +1935,7 @@ const VerticalSquadColumn: React.FC<{
       const icon = tierIcons[p.tier];
       const peakIcon = tierIcons[p.peakTier];
       const kd = formatKd(p.kd);
-      const party = p.partyIndex ? PARTY_STYLES[p.partyIndex] : null;
+      const party = getPartyStyle(p.partyIndex);
       const flagUrl = getFlagUrl(p.country);
 
       return (
