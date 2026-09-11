@@ -40,10 +40,11 @@ interface SlotItemData {
 
 const WeaponCard: React.FC<{
   slot: SlotItemData;
-}> = ({ slot }) => {
+  className?: string;
+}> = ({ slot, className = '' }) => {
   return (
     <div
-      className="h-[96px] bg-[#1c1326]/85 hover:bg-[#271a35]/95 border border-[#d0bcff]/20 hover:border-[#d0bcff]/70 rounded-xs transition-all duration-150 overflow-hidden flex flex-col justify-between p-2 select-none shadow-[0_4px_12px_rgba(0,0,0,0.5)] group relative"
+      className={`flex-1 min-h-[80px] bg-[#1c1326]/85 hover:bg-[#271a35]/95 border border-[#d0bcff]/20 hover:border-[#d0bcff]/70 rounded-xs transition-all duration-150 overflow-hidden flex flex-col justify-between p-2 select-none shadow-[0_4px_12px_rgba(0,0,0,0.5)] group relative ${className}`}
       title={`${slot.weaponName} • ${slot.skinName}`}
     >
       {/* Centered weapon artwork */}
@@ -310,9 +311,9 @@ export const LoadoutViewer: React.FC<{
             {/* ------------------------------------------------------------- */}
             {/* Column 1: SIDEARMS (Classic, Shorty, Frenzy, Ghost, Bandit, Sheriff) */}
             {/* ------------------------------------------------------------- */}
-            <div className="flex flex-col">
-              <CategoryHeader title="SIDEARMS" className="mb-3" />
-              <div className="grid grid-rows-6 gap-3.5">
+            <div className="h-[660px] flex flex-col">
+              <CategoryHeader title="SIDEARMS" className="mb-3 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
                 <WeaponCard slot={getSlot(SLOTS.CLASSIC)} />
                 <WeaponCard slot={getSlot(SLOTS.SHORTY)} />
                 <WeaponCard slot={getSlot(SLOTS.FRENZY)} />
@@ -324,20 +325,13 @@ export const LoadoutViewer: React.FC<{
 
             {/* ------------------------------------------------------------- */}
             {/* Column 2: SMGS & SHOTGUNS                                     */}
-            {/* Row 1: Stinger, Row 2: Spectre, Row 3: void,                  */}
-            {/* Row 4: SHOTGUNS header, Row 5: Bucky, Row 6: Judge           */}
             {/* ------------------------------------------------------------- */}
-            <div className="flex flex-col">
-              <CategoryHeader title="SMGS" className="mb-3" />
-              <div className="grid grid-rows-6 gap-3.5">
+            <div className="h-[660px] flex flex-col">
+              <CategoryHeader title="SMGS" className="mb-3 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
                 <WeaponCard slot={getSlot(SLOTS.STINGER)} />
                 <WeaponCard slot={getSlot(SLOTS.SPECTRE)} />
-                {/* Row 3: Preserves the modular row height */}
-                <div className="h-[96px]" />
-                {/* Row 4: Subheader */}
-                <div className="h-[96px] flex items-center justify-center">
-                  <CategoryHeader title="SHOTGUNS" />
-                </div>
+                <CategoryHeader title="SHOTGUNS" className="my-1 shrink-0" />
                 <WeaponCard slot={getSlot(SLOTS.BUCKY)} />
                 <WeaponCard slot={getSlot(SLOTS.JUDGE)} />
               </div>
@@ -345,39 +339,29 @@ export const LoadoutViewer: React.FC<{
 
             {/* ------------------------------------------------------------- */}
             {/* Column 3: RIFLES & MELEE                                      */}
-            {/* Row 1: Bulldog, Row 2: Guardian, Row 3: Phantom, Row 4: Vandal*/}
-            {/* Row 5: MELEE header, Row 6: Melee                             */}
             {/* ------------------------------------------------------------- */}
-            <div className="flex flex-col">
-              <CategoryHeader title="RIFLES" className="mb-3" />
-              <div className="grid grid-rows-6 gap-3.5">
+            <div className="h-[660px] flex flex-col">
+              <CategoryHeader title="RIFLES" className="mb-3 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
                 <WeaponCard slot={getSlot(SLOTS.BULLDOG)} />
                 <WeaponCard slot={getSlot(SLOTS.GUARDIAN)} />
                 <WeaponCard slot={getSlot(SLOTS.PHANTOM)} />
                 <WeaponCard slot={getSlot(SLOTS.VANDAL)} />
-                {/* Row 5: Subheader */}
-                <div className="h-[96px] flex items-center justify-center">
-                  <CategoryHeader title="MELEE" />
-                </div>
+                <CategoryHeader title="MELEE" className="my-1 shrink-0" />
                 <WeaponCard slot={getSlot(SLOTS.MELEE)} />
               </div>
             </div>
 
             {/* ------------------------------------------------------------- */}
             {/* Column 4: SNIPER RIFLES & MACHINE GUNS                        */}
-            {/* Row 1: Marshal, Row 2: Outlaw, Row 3: Operator                */}
-            {/* Row 4: MACHINE GUNS header, Row 5: Ares, Row 6: Odin          */}
             {/* ------------------------------------------------------------- */}
-            <div className="flex flex-col">
-              <CategoryHeader title="SNIPER RIFLES" className="mb-3" />
-              <div className="grid grid-rows-6 gap-3.5">
+            <div className="h-[660px] flex flex-col">
+              <CategoryHeader title="SNIPER RIFLES" className="mb-3 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
                 <WeaponCard slot={getSlot(SLOTS.MARSHAL)} />
                 <WeaponCard slot={getSlot(SLOTS.OUTLAW)} />
                 <WeaponCard slot={getSlot(SLOTS.OPERATOR)} />
-                {/* Row 4: Subheader */}
-                <div className="h-[96px] flex items-center justify-center">
-                  <CategoryHeader title="MACHINE GUNS" />
-                </div>
+                <CategoryHeader title="MACHINE GUNS" className="my-1 shrink-0" />
                 <WeaponCard slot={getSlot(SLOTS.ARES)} />
                 <WeaponCard slot={getSlot(SLOTS.ODIN)} />
               </div>
@@ -388,9 +372,9 @@ export const LoadoutViewer: React.FC<{
             {/* Rows 1–4: Player Card Banner (Level Badge + Card Art + Name)  */}
             {/* Rows 5–6: EXPRESSIONS header + Radial Wheel                   */}
             {/* ------------------------------------------------------------- */}
-            <div className="flex flex-col">
-              <CategoryHeader title="PLAYER CARDS" className="mb-3" />
-              <div className="h-[646px] flex flex-col justify-between items-center">
+            <div className="h-[660px] flex flex-col">
+              <CategoryHeader title="PLAYER CARDS" className="mb-3 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col justify-between items-center">
                 {/* Top: Player Card Banner */}
                 <div className="w-full flex flex-col items-center">
                   <div className="flex justify-center -mb-2.5 z-10">
