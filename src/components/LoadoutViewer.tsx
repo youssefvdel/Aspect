@@ -43,7 +43,7 @@ const WeaponCard: React.FC<{
 }> = ({ slot }) => {
   return (
     <div
-      className="h-[96px] bg-[#101c26]/75 hover:bg-[#162836]/95 border border-[#3d5b6a]/50 hover:border-[#00f5ff]/60 rounded-xs transition-all duration-150 overflow-hidden flex flex-col justify-between p-2 select-none shadow-[0_4px_12px_rgba(0,0,0,0.5)] group relative"
+      className="h-[96px] bg-[#1c1326]/85 hover:bg-[#271a35]/95 border border-[#d0bcff]/20 hover:border-[#d0bcff]/70 rounded-xs transition-all duration-150 overflow-hidden flex flex-col justify-between p-2 select-none shadow-[0_4px_12px_rgba(0,0,0,0.5)] group relative"
       title={`${slot.weaponName} • ${slot.skinName}`}
     >
       {/* Centered weapon artwork */}
@@ -53,22 +53,22 @@ const WeaponCard: React.FC<{
             src={slot.icon}
             alt={slot.skinName}
             loading="lazy"
-            className="max-h-[80%] max-w-[88%] object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] group-hover:scale-105 transition-transform duration-200"
+            className="max-h-[82%] max-w-[88%] object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] group-hover:scale-105 transition-transform duration-200"
           />
         ) : (
-          <Crosshair className="w-5 h-5 text-[#3d5b6a]/40" />
+          <Crosshair className="w-5 h-5 text-[#d0bcff]/30" />
         )}
       </div>
 
       {/* Bottom baseline: base weapon name on left, line extending to the right */}
       <div className="flex items-center px-1 pb-0.5 pt-1 min-w-0">
-        <span className="font-display font-black text-[11px] text-[#8fa4b3] tracking-wider uppercase shrink-0">
+        <span className="font-display font-black text-[11px] text-[#d0bcff]/80 tracking-wider uppercase shrink-0">
           {slot.weaponName}
         </span>
         {/* Segmented horizontal line */}
-        <div className="flex-1 h-[1px] bg-[#3d5b6a]/50 ml-2 relative">
+        <div className="flex-1 h-[1px] bg-white/10 ml-2 relative">
           {!slot.isDefaultSkin && (
-            <div className="absolute left-0 top-0 bottom-0 w-1/3 bg-[#00f5ff] shadow-[0_0_6px_rgba(0,245,255,0.7)]" />
+            <div className="absolute left-0 top-0 bottom-0 w-1/3 bg-[#d0bcff] shadow-[0_0_8px_rgba(208,188,255,0.8)]" />
           )}
         </div>
       </div>
@@ -93,25 +93,25 @@ const ExpressionsWheel: React.FC<{ items: EquippedExpression[] }> = ({ items }) 
   return (
     <div className="relative w-[200px] h-[200px] mx-auto flex items-center justify-center shrink-0">
       {/* Outer faint ring */}
-      <div className="absolute w-[194px] h-[194px] rounded-full border border-[#3d5b6a]/50" />
+      <div className="absolute w-[194px] h-[194px] rounded-full border border-[#d0bcff]/25" />
       {/* Middle concentric ring */}
-      <div className="absolute w-[118px] h-[118px] rounded-full border border-[#3d5b6a]/30" />
+      <div className="absolute w-[118px] h-[118px] rounded-full border border-[#d0bcff]/15" />
       {/* Central hub */}
-      <div className="absolute w-[46px] h-[46px] rounded-full border border-[#3d5b6a]/70 bg-[#0c1824] shadow-inner flex items-center justify-center">
-        <div className="w-2.5 h-2.5 rounded-full bg-[#00f5ff]/40" />
+      <div className="absolute w-[46px] h-[46px] rounded-full border border-[#d0bcff]/40 bg-[#1c1326] shadow-inner flex items-center justify-center">
+        <div className="w-2.5 h-2.5 rounded-full bg-[#d0bcff]/60 shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
       </div>
 
       {/* Radial 8-axis spokes */}
-      <div className="absolute w-full h-[1px] bg-[#3d5b6a]/25 rotate-45" />
-      <div className="absolute w-full h-[1px] bg-[#3d5b6a]/25 -rotate-45" />
-      <div className="absolute w-full h-[1px] bg-[#3d5b6a]/25 rotate-0" />
-      <div className="absolute h-full w-[1px] bg-[#3d5b6a]/25" />
+      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 rotate-45" />
+      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 -rotate-45" />
+      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 rotate-0" />
+      <div className="absolute h-full w-[1px] bg-[#d0bcff]/15" />
 
       {/* 4 Cardinal slots */}
       {slots.map((slot, i) => (
         <div
           key={i}
-          className={`absolute ${slot.pos} w-12 h-12 rounded-full bg-[#122028] border border-[#4a6d7c] hover:border-[#00f5ff] flex items-center justify-center overflow-hidden shadow-lg transition-colors group`}
+          className={`absolute ${slot.pos} w-12 h-12 rounded-full bg-[#1c1326] border border-[#d0bcff]/35 hover:border-[#d0bcff] hover:shadow-[0_0_12px_rgba(208,188,255,0.6)] flex items-center justify-center overflow-hidden shadow-lg transition-all group`}
           title={slot.item?.name ? `${slot.item.name} (${slot.item.kind})` : 'Unequipped slot'}
         >
           {slot.item?.icon ? (
@@ -122,7 +122,7 @@ const ExpressionsWheel: React.FC<{ items: EquippedExpression[] }> = ({ items }) 
               className="w-9 h-9 object-contain group-hover:scale-110 transition-transform"
             />
           ) : (
-            <div className="w-2 h-2 rounded-full bg-[#3d5b6a]/40" />
+            <div className="w-2 h-2 rounded-full bg-[#d0bcff]/30" />
           )}
         </div>
       ))}
@@ -236,32 +236,32 @@ export const LoadoutViewer: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1540px] rounded-xl border border-[#3d5b6a]/50 bg-gradient-to-b from-[#0b1720] via-[#081118] to-[#050c12] shadow-[0_20px_60px_rgba(0,0,0,0.85)] p-6 md:p-8 flex flex-col select-none overflow-hidden"
+        className="w-full max-w-[1540px] rounded-2xl border border-[#d0bcff]/20 bg-gradient-to-b from-[#1a1124] via-[#140e1b] to-[#0f0a15] shadow-[0_24px_64px_rgba(0,0,0,0.9)] p-6 md:p-8 flex flex-col select-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between pb-3 mb-5 border-b border-[#3d5b6a]/35">
+        <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-white/10">
           <div className="flex items-center gap-3.5">
             {player.agentIcon ? (
               <img
                 src={player.agentIcon}
                 alt={player.agentName}
-                className="w-9 h-9 rounded-sm object-cover border border-[#3d5b6a]/60 shadow-sm"
+                className="w-9 h-9 rounded-sm object-cover border border-[#d0bcff]/30 shadow-sm"
               />
             ) : (
-              <div className="w-9 h-9 rounded-sm bg-[#122028] border border-[#3d5b6a]/60 flex items-center justify-center">
-                <User className="w-5 h-5 text-[#8fa4b3]" />
+              <div className="w-9 h-9 rounded-sm bg-[#22162e] border border-[#d0bcff]/30 flex items-center justify-center">
+                <User className="w-5 h-5 text-[#d0bcff]/60" />
               </div>
             )}
             <div className="flex flex-col leading-tight">
               <span className="font-display font-black text-[16px] text-white tracking-wide">
                 {rioId}
               </span>
-              <span className="text-[11px] text-[#8fa4b3] font-semibold">
+              <span className="text-[11px] text-[#d0bcff]/80 font-semibold">
                 {player.agentName}
                 {player.rank ? ` • ${player.rank}` : ''}
                 {player.accountLevel ? ` • Lvl ${player.accountLevel}` : ''}
@@ -270,12 +270,12 @@ export const LoadoutViewer: React.FC<{
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="text-[12px] font-display font-bold uppercase tracking-[0.25em] text-[#8fa4b3]">
+            <span className="text-[12px] font-display font-bold uppercase tracking-[0.25em] text-[#d0bcff]/70">
               Collection
             </span>
             <button
               onClick={onClose}
-              className="p-1 rounded text-[#8fa4b3] hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1 rounded text-[#d0bcff]/70 hover:text-white hover:bg-white/10 transition-colors"
               aria-label="Close loadout"
             >
               <X className="w-5 h-5" />
@@ -285,12 +285,12 @@ export const LoadoutViewer: React.FC<{
 
         {/* Notice banners */}
         {ambiguous && (
-          <div className="mb-4 px-3.5 py-1.5 rounded bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[11px] font-medium">
+          <div className="mb-4 px-3.5 py-1.5 rounded bg-[#ffb4a9]/10 border border-[#ffb4a9]/30 text-[#ffb4a9] text-[11px] font-medium">
             Multiple players picked {player.agentName} in this match — displaying the first matching loadout.
           </div>
         )}
         {unavailableReason && (
-          <div className="mb-4 px-3.5 py-1.5 rounded bg-[#122028] border border-[#3d5b6a]/50 text-[#8fa4b3] text-[11px]">
+          <div className="mb-4 px-3.5 py-1.5 rounded bg-[#22162e] border border-[#d0bcff]/20 text-[#d0bcff]/80 text-[11px]">
             {unavailableReason}
           </div>
         )}
@@ -298,9 +298,9 @@ export const LoadoutViewer: React.FC<{
         {/* 5-Column 6-Row Modular Grid */}
         <div className="relative">
           {loading && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#081118]/85 backdrop-blur-xs rounded-lg">
-              <Loader2 className="w-7 h-7 text-[#00f5ff] animate-spin" />
-              <span className="text-[12px] font-mono text-[#8fa4b3] uppercase tracking-wider">
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#140e1b]/90 backdrop-blur-xs rounded-lg">
+              <Loader2 className="w-7 h-7 text-[#d0bcff] animate-spin" />
+              <span className="text-[12px] font-mono text-[#d0bcff]/80 uppercase tracking-wider">
                 Loading live weapon arsenal…
               </span>
             </div>
@@ -394,15 +394,15 @@ export const LoadoutViewer: React.FC<{
                 {/* Top: Player Card Banner */}
                 <div className="w-full flex flex-col items-center">
                   <div className="flex justify-center -mb-2.5 z-10">
-                    <div className="bg-[#122028] border border-white rounded px-2.5 py-0.5 font-mono text-[11px] font-bold text-white shadow-md flex items-center gap-1">
-                      <span className="text-white/40 text-[9px]">&lt;</span>
+                    <div className="bg-[#22162e] border border-[#d0bcff]/50 rounded px-2.5 py-0.5 font-mono text-[11px] font-bold text-[#d0bcff] shadow-md flex items-center gap-1">
+                      <span className="text-[#d0bcff]/40 text-[9px]">&lt;</span>
                       <span>{player.accountLevel || 398}</span>
-                      <span className="text-white/40 text-[9px]">&gt;</span>
+                      <span className="text-[#d0bcff]/40 text-[9px]">&gt;</span>
                     </div>
                   </div>
 
                   <div
-                    className="relative w-[220px] h-[330px] border-2 border-[#d87468] bg-[#0e1b26] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.7)]"
+                    className="relative w-[220px] h-[330px] border-2 border-[#ffb4a9]/80 bg-[#1c1326] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.7)]"
                     style={{
                       clipPath: 'polygon(0 0, 100% 0, 100% 88%, 50% 100%, 0 88%)',
                     }}
@@ -415,7 +415,7 @@ export const LoadoutViewer: React.FC<{
                         onError={() => setCardImgFailed(true)}
                       />
                     ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[#8fa4b3] text-xs font-mono">
+                      <div className="absolute inset-0 flex items-center justify-center text-[#d0bcff]/60 text-xs font-mono">
                         No Card Equipped
                       </div>
                     )}

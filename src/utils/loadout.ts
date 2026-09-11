@@ -43,7 +43,7 @@
  * ---------------------------------------------------------------------------
  */
 
-const CATALOG_KEY = 'recon_weapon_catalog_v3';
+const CATALOG_KEY = 'recon_weapon_catalog_v4';
 const API = 'https://valorant-api.com/v1';
 
 /** The socket holding the equipped weapon skin. Fixed across patches so far. */
@@ -245,7 +245,11 @@ const str = (v: unknown): string => String(v ?? '').trim();
  * X placeholder rather than a weapon render, so they must be drawn with the
  * weapon-level art instead.
  */
-const isDefaultSkinName = (name: string): boolean => /^standard\b/i.test(name.trim());
+export const isDefaultSkinName = (skinName: string, weaponName?: string): boolean => {
+  const s = skinName.trim().toLowerCase();
+  const w = (weaponName || '').trim().toLowerCase();
+  return s.startsWith('standard') || (w !== '' && s === w) || s === 'melee';
+};
 
 /**
  * Build the catalogue from the content API.
@@ -298,19 +302,36 @@ export async function loadWeaponCatalog(): Promise<WeaponCatalog> {
   for (const w of weaponsRaw as any[]) {
     if (!w?.uuid) continue;
     const uuid = String(w.uuid).toLowerCase();
-    const weaponIcon = String(w.displayIcon ?? '');
+    const weaponName = String(w.displayName ?? '');
+
+    // Default weapon skin: find the default skin entry and its canonical 3D matte-black fullRender
+    const defUuid = str(w.defaultSkinUuid).toLowerCase();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const defSkin = (w.skins ?? []).find((s: any) => str(s.uuid).toLowerCase() === defUuid)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      || (w.skins ?? []).find((s: any) => isDefaultSkinName(str(s.displayName), weaponName))
+      || w.skins?.[0];
+    const defChroma = defSkin?.chromas?.[0];
+    const canonical3dRender = str(
+      defChroma?.fullRender || defChroma?.displayIcon || defSkin?.displayIcon || w.displayIcon
+    );
+
     weapons[uuid] = {
       uuid,
-      name: String(w.displayName ?? ''),
+      name: weaponName,
       category: String(w.category ?? ''),
-      icon: weaponIcon,
+      icon: canonical3dRender,
     };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const s of (w.skins ?? []) as any[]) {
       if (!s?.uuid) continue;
       const skinName = String(s.displayName ?? w.displayName ?? '');
-      const def = isDefaultSkinName(skinName);
-      const skinIcon = def ? weaponIcon : String(s.displayIcon ?? '') || weaponIcon;
+      const def = isDefaultSkinName(skinName, weaponName);
+      // For default skins: ALWAYS use the 3D textured matte-black fullRender (never the X placeholder!)
+      const skinIcon = def
+        ? canonical3dRender
+        : String(s.displayIcon ?? s.chromas?.[0]?.displayIcon ?? '') || canonical3dRender;
       const entry = { weaponUuid: uuid, name: skinName, icon: skinIcon, isDefault: def };
       skinIndex[String(s.uuid).toLowerCase()] = entry;
       // Chromas / levels inherit the parent skin's identity and art.
@@ -321,10 +342,8 @@ export async function loadWeaponCatalog(): Promise<WeaponCatalog> {
     }
   }
 
-  // `/weapons/skinchromas` is authoritative for chroma art and, crucially,
-  // covers chromas that `/weapons` omits. It may not name the owning weapon,
-  // so it only overrides art/name where the chroma is already indexed, and
-  // otherwise still resolves to a name + icon for display.
+  // `/weapons/skinchromas` is authoritative for chroma art and covers chromas
+  // that `/weapons` omits.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const c of chromasRaw as any[]) {
     if (!c?.uuid) continue;
@@ -334,12 +353,13 @@ export async function loadWeaponCatalog(): Promise<WeaponCatalog> {
     if (!icon) continue;
     const existing = skinIndex[cu];
     if (existing) {
-      // Prefer real chroma art over a default-skin placeholder.
-      if (!existing.isDefault || !existing.icon) {
+      // NEVER overwrite a default skin with an X placeholder icon from skinchromas!
+      if (!existing.isDefault) {
         skinIndex[cu] = { ...existing, name: name || existing.name, icon };
       }
     } else {
-      skinIndex[cu] = { weaponUuid: '', name, icon, isDefault: isDefaultSkinName(name) };
+      const def = isDefaultSkinName(name);
+      skinIndex[cu] = { weaponUuid: '', name, icon: def ? '' : icon, isDefault: def };
     }
   }
 
