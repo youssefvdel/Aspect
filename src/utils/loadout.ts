@@ -7,37 +7,44 @@
  *   GET glz-{region}-1.{shard}.a.pvp.net/core-game/v1/matches/{id}/loadouts
  *   GET glz-{region}-1.{shard}.a.pvp.net/pregame/v1/matches/{id}/loadouts
  *
- * Riot retired the per-player personalization routes
- * (`/personalization/v1|v2/players/{puuid}/playerloadout` — verified 404 both
- * locally and remotely), so there is NO out-of-match equivalent. Loadouts only
- * exist while a match is live, which is why the viewer is gated on that state.
+ * Riot retired the per-player personalization routes (verified 404 both locally
+ * and remotely), so there is NO out-of-match equivalent — the viewer is gated
+ * on a live match for that reason.
  *
  * ---------------------------------------------------------------------------
- * Verified payload shape (cross-checked against pwall2222/NOWT's C# client,
- * which is the working reference implementation, and ruwiss/valorant-tracker's
- * Rust types). Two things there are easy to get wrong and both are load-bearing:
+ * PAYLOAD SHAPE (verified against a live match, cross-checked with
+ * pwall2222/NOWT's C# client, which is the working reference implementation)
  *
- *   1. `Loadout.Items` is keyed by WEAPON UUID (Classic = 29a0cfab-…, Vandal =
- *      9c82e19d-…). It is NOT an opaque socket id. All 19 weapon UUIDs were
- *      confirmed against the content API.
- *   2. The equipped skin is NOT `Items[key].ID` — that is the weapon's default
- *      entry. The equipped skin lives one level deeper, in a fixed socket:
+ *   Loadouts[]  { CharacterID, Subject, Loadout }
+ *   Loadout     { Subject, Items, Expressions, DynamicOptions }
+ *   Items       { [WEAPON_UUID]: { ID, TypeID, Sockets } }
+ *   Sockets     { ["3ad1b2b2-…"]: { ID, Item: { ID, TypeID } } }
  *
- *        Items[weaponUuid].Sockets["3ad1b2b2-acdb-4524-852f-954a76ddae0a"].Item.ID
+ * Three traps are load-bearing and each one alone breaks the screen:
  *
- *      and that value is a CHROMA uuid, so it must be resolved against a
- *      chroma-indexed catalogue — resolving only skin uuids leaves every
- *      skinned weapon unnamed, which is the failure mode that makes a loadout
- *      viewer look broken.
+ *  1. `Items` is keyed by WEAPON UUID (Classic 29a0cfab-…, Vandal 9c82e19d-…),
+ *     not an opaque socket id. All 20 weapon UUIDs were confirmed against the
+ *     content API.
+ *  2. The equipped value is NOT `Items[key].ID` (that is the weapon's default
+ *     entry). It lives in the fixed SKIN_SOCKET below, and that value may be a
+ *     CHROMA uuid or a SKIN uuid depending on the weapon — both must resolve.
+ *  3. `Sprays` IS ABSENT from the payload even though older docs list it.
+ *     Sprays now arrive through `Expressions.AESSelections` alongside flex
+ *     emotes, so the AssetID must be looked up in the sprays table AND the flex
+ *     table. Calling the flex image path for a spray (or vice versa) returns
+ *     404 and the whole wheel renders as broken icons.
  *
- * JSON keys are PascalCase, but Riot has shipped both `SpraySelection` and
- * `SpraySelections`, and both `SprayID` and `AssetId`, so every read is
- * tolerant of both spellings.
+ * ART SOURCE: `/v1/weapons/skinchromas` is the authoritative per-chroma art
+ * table (what NOWT ships). `/v1/weapons` alone is not enough — the DEFAULT
+ * ("Standard …") skin entries carry a GREY X PLACEHOLDER as their displayIcon,
+ * so resolving a default loadout through skins alone paints an X on every
+ * default weapon. When the equipped skin is a default, fall back to the
+ * weapon-level displayIcon, which is the canonical gun render.
  * ---------------------------------------------------------------------------
  */
 
-const CATALOG_KEY = 'recon_weapon_catalog_v2';
-const WEAPONS_URL = 'https://valorant-api.com/v1/weapons';
+const CATALOG_KEY = 'recon_weapon_catalog_v3';
+const API = 'https://valorant-api.com/v1';
 
 /** The socket holding the equipped weapon skin. Fixed across patches so far. */
 export const SKIN_SOCKET = '3ad1b2b2-acdb-4524-852f-954a76ddae0a';
@@ -53,24 +60,97 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'EEquippableCategory::Heavy': 'Machine Guns',
 };
 
-/**
- * Column composition, transcribed from the in-game collection screen: each
- * outer entry is one vertical column holding one or more sub-sections.
- */
-export const LOADOUT_COLUMNS: { category: string; label: string }[][] = [
-  [{ category: 'EEquippableCategory::Sidearm', label: 'Sidearms' }],
-  [
-    { category: 'EEquippableCategory::SMG', label: 'SMGs' },
-    { category: 'EEquippableCategory::Shotgun', label: 'Shotguns' },
-  ],
-  [
-    { category: 'EEquippableCategory::Rifle', label: 'Rifles' },
-    { category: 'EEquippableCategory::Melee', label: 'Melee' },
-  ],
-  [
-    { category: 'EEquippableCategory::Sniper', label: 'Sniper Rifles' },
-    { category: 'EEquippableCategory::Heavy', label: 'Machine Guns' },
-  ],
+/** Canonical 5-column layout matching the official Valorant Collection screen. */
+export interface WeaponSlotDef {
+  id: string; // weapon UUID
+  name: string; // e.g. "CLASSIC"
+}
+
+export interface ColumnSectionDef {
+  title: string;
+  weapons: WeaponSlotDef[];
+}
+
+export interface ColumnDef {
+  sections: ColumnSectionDef[];
+}
+
+export const ARSENAL_COLUMNS: ColumnDef[] = [
+  // Column 1: SIDEARMS (6 items)
+  {
+    sections: [
+      {
+        title: 'SIDEARMS',
+        weapons: [
+          { id: '29a0cfab-485b-f5d5-779a-b59f85e204a8', name: 'CLASSIC' },
+          { id: '42da8ccc-40d5-affc-beec-15aa47b42eda', name: 'SHORTY' },
+          { id: '44d4e95c-4157-0037-81b2-17841bf2e8e3', name: 'FRENZY' },
+          { id: '1baa85b4-4c70-1284-64bb-6481dfc3bb4e', name: 'GHOST' },
+          { id: '410b2e0b-4ceb-1321-1727-20858f7f3477', name: 'BANDIT' },
+          { id: 'e336c6b8-418d-9340-d77f-7a9e4cfe0702', name: 'SHERIFF' },
+        ],
+      },
+    ],
+  },
+  // Column 2: SMGS (2 items) & SHOTGUNS (2 items)
+  {
+    sections: [
+      {
+        title: 'SMGS',
+        weapons: [
+          { id: 'f7e1b454-4ad4-1063-ec0a-159e56b58941', name: 'STINGER' },
+          { id: '462080d1-4035-2937-7c09-27aa2a5c27a7', name: 'SPECTRE' },
+        ],
+      },
+      {
+        title: 'SHOTGUNS',
+        weapons: [
+          { id: '910be174-449b-c412-ab22-d0873436b21b', name: 'BUCKY' },
+          { id: 'ec845bf4-4f79-ddda-a3da-0db3774b2794', name: 'JUDGE' },
+        ],
+      },
+    ],
+  },
+  // Column 3: RIFLES (4 items) & MELEE (1 item)
+  {
+    sections: [
+      {
+        title: 'RIFLES',
+        weapons: [
+          { id: 'ae3de142-4d85-2547-dd26-4e90bed35cf7', name: 'BULLDOG' },
+          { id: '4ade7faa-4cf1-8376-95ef-39884480959b', name: 'GUARDIAN' },
+          { id: 'ee8e8d15-496b-07ac-e5f6-8fae5d4c7b1a', name: 'PHANTOM' },
+          { id: '9c82e19d-4575-0200-1a81-3eacf00cf872', name: 'VANDAL' },
+        ],
+      },
+      {
+        title: 'MELEE',
+        weapons: [
+          { id: '2f59173c-4bed-b6c3-2191-dea9b58be9c7', name: 'MELEE' },
+        ],
+      },
+    ],
+  },
+  // Column 4: SNIPER RIFLES (3 items) & MACHINE GUNS (2 items)
+  {
+    sections: [
+      {
+        title: 'SNIPER RIFLES',
+        weapons: [
+          { id: 'c4883e50-4494-202c-3ec3-6b8a9284f00b', name: 'MARSHAL' },
+          { id: '5f0aaf7a-4289-3998-d5ff-eb9a5cf7ef5c', name: 'OUTLAW' },
+          { id: 'a03b24d3-4319-996d-0f8c-94bbfba1dfc7', name: 'OPERATOR' },
+        ],
+      },
+      {
+        title: 'MACHINE GUNS',
+        weapons: [
+          { id: '55d8a0f4-4274-ca67-fe2c-06ab45efdf58', name: 'ARES' },
+          { id: '63e6c2b6-4a8e-869c-3d4c-e38355226584', name: 'ODIN' },
+        ],
+      },
+    ],
+  },
 ];
 
 /** Canonical top-to-bottom weapon order, matching the collection screen. */
@@ -98,15 +178,26 @@ export interface WeaponInfo {
   uuid: string;
   name: string;
   category: string;
+  /** Weapon-level art — the canonical render, used for default skins. */
   icon: string;
-  /** Skin uuid -> art, plus every chroma/level uuid pointing at its parent. */
-  skins: Record<string, WeaponSkin>;
+}
+
+/** A cosmetic resolved from the sprays or flex table. */
+export interface Cosmetic {
+  name: string;
+  icon: string;
+  kind: 'spray' | 'flex';
 }
 
 export interface WeaponCatalog {
   weapons: Record<string, WeaponInfo>;
-  /** Any skin/chroma/level UUID -> its parent weapon + skin art. */
-  skinIndex: Record<string, { weaponUuid: string; skin: WeaponSkin }>;
+  /**
+   * Any equipped-socket UUID -> resolved art. Holds chroma UUIDs, skin UUIDs
+   * and skin-level UUIDs, because the payload does not promise which it sends.
+   */
+  skinIndex: Record<string, { weaponUuid: string; name: string; icon: string; isDefault: boolean }>;
+  sprays: Record<string, Cosmetic>;
+  flex: Record<string, Cosmetic>;
 }
 
 export interface EquippedWeapon {
@@ -116,19 +207,19 @@ export interface EquippedWeapon {
   skinId: string;
   skinName: string;
   icon: string;
-  /** True when the player runs the default (unskinned) weapon art. */
+  /** True when the player runs the default (unskinned) weapon entry. */
   isDefaultSkin: boolean;
 }
 
 export interface EquippedExpression {
-  socketId: string;
   assetId: string;
   kind: 'spray' | 'flex';
+  name: string;
   icon: string;
 }
 
 export interface PlayerLoadout {
-  /** PUUID. Present on the payload and the most reliable join key. */
+  /** PUUID — present on the payload and the most reliable join key. */
   subject: string;
   characterId: string;
   weapons: EquippedWeapon[];
@@ -147,12 +238,26 @@ export const playerCardWide = (uuid: string) => mediaUrl('playercards', uuid, 'w
 /** Vertical card art — the aspect the collection screen's card slot uses. */
 export const playerCardLarge = (uuid: string) => mediaUrl('playercards', uuid, 'largeart.png');
 
+const str = (v: unknown): string => String(v ?? '').trim();
+
 /**
- * Build the weapon/skin index from the public content API.
+ * Riot's "Standard …" entries are default skins. Their `displayIcon` is a grey
+ * X placeholder rather than a weapon render, so they must be drawn with the
+ * weapon-level art instead.
+ */
+const isDefaultSkinName = (name: string): boolean => /^standard\b/i.test(name.trim());
+
+/**
+ * Build the catalogue from the content API.
  *
- * Indexes every skin UUID *and* its chromas and levels, because the equipped
- * value arrives as a chroma UUID — resolving only the base skin UUID is the
- * classic "skins show as blank" bug.
+ * Four tables, in parallel:
+ *  - `/weapons`          weapon names, categories, canonical art, skin lists
+ *  - `/weapons/skinchromas` per-chroma art (the table NOWT ships)
+ *  - `/sprays`           spray names + art
+ *  - `/flex`             flex emote names + art
+ *
+ * The flex table is the one most implementations forget: `AESSelections`
+ * carries sprays AND flexes, and the two have different image paths.
  */
 export async function loadWeaponCatalog(): Promise<WeaponCatalog> {
   if (memCatalog) return memCatalog;
@@ -169,48 +274,103 @@ export async function loadWeaponCatalog(): Promise<WeaponCatalog> {
     }
   } catch {}
 
-  const res = await fetch(WEAPONS_URL);
-  const json = await res.json();
+  const get = async (path: string) => {
+    try {
+      const r = await fetch(`${API}${path}`);
+      const j = await r.json();
+      return (j?.data ?? []) as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch {
+      return [] as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+  };
+
+  const [weaponsRaw, chromasRaw, spraysRaw, flexRaw] = await Promise.all([
+    get('/weapons'),
+    get('/weapons/skinchromas'),
+    get('/sprays'),
+    get('/flex'),
+  ]);
+
   const weapons: Record<string, WeaponInfo> = {};
-  const skinIndex: Record<string, { weaponUuid: string; skin: WeaponSkin }> = {};
+  const skinIndex: WeaponCatalog['skinIndex'] = {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const w of (json?.data ?? []) as any[]) {
+  for (const w of weaponsRaw as any[]) {
     if (!w?.uuid) continue;
     const uuid = String(w.uuid).toLowerCase();
-    const skins: Record<string, WeaponSkin> = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const s of (w.skins ?? []) as any[]) {
-      if (!s?.uuid) continue;
-      const skin: WeaponSkin = {
-        name: String(s.displayName ?? w.displayName ?? ''),
-        icon: s.displayIcon || w.displayIcon || '',
-      };
-      const sUuid = String(s.uuid).toLowerCase();
-      skins[sUuid] = skin;
-      skinIndex[sUuid] = { weaponUuid: uuid, skin };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const c of [...(s.chromas ?? []), ...(s.levels ?? [])] as any[]) {
-        if (c?.uuid) skinIndex[String(c.uuid).toLowerCase()] = { weaponUuid: uuid, skin };
-      }
-    }
+    const weaponIcon = String(w.displayIcon ?? '');
     weapons[uuid] = {
       uuid,
       name: String(w.displayName ?? ''),
       category: String(w.category ?? ''),
-      icon: String(w.displayIcon ?? ''),
-      skins,
+      icon: weaponIcon,
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const s of (w.skins ?? []) as any[]) {
+      if (!s?.uuid) continue;
+      const skinName = String(s.displayName ?? w.displayName ?? '');
+      const def = isDefaultSkinName(skinName);
+      const skinIcon = def ? weaponIcon : String(s.displayIcon ?? '') || weaponIcon;
+      const entry = { weaponUuid: uuid, name: skinName, icon: skinIcon, isDefault: def };
+      skinIndex[String(s.uuid).toLowerCase()] = entry;
+      // Chromas / levels inherit the parent skin's identity and art.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const c of [...(s.chromas ?? []), ...(s.levels ?? [])] as any[]) {
+        if (c?.uuid) skinIndex[String(c.uuid).toLowerCase()] = entry;
+      }
+    }
   }
 
-  memCatalog = { weapons, skinIndex };
-  try {
-    localStorage.setItem(CATALOG_KEY, JSON.stringify({ savedAt: Date.now(), data: memCatalog }));
-  } catch {}
-  return memCatalog;
-}
+  // `/weapons/skinchromas` is authoritative for chroma art and, crucially,
+  // covers chromas that `/weapons` omits. It may not name the owning weapon,
+  // so it only overrides art/name where the chroma is already indexed, and
+  // otherwise still resolves to a name + icon for display.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const c of chromasRaw as any[]) {
+    if (!c?.uuid) continue;
+    const cu = String(c.uuid).toLowerCase();
+    const name = String(c.displayName ?? '');
+    const icon = String(c.displayIcon ?? '');
+    if (!icon) continue;
+    const existing = skinIndex[cu];
+    if (existing) {
+      // Prefer real chroma art over a default-skin placeholder.
+      if (!existing.isDefault || !existing.icon) {
+        skinIndex[cu] = { ...existing, name: name || existing.name, icon };
+      }
+    } else {
+      skinIndex[cu] = { weaponUuid: '', name, icon, isDefault: isDefaultSkinName(name) };
+    }
+  }
 
-const str = (v: unknown): string => String(v ?? '').trim();
+  const toCosmetic = (kind: 'spray' | 'flex') =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (list: any[]): Record<string, Cosmetic> => {
+      const out: Record<string, Cosmetic> = {};
+      for (const it of list) {
+        if (!it?.uuid) continue;
+        out[String(it.uuid).toLowerCase()] = {
+          name: String(it.displayName ?? ''),
+          icon: String(it.displayIcon ?? '') || mediaUrl(kind === 'spray' ? 'sprays' : 'flex', it.uuid),
+          kind,
+        };
+      }
+      return out;
+    };
+
+  const catalog: WeaponCatalog = {
+    weapons,
+    skinIndex,
+    sprays: toCosmetic('spray')(spraysRaw),
+    flex: toCosmetic('flex')(flexRaw),
+  };
+
+  memCatalog = catalog;
+  try {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify({ savedAt: Date.now(), data: catalog }));
+  } catch {}
+  return catalog;
+}
 
 /** Case-insensitive field read that tolerates Riot's PascalCase drift. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -225,35 +385,33 @@ const pick = (obj: any, ...names: string[]): string => {
 /**
  * Parse one loadout into the shape the viewer renders.
  *
- * `entry` may be either the core-game shape (`{ CharacterID, Loadout: {...} }`)
- * or the pregame shape (the loadout object itself) — pregame entries are not
- * nested under a `Loadout` key, and mixing them up yields an empty viewer.
+ * `entry` may be the core-game shape (`{ CharacterID, Loadout }`) or the
+ * pregame shape (the loadout object itself) — pregame entries are not nested
+ * under a `Loadout` key, and mixing them up yields an empty viewer.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseLoadoutEntry(entry: any, catalog: WeaponCatalog): PlayerLoadout {
   const characterId = pick(entry, 'CharacterID', 'CharacterId', 'characterId');
   const data = entry?.Loadout ?? entry?.loadout ?? entry ?? {};
-  const subject = pick(data, 'Subject', 'subject');
-  // Some builds nest a second copy under `Loadout` — accept either.
+  const subject = pick(data, 'Subject', 'subject') || pick(entry, 'Subject', 'subject');
   const items = data?.Items ?? data?.items ?? entry?.Items ?? {};
   const weapons: EquippedWeapon[] = [];
   const expressions: EquippedExpression[] = [];
 
   for (const key of Object.keys(items ?? {})) {
     const keyLc = String(key).toLowerCase();
-    // `Items` is keyed by weapon UUID (verified against all 19 weapons). Fall
-    // back to treating the key as a skin id only if it is not a weapon.
+    // `Items` is keyed by weapon UUID; fall back to treating the key as a skin
+    // id only if it is not a weapon.
     let weapon = catalog.weapons[keyLc];
     if (!weapon) {
       const viaSkin = catalog.skinIndex[keyLc];
-      if (viaSkin) weapon = catalog.weapons[viaSkin.weaponUuid];
+      if (viaSkin?.weaponUuid) weapon = catalog.weapons[viaSkin.weaponUuid];
     }
     if (!weapon) continue;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const slot = (items as any)[key] ?? {};
     const sockets = slot?.Sockets ?? slot?.sockets ?? {};
-    // Equipped skin hangs off a fixed socket; `slot.ID` is only the default.
     const socketEntry = sockets?.[SKIN_SOCKET] ?? Object.values(sockets ?? {})[0] ?? null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sock = socketEntry as any;
@@ -261,20 +419,20 @@ export function parseLoadoutEntry(entry: any, catalog: WeaponCatalog): PlayerLoa
       sock?.Item?.ID ?? sock?.Item?.Id ?? sock?.item?.id ?? sock?.Item?.itemId ?? slot?.ID ?? slot?.Id
     ).toLowerCase();
 
-    const skinHit = catalog.skinIndex[skinId];
-    const ownSkin = weapon.skins[skinId];
-    // A socket that resolved to a real skin beats the weapon's own entry.
-    const resolved = skinHit?.skin ?? ownSkin;
-    const isDefault = !skinHit && !ownSkin;
+    const hit = catalog.skinIndex[skinId];
+    // A default entry must never paint the grey-X placeholder — draw the
+    // weapon-level render instead.
+    const icon = hit && !hit.isDefault ? hit.icon || weapon.icon : weapon.icon;
+    const skinName = hit?.name || weapon.name;
 
     weapons.push({
       weaponUuid: weapon.uuid,
       weaponName: weapon.name,
       category: weapon.category,
       skinId,
-      skinName: resolved?.name || weapon.name,
-      icon: resolved?.icon || weapon.icon,
-      isDefaultSkin: isDefault,
+      skinName,
+      icon,
+      isDefaultSkin: !hit || hit.isDefault,
     });
   }
 
@@ -282,41 +440,27 @@ export function parseLoadoutEntry(entry: any, catalog: WeaponCatalog): PlayerLoa
     (a, b) => orderOf(a.weaponName) - orderOf(b.weaponName) || a.weaponName.localeCompare(b.weaponName)
   );
 
-  // Sprays: `Sprays.SpraySelections` (plural on some builds) with `SprayID`,
-  // `AssetId` or `LevelID` depending on patch.
-  const sprayList =
-    data?.Sprays?.SpraySelections ??
-    data?.Sprays?.SpraySelection ??
-    data?.sprays?.spraySelections ??
-    [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const s of (Array.isArray(sprayList) ? sprayList : []) as any[]) {
-    const assetId = pick(s, 'SprayID', 'SprayId', 'AssetId', 'AssetID', 'LevelID');
-    if (!assetId) continue;
-    expressions.push({
-      socketId: pick(s, 'SocketID', 'SocketId'),
-      assetId,
-      kind: 'spray',
-      icon: sprayIcon(assetId),
-    });
-  }
-
-  // Flex / dance emotes share the wheel with sprays.
-  const aesList =
+  // Expressions carry sprays AND flexes under one array — resolve AssetID
+  // against the sprays table first, then the flex table, so each gets its own
+  // (different) image path.
+  const aes =
     data?.Expressions?.AESSelections ??
     data?.expressions?.aesSelections ??
     data?.Expressions?.AesSelections ??
     [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const a of (Array.isArray(aesList) ? aesList : []) as any[]) {
+  for (const a of (Array.isArray(aes) ? aes : []) as any[]) {
     const assetId = pick(a, 'AssetID', 'AssetId', 'TypeID');
     if (!assetId) continue;
-    expressions.push({
-      socketId: pick(a, 'SocketID', 'SocketId'),
-      assetId,
-      kind: 'flex',
-      icon: flexIcon(assetId),
-    });
+    const aid = assetId.toLowerCase();
+    const spray = catalog.sprays[aid];
+    const flex = catalog.flex[aid];
+    if (spray) expressions.push({ assetId, ...spray });
+    else if (flex) expressions.push({ assetId, ...flex });
+    else {
+      // Unknown cosmetic: still show it, but do not invent a name.
+      expressions.push({ assetId, kind: 'spray', name: '', icon: sprayIcon(assetId) });
+    }
   }
 
   return { subject, characterId, weapons, expressions };
@@ -334,15 +478,14 @@ export function parseLoadouts(raw: any, catalog: WeaponCatalog): PlayerLoadout[]
  * Pick the loadout belonging to a lobby player.
  *
  * Precedence, strongest first:
- *   1. `Subject` (PUUID) — exact and immune to ordering changes.
- *   2. `CharacterID` — works in Competitive/Unrated where agents are unique,
- *      but Deathmatch and Swiftplay can field duplicates.
- *   3. Array position — the payload's array is parallel to the match's player
+ *   1. `Subject` (PUUID) — exact, immune to ordering changes.
+ *   2. `CharacterID` — fine in Competitive/Unrated where agents are unique, but
+ *      Deathmatch and Swiftplay can field duplicates.
+ *   3. Array position — the payload array is parallel to the match's player
  *      list, which is how the working C# client correlates them.
  *
- * `ambiguous` is set when a weaker key had to be used and several entries
- * matched, so the caller can disclose that instead of silently showing a
- * stranger's weapons.
+ * `ambiguous` is set when a weaker key matched several entries, so the caller
+ * can disclose that instead of silently showing a stranger's weapons.
  */
 export function resolveLoadoutForPlayer(
   all: PlayerLoadout[],
