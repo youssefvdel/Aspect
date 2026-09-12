@@ -389,12 +389,13 @@ export default function App() {
     };
   }, []);
 
-  // Smooth scrolling engine (Lenis + GSAP ticker with frictionless ice-slide momentum)
+  // Smooth scrolling engine (Lenis + GSAP ticker with 2.0s delayed ice glide)
   useEffect(() => {
     const lenis = new Lenis({
-      lerp: 0.032, // Ultra-smooth ice-slide momentum: long, frictionless glide delay
+      duration: 2.0, // 2.0s lazy catch-up delay for floating ice-slide feel
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // Exponential deceleration
       smoothWheel: true,
-      wheelMultiplier: 1.15,
+      wheelMultiplier: 1.2,
       touchMultiplier: 1.5,
       anchors: true,
       respectReducedMotion: true,
@@ -416,12 +417,12 @@ export default function App() {
       if (!href) return;
       if (href === '#') {
         e.preventDefault();
-        lenis.scrollTo(0, { duration: 1.8 });
+        lenis.scrollTo(0, { duration: 2.0 });
       } else if (href.startsWith('#')) {
         const el = document.querySelector(href);
         if (el) {
           e.preventDefault();
-          lenis.scrollTo(el as HTMLElement, { offset: -60, duration: 1.8 });
+          lenis.scrollTo(el as HTMLElement, { offset: -60, duration: 2.0 });
         }
       }
     };
