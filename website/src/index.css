@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    background-color: #09060d;
+    color: #e6e0e9;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Accessible high-craft browser surfaces (Impeccable craft floor) */
+  ::selection {
+    background-color: #b6abf7;
+    color: #09060d;
+  }
+
+  * {
+    caret-color: #b6abf7;
+  }
+
+  /* Better heading balance by default */
+  h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;
+  }
+}
+
+/* Lenis smooth scrolling rules */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
+/* Custom esports scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #09060d;
+}
+::-webkit-scrollbar-thumb {
+  background: #251b32;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #473562;
+}
+
+/* Tactile feedback & focus ring utilities */
+.tap-feedback {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tap-feedback:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

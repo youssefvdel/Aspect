@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="116" fill="#140e1b"/>
+  <!-- reticle ring -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#d0bcff" stroke-width="22"/>
+  <!-- live-dot quadrant wedge (upper right) -->
+  <path d="M 362 150 A 150 150 0 0 0 256 106" fill="none" stroke="#ff8a7a" stroke-width="22" stroke-linecap="round"/>
+  <!-- crosshair ticks -->
+  <line x1="256" y1="60" x2="256" y2="88" stroke="#d0bcff" stroke-width="18" stroke-linecap="round"/>
+  <line x1="256" y1="424" x2="256" y2="452" stroke="#d0bcff" stroke-width="18" stroke-linecap="round"/>
+  <line x1="60" y1="256" x2="88" y2="256" stroke="#d0bcff" stroke-width="18" stroke-linecap="round"/>
+  <line x1="424" y1="256" x2="452" y2="256" stroke="#d0bcff" stroke-width="18" stroke-linecap="round"/>
+  <!-- R monogram -->
+  <g fill="none" stroke="#d0bcff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="222" y1="188" x2="222" y2="324"/>
+    <path d="M 222 188 H 270 A 42 42 0 0 1 270 272 H 222"/>
+    <line x1="258" y1="268" x2="304" y2="324"/>
+  </g>
+  <!-- chambered round / live dot -->
+  <circle cx="362" cy="150" r="24" fill="#ff8a7a"/>
+</svg>
