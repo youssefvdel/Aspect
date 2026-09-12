@@ -29,6 +29,10 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install root dependencies
+        working-directory: .
+        run: bun install --frozen-lockfile
+
       - name: Install dependencies
         working-directory: ./website
         run: bun install --frozen-lockfile
