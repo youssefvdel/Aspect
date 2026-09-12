@@ -3,10 +3,10 @@ const CRTWarp = lazy(() => import('./components/CRTWarp'));
 import PixelTrail from './components/PixelTrail';
 import VariableProximity from './components/VariableProximity';
 import AppPreviewsStack from './components/AppPreviewsStack';
-import Lenis from 'lenis';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import confetti from 'canvas-confetti';
 import {
   Download,
@@ -37,7 +37,7 @@ import {
   Flame,
 } from 'lucide-react';
 
-gsap.registerPlugin(ScrollTrigger);
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
 interface ReleaseInfo {
   version: string;
@@ -389,49 +389,105 @@ export default function App() {
     };
   }, []);
 
-  // Smooth scrolling engine (Lenis + GSAP ticker with 2.0s delayed ice glide)
+  // Pure GSAP momentum smooth scroll engine: wheel decoupled with delayed velocity curve
   useEffect(() => {
-    const lenis = new Lenis({
-      duration: 2.0, // 2.0s lazy catch-up delay for floating ice-slide feel
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // Exponential deceleration
-      smoothWheel: true,
-      wheelMultiplier: 1.2,
-      touchMultiplier: 1.5,
-      anchors: true,
-      respectReducedMotion: true,
-    });
+    let targetY = window.scrollY;
+    let isTweening = false;
 
-    lenis.on('scroll', ScrollTrigger.update);
+    const handleWheel = (e: WheelEvent) => {
+      // Don't hijack ctrl+wheel (browser zoom)
+      if (e.ctrlKey) return;
 
-    const onTicker = (time: number) => {
-      lenis.raf(time * 1000);
+      // Prevent harsh native jump
+      e.preventDefault();
+
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+
+      // Normalize delta across browsers/OS
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 36;
+      else if (e.deltaMode === 2) delta *= window.innerHeight;
+
+      // Accumulate target scroll position with natural impulse
+      targetY = Math.max(0, Math.min(maxScroll, targetY + delta * 1.35));
+
+      isTweening = true;
+
+      // GSAP controls the entire velocity curve: decoupled from wheel clicks with delayed deceleration
+      gsap.to(window, {
+        scrollTo: { y: targetY, autoKill: false },
+        duration: 1.6, // Luxurious 1.6s floating glide
+        ease: 'power3.out', // Decoupled speed curve: smooth takeoff, long glassy deceleration
+        overwrite: 'auto',
+        onUpdate: () => {
+          ScrollTrigger.update();
+        },
+        onComplete: () => {
+          isTweening = false;
+          targetY = window.scrollY;
+        },
+      });
     };
 
-    gsap.ticker.add(onTicker);
-    gsap.ticker.lagSmoothing(0);
+    const handleScroll = () => {
+      if (!isTweening) {
+        targetY = window.scrollY;
+      }
+    };
 
     const handleAnchorClick = (e: MouseEvent) => {
       const target = (e.target as HTMLElement).closest('a[href^="#"]');
       if (!target) return;
       const href = target.getAttribute('href');
       if (!href) return;
+
       if (href === '#') {
         e.preventDefault();
-        lenis.scrollTo(0, { duration: 2.0 });
+        targetY = 0;
+        isTweening = true;
+        gsap.to(window, {
+          scrollTo: { y: 0, autoKill: false },
+          duration: 1.8,
+          ease: 'power3.out',
+          overwrite: 'auto',
+          onUpdate: () => ScrollTrigger.update(),
+          onComplete: () => {
+            isTweening = false;
+            targetY = window.scrollY;
+          },
+        });
       } else if (href.startsWith('#')) {
         const el = document.querySelector(href);
         if (el) {
           e.preventDefault();
-          lenis.scrollTo(el as HTMLElement, { offset: -60, duration: 2.0 });
+          const rect = el.getBoundingClientRect();
+          const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+          targetY = Math.max(0, Math.min(maxScroll, window.scrollY + rect.top - 60));
+          isTweening = true;
+          gsap.to(window, {
+            scrollTo: { y: targetY, autoKill: false },
+            duration: 1.8,
+            ease: 'power3.out',
+            overwrite: 'auto',
+            onUpdate: () => ScrollTrigger.update(),
+            onComplete: () => {
+              isTweening = false;
+              targetY = window.scrollY;
+            },
+          });
         }
       }
     };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('scroll', handleScroll, { passive: true });
     document.addEventListener('click', handleAnchorClick);
 
     return () => {
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('scroll', handleScroll);
       document.removeEventListener('click', handleAnchorClick);
-      gsap.ticker.remove(onTicker);
-      lenis.destroy();
+      gsap.killTweensOf(window);
     };
   }, []);
 
