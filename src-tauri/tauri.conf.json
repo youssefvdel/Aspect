@@ -57,6 +57,13 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "Youssef Adel",
+    "copyright": "Copyright \u00a9 2026 Youssef Adel. All rights reserved.",
+    "category": "Utility",
+    "shortDescription": "Valorant Stretched Resolution & Scouting Utility",
+    "longDescription": "Recon is a competitive stretched resolution utility and real-time scout for Valorant.",
+    "homepage": "https://recon.qd.je",
+    "licenseFile": "../LICENSE",
     "externalBin": [
       "binaries/trnfetch"
     ],

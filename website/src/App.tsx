@@ -414,9 +414,9 @@ export default function App() {
   useGSAP(
     () => {
       // Cinematic hero text entrance. NOTE: the CTA buttons deliberately do
-      // NOT animate via gsap.from here — a delayed `from` tween can be killed
-      // by the effect teardown and leave opacity: 0 forever (invisible
-      // buttons). They use a CSS keyframe instead (see .hero-cta-enter).
+      // NOT animate via GSAP — a `from` tween strands inline `opacity: 0` if
+      // the effect tears down mid-flight (invisible buttons). They use the
+      // .hero-cta-enter CSS keyframe instead, whose base style is visible.
       gsap.from('.gsap-hero-title', {
         y: 45,
         opacity: 0,
@@ -598,8 +598,8 @@ export default function App() {
           Expand target geometry by <strong className="text-white font-mono tabular-nums">+22.6%</strong> with zero input latency, unmask hidden streamer-mode players, inspect real in-game weapon skins, and customize transparent HUD widgets over Valorant.
         </p>
 
-        {/* CTA Section */}
-        <div className="gsap-hero-cta mt-9 flex flex-col sm:flex-row items-center justify-center gap-3.5 w-full sm:w-auto">
+        {/* CTA Section — CSS entrance (see .hero-cta-enter), never gsap.from */}
+        <div className="hero-cta-enter mt-9 flex flex-col sm:flex-row items-center justify-center gap-3.5 w-full sm:w-auto">
           <button
             onClick={handleDownload}
             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-[#b6abf7] hover:bg-[#c8c0fa] text-[#1b1721] font-display font-black text-sm uppercase tracking-wider flex items-center justify-center gap-3 tap-feedback active:scale-[0.97] shadow-[0_0_35px_rgba(182,171,247,0.4)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b6abf7]"

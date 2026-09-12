@@ -2,9 +2,10 @@
 name = "recon"
 version = "0.3.2"
 description = "Recon - Competitive Stretched Resolution & Utility"
-authors = ["you"]
-license = ""
-repository = ""
+authors = ["Youssef Adel <contact@recon.qd.je>"]
+license = "Proprietary"
+repository = "https://github.com/youssefvdel/Recon"
+homepage = "https://recon.qd.je"
 edition = "2021"
 rust-version = "1.77.2"
 

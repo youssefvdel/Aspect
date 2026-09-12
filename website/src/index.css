@@ -149,6 +149,24 @@ html.lenis body {
   transform: scale(0.97);
 }
 
+/* Hero CTA entrance. Pure CSS on purpose: the old gsap.from() tween could be
+   killed by effect teardown and leave inline opacity: 0 forever (invisible
+   buttons). Here the base style is VISIBLE, so a dead animation degrades to
+   visible buttons, never invisible ones. */
+@keyframes hero-cta-in {
+  from {
+    opacity: 0;
+    transform: translateY(25px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-cta-enter {
+  animation: hero-cta-in 1s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
