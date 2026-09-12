@@ -15,12 +15,13 @@
       {
         "label": "main",
         "title": "Recon \u2022 Stretched Resolution & Utility",
-        "width": 1180,
-        "height": 860,
-        "minWidth": 980,
-        "minHeight": 680,
+        "width": 1210,
+        "height": 800,
+        "minWidth": 1210,
+        "minHeight": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false
       },
       {
         "label": "overlay",
@@ -35,6 +36,18 @@
         "skipTaskbar": true,
         "visible": false,
         "shadow": false
+      },
+      {
+        "label": "dev",
+        "title": "Recon \u2022 Dev Dashboard",
+        "url": "index.html#dev",
+        "width": 1080,
+        "height": 780,
+        "minWidth": 720,
+        "minHeight": 500,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false
       }
     ],
     "security": {
@@ -43,7 +56,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "externalBin": [
       "binaries/trnfetch"
     ],

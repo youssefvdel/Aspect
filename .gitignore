@@ -12,6 +12,9 @@ dist
 dist-ssr
 src-tauri/target/
 *.local
+.env
+bot/.env
+bot/node_modules/
 tsconfig.tsbuildinfo
 
 # Editor directories and files

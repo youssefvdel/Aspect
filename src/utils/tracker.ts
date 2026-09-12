@@ -229,7 +229,7 @@ interface DirectEnt {
 let entCache: { at: number; ent: DirectEnt } | null = null;
 
 export async function getEntitlements(): Promise<DirectEnt> {
-  if (entCache && Date.now() - entCache.at < 45 * 60 * 1000) return entCache.ent;
+  if (entCache && Date.now() - entCache.at < 5 * 60 * 1000) return entCache.ent;
   if (!isTauri()) throw new Error('Tracker needs the desktop app.');
   const ent = await invoke<DirectEnt>('local_entitlements');
   if (!ent.access_token) throw new Error('No active session — log into the Riot Client first.');
@@ -300,7 +300,13 @@ async function riotGet(host: string, path: string): Promise<any> {
     });
   };
   try {
-    return JSON.parse(await withRiotSlot(async () => call(await getEntitlements())));
+    const raw = await withRiotSlot(async () => call(await getEntitlements()));
+    const j = JSON.parse(raw);
+    if (j?.httpStatus === 401 || j?.errorCode === 'BAD_AUTH' || j?.message === 'Unauthorized') {
+      clearEntitlements();
+      return JSON.parse(await withRiotSlot(async () => call(await getEntitlements())));
+    }
+    return j;
   } catch (e) {
     if (String(e).includes('RIOT_EXPIRED')) {
       clearEntitlements();
@@ -1598,27 +1604,29 @@ const LIVE_MATCH_CACHE_KEY = 'recon_live_match_state_v2';
 let lastLiveMatchFetchTime = 0;
 let lastLiveMatchResult: LiveMatchState | null = null;
 
-export async function fetchLiveMatchState(regionOverride?: string): Promise<LiveMatchState> {
+export async function fetchLiveMatchState(regionOverride?: string, forceRefresh = false): Promise<LiveMatchState> {
   // Dev dashboard simulator: canned match without Riot open (dev builds only).
   const devMock = getDevMockMatch();
   if (devMock) return devMock;
 
   const now = Date.now();
-  if (lastLiveMatchResult && now - lastLiveMatchFetchTime < 2500) {
-    return lastLiveMatchResult;
-  }
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(LIVE_MATCH_CACHE_KEY);
-      if (raw) {
-        const item = JSON.parse(raw) as { at: number; state: LiveMatchState };
-        if (item?.state && now - item.at < 2500) {
-          lastLiveMatchResult = item.state;
-          lastLiveMatchFetchTime = item.at;
-          return item.state;
+  if (!forceRefresh) {
+    if (lastLiveMatchResult && now - lastLiveMatchFetchTime < 2500) {
+      return lastLiveMatchResult;
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(LIVE_MATCH_CACHE_KEY);
+        if (raw) {
+          const item = JSON.parse(raw) as { at: number; state: LiveMatchState };
+          if (item?.state && now - item.at < 2500) {
+            lastLiveMatchResult = item.state;
+            lastLiveMatchFetchTime = item.at;
+            return item.state;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   const idleState: LiveMatchState = {
@@ -1682,6 +1690,50 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
     }
 
     if (phase === 'idle' || !matchData) {
+      // If we were previously in a live match or agent select, verify local presence before declaring idle.
+      // This prevents mid-game session loss caused by transient Riot cloud gateway blips or token re-auth.
+      if (lastLiveMatchResult && lastLiveMatchResult.phase !== 'idle') {
+        try {
+          const rawPres = await invoke<string>('local_presences');
+          const presData = JSON.parse(rawPres);
+          const presencesList = Array.isArray(presData?.presences) ? presData.presences : [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const me = presencesList.find(
+            (p: any) => String(p?.puuid || p?.pid?.split?.('@')?.[0] || '').toLowerCase() === ent.puuid.toLowerCase()
+          );
+          if (me?.private) {
+            const blob = JSON.parse(decodeBase64Utf8(String(me.private)));
+            const loop = String(blob?.matchPresenceData?.sessionLoopState ?? blob?.sessionLoopState ?? '').toUpperCase();
+            if (loop === 'INGAME' || loop === 'PREGAME') {
+              clearEntitlements();
+              const freshEnt = await getEntitlements();
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const retryPlayer: any = await riotGet(
+                glz,
+                loop === 'INGAME' ? `/core-game/v1/players/${freshEnt.puuid}` : `/pregame/v1/players/${freshEnt.puuid}`
+              ).catch(() => null);
+              if (retryPlayer?.MatchID) {
+                matchId = retryPlayer.MatchID;
+                matchData = await riotGet(
+                  glz,
+                  loop === 'INGAME' ? `/core-game/v1/matches/${matchId}` : `/pregame/v1/matches/${matchId}`
+                ).catch(() => null);
+                if (matchData && !matchData.httpStatus) {
+                  phase = loop === 'INGAME' ? 'coregame' : 'pregame';
+                }
+              }
+              if (phase === 'idle' || !matchData) {
+                // Game client is still INGAME/PREGAME; transient Riot cloud hiccup: preserve live match state!
+                return {
+                  ...lastLiveMatchResult,
+                  updatedAt: Date.now(),
+                };
+              }
+            }
+          }
+        } catch {}
+      }
+
       return idleState;
     }
 
@@ -1928,8 +1980,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       '/game/maps/jam/jam': 'Lotus',
       '/game/maps/juliett/juliett': 'Sunset',
       '/game/maps/plummet/plummet': 'Abyss',
+      '/game/maps/poveglia/range': 'The Range',
     };
-    const mapName = mapDict[rawMapId] || data.maps[rawMapId] || shortMapName(rawMapId, data.maps);
 
     const rawModeId = String(matchData.ModeID || matchData.Mode || '');
     const directQueue = String(
@@ -1939,28 +1991,42 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       ''
     ).toLowerCase().trim();
 
-    const isDeathmatch = rawModeId.toLowerCase().includes('deathmatch') || directQueue.includes('deathmatch');
+    const rawModeLower = rawModeId.toLowerCase();
+    const rawMapLower = rawMapId.toLowerCase();
+    const isRange =
+      rawMapLower.includes('poveglia') ||
+      rawMapLower.includes('range') ||
+      rawModeLower.includes('shootingrange') ||
+      rawModeLower.includes('practice');
+
+    const mapName = isRange
+      ? 'The Range'
+      : mapDict[rawMapId] || data.maps[rawMapId] || shortMapName(rawMapId, data.maps);
+
+    const isDeathmatch = !isRange && (rawModeLower.includes('deathmatch') || directQueue.includes('deathmatch'));
 
     // Strictly resolve exact game mode — never mix Competitive, Unrated, or other modes together
-    const modeName = isDeathmatch
+    const modeName = isRange
+      ? 'The Range'
+      : isDeathmatch
       ? 'Deathmatch'
       : directQueue === 'competitive'
       ? 'Competitive'
       : directQueue === 'unrated'
       ? 'Unrated'
-      : directQueue === 'swiftplay' || rawModeId.toLowerCase().includes('hurry')
+      : directQueue === 'swiftplay' || rawModeLower.includes('hurry')
       ? 'Swiftplay'
-      : directQueue === 'spikerush' || rawModeId.toLowerCase().includes('onefa')
+      : directQueue === 'spikerush' || rawModeLower.includes('onefa')
       ? 'Spike Rush'
       : directQueue === 'premier'
       ? 'Premier'
       : directQueue === 'ggteam'
       ? 'Escalation'
-      : rawModeId.toLowerCase().includes('hurry')
-      ? 'Swiftplay'
-      : rawModeId.toLowerCase().includes('onefa')
-      ? 'Spike Rush'
-      : 'Competitive';
+      : directQueue === 'custom' || rawModeLower.includes('custom')
+      ? 'Custom Game'
+      : directQueue
+      ? directQueue.charAt(0).toUpperCase() + directQueue.slice(1)
+      : 'Custom Game';
 
     const blueTeam: LiveMatchPlayer[] = [];
     const redTeam: LiveMatchPlayer[] = [];
@@ -2110,9 +2176,10 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
           statsCached.acs == null &&
           Date.now() > (statsCached.retryAfter ?? 0));
 
-      if (needsStats && realName && realTag) {
+      if (needsStats && realName && realTag && !p.isIncognito) {
         import('./trn')
-          .then(({ fetchTrnActStats }) => {
+          .then(({ fetchTrnActStats, trnCooldownRemainingMs }) => {
+            if (trnCooldownRemainingMs() > 0) return;
             fetchTrnActStats(realName, realTag)
               .then((res) => {
                 const realCountry =
@@ -2140,7 +2207,7 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
                 setCachedLivePlayerStats(p.puuid, {
                   ...prev,
                   fetchedAt: prev?.fetchedAt ?? Date.now(),
-                  retryAfter: Date.now() + 20000,
+                  retryAfter: Date.now() + 30 * 60 * 1000,
                 });
               });
           })
@@ -2238,7 +2305,8 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       mapName,
       mode: modeName,
       isDeathmatch,
-      queueId: liveQueue,
+      isRange,
+      queueId: isRange ? '' : liveQueue,
       startingSide,
       allyScore: liveAllyScore,
       enemyScore: liveEnemyScore,
@@ -2246,6 +2314,34 @@ export async function fetchLiveMatchState(regionOverride?: string): Promise<Live
       redTeam,
       updatedAt: Date.now(),
     };
+
+    // Background score progression sequence tracker:
+    if (typeof localStorage !== 'undefined' && matchId) {
+      try {
+        const roundSeqKey = `recon_live_round_seq_${matchId}`;
+        const rawSeq = localStorage.getItem(roundSeqKey);
+        let seqData: { ally: number; enemy: number; history: boolean[] } = rawSeq
+          ? JSON.parse(rawSeq)
+          : { ally: 0, enemy: 0, history: [] };
+
+        if (liveAllyScore === 0 && liveEnemyScore === 0) {
+          seqData = { ally: 0, enemy: 0, history: [] };
+          localStorage.setItem(roundSeqKey, JSON.stringify(seqData));
+        } else {
+          if (liveAllyScore > seqData.ally) {
+            const diff = liveAllyScore - seqData.ally;
+            for (let i = 0; i < diff; i++) seqData.history.push(true);
+            seqData.ally = liveAllyScore;
+          }
+          if (liveEnemyScore > seqData.enemy) {
+            const diff = liveEnemyScore - seqData.enemy;
+            for (let i = 0; i < diff; i++) seqData.history.push(false);
+            seqData.enemy = liveEnemyScore;
+          }
+          localStorage.setItem(roundSeqKey, JSON.stringify(seqData));
+        }
+      } catch {}
+    }
 
     lastLiveMatchResult = finalState;
     lastLiveMatchFetchTime = Date.now();

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { FlaskConical, Play, Trash2, Radio } from 'lucide-react';
-import { listen } from '@tauri-apps/api/event';
+import { FlaskConical, Play, Trash2, Radio, Coffee } from 'lucide-react';
+import { listen, emit } from '@tauri-apps/api/event';
 import {
   fetchDisplayInfo,
   fetchGpuInfo,
@@ -13,6 +13,7 @@ import {
   setOverlayWindowed,
   fetchWindows,
   fetchValorantConfigs,
+  isTauri,
 } from '../utils/ipc';
 import { detectLocalAccount } from '../utils/tracker';
 import {
@@ -178,6 +179,22 @@ export const DevDashboard: React.FC = () => {
             }`}
           >
             Riot closed: {noClient ? 'ON (empty states)' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem('recon_clove_coffee_dismissed_until');
+              localStorage.setItem('recon_dev_trigger_clove', String(Date.now()));
+              window.dispatchEvent(new CustomEvent('recon:trigger-clove-donation'));
+              if (isTauri()) {
+                emit('recon:trigger-clove-donation', {}).catch(() => {});
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold border border-amber-400/40 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25 active:scale-95 cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+            title="Trigger Clove Ko-fi popup on the main window"
+          >
+            <Coffee className="w-3.5 h-3.5 text-amber-400" />
+            <span>Trigger Clove Ko-fi Popup</span>
           </button>
         </div>
       </section>

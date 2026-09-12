@@ -286,6 +286,125 @@ export async function setOverlayWindowed(windowed: boolean): Promise<void> {
   await invoke('set_overlay_windowed', { windowed });
 }
 
+export async function openDevWindow(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke('open_dev_window');
+}
+
+export async function appMinimize(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('window_minimize');
+  } catch {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().minimize();
+  }
+}
+
+export async function appToggleMaximize(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('window_toggle_maximize');
+  } catch {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().toggleMaximize();
+  }
+}
+
+export async function appClose(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('window_close');
+  } catch {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().close();
+  }
+}
+
+export async function appStartDragging(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke('window_start_dragging');
+  } catch {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().startDragging();
+  }
+}
+
+export async function appIsMaximized(): Promise<boolean> {
+  if (!isTauri()) return false;
+  try {
+    return await invoke<boolean>('window_is_maximized');
+  } catch {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    return await getCurrentWindow().isMaximized();
+  }
+}
+
+/**
+ * Enables smooth window dragging across the entire application surface,
+ * skipping any interactive controls (buttons, links, inputs, selects, tabs, etc.).
+ */
+export function setupGlobalWindowDrag(): () => void {
+  if (!isTauri()) return () => {};
+
+  const handleMouseDown = (e: MouseEvent) => {
+    // Only primary left button
+    if (e.button !== 0) return;
+
+    // Do not initiate drag on double-click
+    if (e.detail > 1) return;
+
+    let target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    // Traverse ancestors to check for any interactive elements
+    while (target && target !== document.body && target !== document.documentElement) {
+      const tag = target.tagName.toUpperCase();
+      if (['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA', 'OPTION', 'LABEL'].includes(tag)) {
+        return;
+      }
+
+      if (
+        target.hasAttribute('data-no-drag') ||
+        target.classList.contains('no-drag') ||
+        target.getAttribute('role') === 'button' ||
+        target.getAttribute('role') === 'tab' ||
+        target.getAttribute('role') === 'checkbox' ||
+        target.getAttribute('role') === 'switch' ||
+        target.getAttribute('role') === 'slider' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      // Check if clicking on vertical scrollbar gutter
+      if (target.scrollHeight > target.clientHeight && target.clientHeight > 0) {
+        const rect = target.getBoundingClientRect();
+        if (e.clientX >= rect.left + target.clientWidth) {
+          return;
+        }
+      }
+
+      // If element has pointer or text cursor, treat as interactive
+      const style = window.getComputedStyle(target);
+      if (style.cursor === 'pointer' || style.cursor === 'text') {
+        return;
+      }
+
+      target = target.parentElement;
+    }
+
+    // Surface is non-interactive: drag the window
+    appStartDragging().catch(() => {});
+  };
+
+  window.addEventListener('mousedown', handleMouseDown);
+  return () => {
+    window.removeEventListener('mousedown', handleMouseDown);
+  };
+}
+
 export async function fetchValorantConfigs(): Promise<ConfigFileInfo[]> {
   if (!isTauri()) return mockConfigs;
   return await invoke<ConfigFileInfo[]>('get_valorant_configs');

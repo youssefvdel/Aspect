@@ -415,10 +415,17 @@ fn riot_direct_get_blocking(
         .output()
         .map_err(|e| format!("Riot query failed: {}", e))?;
     let body = String::from_utf8_lossy(&output.stdout).to_string();
+    if body.contains("\"statusCode\":401")
+        || body.contains("\"httpStatus\":401")
+        || body.contains("\"statusCode\": 401")
+        || body.contains("\"httpStatus\": 401")
+        || body.contains("BAD_AUTH")
+        || body.contains("EXPIRED_AUTH")
+        || body.contains("FORBIDDEN")
+    {
+        return Err("RIOT_EXPIRED".to_string());
+    }
     if !output.status.success() {
-        if body.contains("\"statusCode\":401") || body.contains("FORBIDDEN") {
-            return Err("RIOT_EXPIRED".to_string());
-        }
         return Err(format!("Riot error: {}", body.chars().take(160).collect::<String>()));
     }
     Ok(body)

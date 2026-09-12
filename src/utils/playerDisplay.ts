@@ -168,9 +168,13 @@ export function splitTeams(state: {
   isDeathmatch: boolean;
   blueTeam: LiveMatchPlayer[];
   redTeam: LiveMatchPlayer[];
-}): { yours: LiveMatchPlayer[]; theirs: LiveMatchPlayer[]; isFfa: boolean } {
+  isRange?: boolean;
+}): { yours: LiveMatchPlayer[]; theirs: LiveMatchPlayer[]; isFfa: boolean; isRange?: boolean } {
   if (state.isDeathmatch) {
-    return { yours: [...state.blueTeam, ...state.redTeam], theirs: [], isFfa: true };
+    return { yours: [...state.blueTeam, ...state.redTeam], theirs: [], isFfa: true, isRange: false };
+  }
+  if (state.isRange) {
+    return { yours: [...state.blueTeam, ...state.redTeam], theirs: [], isFfa: false, isRange: true };
   }
   const mineOnBlue = state.blueTeam.some((p) => p.isMe);
   const mineOnRed = state.redTeam.some((p) => p.isMe);

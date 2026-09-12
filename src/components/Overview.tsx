@@ -278,14 +278,14 @@ export const Overview: React.FC = () => {
       );
     }
     return (
-      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+      <div className="h-full min-h-0 max-w-6xl mx-auto w-full overflow-hidden px-6 pt-3 pb-6">
         <OverviewSkeletons />
       </div>
     );
   }
 
   return (
-    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col gap-3.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-4 sm:px-6 py-3.5 pb-8">
+    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col justify-start gap-2.5 max-w-6xl mx-auto w-full overflow-hidden px-6 pt-3 pb-6">
       {clientClosed && (
         <div className="p-2.5 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant text-xs font-medium flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
@@ -321,15 +321,6 @@ export const Overview: React.FC = () => {
             <CustomDropdown value={seasonId} options={seasonOptions} onChange={(v) => setSeasonId(v)} />
           </div>
         </div>
-        <button
-          onClick={refresh}
-          disabled={isLoading}
-          title="Refresh stats"
-          className="self-end mb-0.5 h-9 px-3.5 rounded-xl bg-m3-surface-container border border-m3-outline-subtle text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-high flex items-center gap-2 text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-m3-primary' : ''}`} />
-          <span>Refresh</span>
-        </button>
       </div>
 
       {/* Act fetch failed — say so instead of silently showing the live act. */}
@@ -356,27 +347,30 @@ export const Overview: React.FC = () => {
       {profile && (
         <>
           {/* Primary KPI Tiles */}
-          <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
             <BigTile index={2} label="Win %" numeric={kpiReady ? winPct : undefined} decimals={2} suffix="%" value={kpiPlaceholder} />
             <BigTile index={3} label="K/D" numeric={kpiReady ? kd : undefined} decimals={3} value={kpiPlaceholder} />
-            {S ? (
-              <BigTile index={4} label="Headshot %" numeric={S.hsPct} decimals={2} suffix="%" />
-            ) : (
-              <BigTile index={4} label="Headshot %" value="—" locked />
-            )}
+            <BigTile
+              index={4}
+              label="Headshot %"
+              numeric={S ? S.hsPct : accHeadPct > 0 ? accHeadPct : undefined}
+              decimals={2}
+              suffix="%"
+              value={!S && accHeadPct === 0 ? '—' : undefined}
+            />
             <BigTile index={5} label="Damage/Round" numeric={kpiReady ? adr : undefined} decimals={2} value={kpiPlaceholder} />
           </section>
 
           {/* Secondary stats row */}
           <motion.section variants={rise} custom={6}
-            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 sm:p-4 shadow-m3-1 shrink-0">
+            className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 shadow-m3-1 shrink-0">
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
               <SmallStat label="Wins" value={String(wins)} tone="win" />
               <SmallStat label="Losses" value={String(losses)} tone="loss" />
               <SmallStat label="Kills" value={kills ? kills.toLocaleString() : '…'} />
               <SmallStat label="Deaths" value={deaths ? deaths.toLocaleString() : '…'} />
               <SmallStat label="Assists" value={assists ? assists.toLocaleString() : '…'} />
-              <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : '—'} locked={!S} />
+              <SmallStat label="Headshots" value={S ? S.headshots.toLocaleString() : recentHit ? recentHit.head.toLocaleString() : '—'} />
               <SmallStat label="Flawless" value={String(S?.flawless ?? (isDefault ? agg?.flawless : undefined) ?? '…')} />
               <SmallStat label="Clutches" value={String(S?.clutches ?? (isDefault ? agg?.clutches : undefined) ?? '…')} />
             </div>
@@ -386,7 +380,7 @@ export const Overview: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
             {/* Combat Highlights */}
             <motion.section variants={rise} custom={7}
-              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col justify-between shadow-m3-1">
               <h4 className="font-display font-bold text-sm text-m3-on-surface mb-2">Combat Highlights</h4>
               <div className="flex flex-col gap-3 flex-1 justify-around">
                 <div className="flex items-center gap-3">
@@ -421,7 +415,7 @@ export const Overview: React.FC = () => {
 
             {/* Top Agent (matches reference layout) */}
             <motion.section variants={rise} custom={8}
-              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col justify-between shadow-m3-1">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface">Top Agent</h4>
@@ -490,7 +484,7 @@ export const Overview: React.FC = () => {
 
             {/* Accuracy */}
             <motion.section variants={rise} custom={9}
-              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between">
+              className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col justify-between shadow-m3-1">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-display font-bold text-sm text-m3-on-surface">Accuracy</h4>
                 <span className="text-xs text-m3-outline font-medium" title={recentHit ? `Last ${recentHit.used} matches` : 'Act-wide from Tracker.gg'}>
@@ -532,7 +526,7 @@ export const Overview: React.FC = () => {
             {/* Previous Acts (3 compact columns) */}
             {recentActs.length > 0 && (
               <motion.section variants={rise} custom={10}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between shadow-m3-1">
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col justify-between shadow-m3-1">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-display font-bold text-sm text-m3-on-surface">Previous Acts</h4>
                   <span className="text-[10px] text-m3-outline uppercase tracking-wider font-semibold">Competitive History</span>
@@ -583,7 +577,7 @@ export const Overview: React.FC = () => {
             {/* Tracker Score */}
             {trn && (
               <motion.section variants={rise} custom={11}
-                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-4 flex flex-col justify-between shadow-m3-1"
+                className="rounded-2xl bg-m3-surface-container border border-m3-outline-subtle p-3.5 flex flex-col justify-between shadow-m3-1"
                 style={{
                   borderColor: `${scoreTier(trn.trnScore).color}44`,
                   background: `linear-gradient(180deg, ${scoreTier(trn.trnScore).color}15 0%, transparent 60%)`,

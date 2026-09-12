@@ -25,6 +25,7 @@ import {
   trimMemory,
   isTauri,
   isBadModeErrorMessage,
+  setupGlobalWindowDrag,
 } from './utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 import { IS_DEV } from './utils/devTools';
@@ -42,16 +43,47 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const isDevWindow = React.useMemo(() => {
+    if (!IS_DEV) return false;
+    if (typeof window === 'undefined') return false;
+    if (window.location.hash.includes('dev') || window.location.search.includes('dev')) return true;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const label = (window as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label;
+      return label === 'dev';
+    } catch {
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (isOverlay) {
       document.title = '';
       document.documentElement.style.backgroundColor = 'transparent';
       document.body.style.backgroundColor = 'transparent';
       document.body.classList.add('bg-transparent');
+    } else if (isDevWindow) {
+      document.title = 'Recon • Dev Dashboard';
+    } else {
+      return setupGlobalWindowDrag();
     }
-  }, [isOverlay]);
+  }, [isOverlay, isDevWindow]);
 
-  const [currentTab, setCurrentTab] = useState<TabType>('overview');
+  const [currentTab, setCurrentTab] = useState<TabType>(() => {
+    try {
+      const saved = localStorage.getItem('recon_active_tab') as TabType;
+      if (saved && ['overview', 'switcher', 'visualizer', 'sens', 'custom_res', 'gpu', 'borderless', 'game_config', 'settings', 'valorant', 'matches'].includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'overview';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('recon_active_tab', currentTab);
+    } catch {}
+  }, [currentTab]);
   const [displayInfo, setDisplayInfo] = useState<DisplayInfo | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutBinding | null>(null);
   const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
@@ -263,6 +295,14 @@ export const App: React.FC = () => {
 
   if (isOverlay) {
     return <OverlayView />;
+  }
+
+  if (isDevWindow) {
+    return (
+      <div className="h-screen w-screen bg-m3-surface text-m3-on-surface flex flex-col overflow-hidden selection:bg-m3-primary-container selection:text-m3-on-primary-container antialiased font-sans">
+        <DevDashboard />
+      </div>
+    );
   }
 
   return (

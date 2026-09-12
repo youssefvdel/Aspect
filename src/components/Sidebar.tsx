@@ -1,28 +1,20 @@
 import { useEffect, useState } from 'react';
 import {
   Cpu,
-  Sliders,
+  Monitor,
   Settings,
-  Keyboard,
-  LayoutDashboard,
-  FlaskConical,
+  TrendingUp,
   FileCode2,
 } from 'lucide-react';
 import type { DisplayInfo, GpuInfo, TabType } from '../types';
 import { TrackerMini } from './TrackerMini';
 import { APP_VERSION, appVersion } from '../utils/version';
-import { IS_DEV } from '../utils/devTools';
 
 interface SidebarTab {
   id: TabType;
   label: string;
   shortcut: string;
   icon: React.ComponentType<{ className?: string }>;
-}
-
-interface TabGroup {
-  title: string;
-  tabs: SidebarTab[];
 }
 
 interface SidebarProps {
@@ -40,7 +32,7 @@ const TRACKER_TABS: SidebarTab[] = [
     id: 'overview',
     label: 'Tracker',
     shortcut: '1',
-    icon: LayoutDashboard,
+    icon: TrendingUp,
   },
 ];
 
@@ -50,7 +42,7 @@ const UTILITY_TABS: SidebarTab[] = [
     id: 'switcher',
     label: 'Resolution Switch',
     shortcut: '2',
-    icon: Sliders,
+    icon: Monitor,
   },
 ];
 
@@ -74,17 +66,6 @@ const SETTINGS_TABS: SidebarTab[] = [
   },
 ];
 
-/* Dev-only playground — strip-mined from release by the IS_DEV gate below. */
-const DEV_TABS: SidebarTab[] = [
-  {
-    id: 'dev',
-    label: 'Dev Dashboard',
-    shortcut: '0',
-    icon: FlaskConical,
-  },
-];
-
-
 export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onSelectTab,
@@ -107,64 +88,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     appVersion().then(setAppVer);
   }, []);
 
-  const renderGroup = (group: TabGroup, isFirst: boolean) => (
-    <div key={group.title}>
-      <div className={`flex items-center gap-2 px-3 pb-1.5 ${isFirst ? 'pt-1' : 'pt-2'}`} aria-hidden="true">
-        <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-m3-outline">
-          {group.title}
-        </span>
-        <div className="flex-1 h-px bg-m3-outline-subtle" />
-      </div>
-      <nav className="space-y-1">
-        {group.tabs.map((tab) => {
-          const Icon = tab.icon;
-          // Active highlighting considers sub-tabs
-          const isActive =
-            (tab.id === 'overview' && (currentTab === 'overview' || currentTab === 'matches')) ||
-            (tab.id === 'switcher' && (currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless')) ||
-            (tab.id === 'game_config' && (currentTab === 'game_config' || currentTab === 'valorant' || currentTab === 'gpu')) ||
-            (tab.id === 'settings' && currentTab === 'settings');
-          return (
-            <button
-              key={tab.id}
-              onClick={() => onSelectTab(tab.id)}
-              className={`relative w-full group flex items-center justify-between px-3 py-1.5 rounded-full text-left transition-all duration-150 cursor-pointer ${
-                isActive
-                  ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
-                  : 'text-m3-on-surface-variant hover:bg-m3-surface-container/60 hover:text-m3-on-surface'
-              }`}
-            >
-              <div className="flex items-center space-x-2.5 min-w-0">
-                <Icon
-                  className={`w-4 h-4 shrink-0 transition-colors ${
-                    isActive
-                      ? 'text-m3-primary'
-                      : 'text-m3-outline group-hover:text-m3-on-surface'
-                  }`}
-                />
-                <div
-                  className={`text-xs font-semibold leading-tight truncate ${
-                    isActive ? 'text-m3-on-primary-container font-display' : 'text-m3-on-surface-variant'
-                  }`}
-                >
-                  {tab.label}
-                </div>
-              </div>
-              <span
-                className={`w-5 h-5 rounded-full font-mono text-[10px] font-semibold flex items-center justify-center transition-colors shrink-0 ${
-                  isActive
-                    ? 'bg-m3-surface-container-highest text-m3-primary'
-                    : 'bg-m3-surface-container text-m3-outline group-hover:text-m3-on-surface'
-                }`}
-              >
-                {tab.shortcut}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-    </div>
-  );
+  const allTabs: SidebarTab[] = [
+    ...TRACKER_TABS,
+    ...UTILITY_TABS,
+    ...CONFIG_TABS,
+    ...SETTINGS_TABS,
+  ];
 
   return (
     <aside className="w-72 min-w-72 max-w-72 h-full bg-m3-surface-container-low border-r border-m3-outline-subtle flex flex-col justify-between select-none shrink-0 z-30 overflow-hidden">
@@ -207,8 +136,64 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Live Hardware Telemetry Widget (M3 Expressive Tonal Card) */}
-        <div className="p-3 mx-3 my-2 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle flex flex-col space-y-2 shadow-m3-1 overflow-hidden">
+        {/* Player Profile Card (TrackerMini) */}
+        <div className="pt-2 shrink-0">
+          <TrackerMini />
+        </div>
+
+        {/* Navigation Tabs List (Clean M3 Navigation Rail with Pill Items) */}
+        <nav className="px-3 pt-1 space-y-1">
+          {allTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive =
+              (tab.id === 'overview' && (currentTab === 'overview' || currentTab === 'matches')) ||
+              (tab.id === 'switcher' && (currentTab === 'switcher' || currentTab === 'visualizer' || currentTab === 'borderless')) ||
+              (tab.id === 'game_config' && (currentTab === 'game_config' || currentTab === 'valorant' || currentTab === 'gpu')) ||
+              (tab.id === 'settings' && currentTab === 'settings');
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onSelectTab(tab.id)}
+                className={`relative w-full group flex items-center justify-between px-3 py-2 rounded-full text-left transition-all duration-150 cursor-pointer ${
+                  isActive
+                    ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
+                    : 'text-m3-on-surface-variant hover:bg-m3-surface-container/60 hover:text-m3-on-surface'
+                }`}
+              >
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <Icon
+                    className={`w-4 h-4 shrink-0 transition-colors ${
+                      isActive
+                        ? 'text-m3-primary'
+                        : 'text-m3-outline group-hover:text-m3-on-surface'
+                    }`}
+                  />
+                  <div
+                    className={`text-xs font-semibold leading-tight truncate ${
+                      isActive ? 'text-m3-on-primary-container font-display' : 'text-m3-on-surface-variant'
+                    }`}
+                  >
+                    {tab.label}
+                  </div>
+                </div>
+                <span
+                  className={`w-5 h-5 rounded-full font-mono text-[10px] font-semibold flex items-center justify-center transition-colors shrink-0 ${
+                    isActive
+                      ? 'bg-m3-surface-container-highest text-m3-primary'
+                      : 'bg-m3-surface-container text-m3-outline group-hover:text-m3-on-surface'
+                  }`}
+                >
+                  {tab.shortcut}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Sidebar Footer: Active Display */}
+      <div className="flex flex-col shrink-0 p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/30">
+        <div className="p-3 rounded-2xl bg-m3-surface-container border border-m3-outline-subtle flex flex-col space-y-2 shadow-m3-1 overflow-hidden">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] text-m3-on-surface-variant font-medium flex items-center gap-1.5 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-m3-primary shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
@@ -247,31 +232,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             </div>
           )}
-        </div>
-
-        {/* Navigation Tabs List (M3 Expressive Navigation Rail with Pill Items) */}
-        <div className="px-3 pt-1">
-          {renderGroup({ title: 'Tracker', tabs: TRACKER_TABS }, true)}
-          {renderGroup({ title: 'Utility', tabs: UTILITY_TABS }, false)}
-          {renderGroup({ title: 'Config', tabs: CONFIG_TABS }, false)}
-          {renderGroup({ title: 'Application', tabs: SETTINGS_TABS }, false)}
-          {IS_DEV && renderGroup({ title: 'Dev', tabs: DEV_TABS }, false)}
-        </div>
-      </div>
-
-      {/* Sidebar Footer: player chip & keyboard hint */}
-      <div className="flex flex-col shrink-0">
-        <TrackerMini />
-        <div className="p-3 border-t border-m3-outline-subtle bg-m3-surface-container-lowest/50 flex flex-col gap-2">
-          <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant px-1">
-            <span className="flex items-center space-x-1.5">
-              <Keyboard className="w-3.5 h-3.5 text-m3-outline" />
-              <span>Switch Tabs</span>
-            </span>
-            <span className="font-mono text-[10px] text-m3-secondary bg-m3-surface-container-high px-2 py-0.5 rounded-full border border-m3-outline-subtle">
-              Keys 1 - 4
-            </span>
-          </div>
         </div>
       </div>
     </aside>

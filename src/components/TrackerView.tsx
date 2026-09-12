@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Overview } from './Overview';
 import { MatchHistory } from './MatchHistory';
 import { TrackerMaps } from './TrackerMaps';
@@ -22,7 +22,21 @@ const TABS: SubTabItem[] = [
 ];
 
 export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initialSubTab = 'overview' }) => {
-  const [subTab, setSubTab] = useState<TrackerSubTab>(initialSubTab);
+  const [subTab, setSubTab] = useState<TrackerSubTab>(() => {
+    try {
+      const saved = localStorage.getItem('recon_active_subtab') as TrackerSubTab;
+      if (saved && ['overview', 'live', 'matches', 'agents', 'maps'].includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return initialSubTab;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('recon_active_subtab', subTab);
+    } catch {}
+  }, [subTab]);
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-m3-surface">

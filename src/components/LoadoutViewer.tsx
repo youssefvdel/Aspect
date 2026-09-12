@@ -11,24 +11,21 @@ import {
 } from '../utils/loadout';
 
 /* ------------------------------------------------------------------ */
-/* Header & Section Title Primitives                                  */
+/* Header & Section Title Primitives (Material Design 3)               */
 /* ------------------------------------------------------------------ */
 
 const CategoryHeader: React.FC<{ title: string; className?: string }> = ({ title, className = '' }) => (
-  <div
-    className={`text-center font-display font-black text-[13px] tracking-[0.2em] text-white uppercase select-none h-5 leading-5 ${className}`}
-  >
-    {title}
+  <div className={`flex items-center gap-2 justify-center py-0.5 select-none ${className}`}>
+    <div className="h-[1px] flex-1 bg-m3-outline-subtle/40" />
+    <span className="font-display font-bold text-[10.5px] tracking-[0.18em] text-m3-primary/90 uppercase text-center shrink-0">
+      {title}
+    </span>
+    <div className="h-[1px] flex-1 bg-m3-outline-subtle/40" />
   </div>
 );
 
 /* ------------------------------------------------------------------ */
-/* Weapon Card Component                                              */
-/* Matches the exact Valorant collection tile:                        */
-/* - Fixed 96px height                                                */
-/* - Centered weapon/skin model                                       */
-/* - Bottom-left base weapon name (e.g. CLASSIC, VANDAL)               */
-/* - Horizontal hairline divider extending from weapon name to edge   */
+/* Weapon Card Component (Flexible 1fr Height, Material 3 Surface)     */
 /* ------------------------------------------------------------------ */
 
 interface SlotItemData {
@@ -44,86 +41,139 @@ const WeaponCard: React.FC<{
 }> = ({ slot, className = '' }) => {
   return (
     <div
-      className={`flex-1 min-h-[80px] bg-[#1c1326]/85 hover:bg-[#271a35]/95 border border-[#d0bcff]/20 hover:border-[#d0bcff]/70 rounded-xs transition-all duration-150 overflow-hidden flex flex-col justify-between p-2 select-none shadow-[0_4px_12px_rgba(0,0,0,0.5)] group relative ${className}`}
+      className={`flex-1 min-h-0 bg-m3-surface-container-low hover:bg-m3-surface-container-high border border-m3-outline-subtle/70 hover:border-m3-primary/60 rounded-xl transition-all duration-200 overflow-hidden flex flex-col justify-between p-1.5 select-none shadow-m3-1 hover:shadow-m3-2 group relative ${className}`}
       title={`${slot.weaponName} • ${slot.skinName}`}
     >
       {/* Centered weapon artwork */}
-      <div className="flex-1 flex items-center justify-center p-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 flex items-center justify-center p-0.5 relative">
         {slot.icon ? (
           <img
             src={slot.icon}
             alt={slot.skinName}
             loading="lazy"
-            className="max-h-[82%] max-w-[88%] object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] group-hover:scale-105 transition-transform duration-200"
+            className="max-h-[85%] max-w-[92%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] group-hover:scale-105 transition-transform duration-200"
           />
         ) : (
-          <Crosshair className="w-5 h-5 text-[#d0bcff]/30" />
+          <Crosshair className="w-4 h-4 text-m3-outline/40" />
         )}
       </div>
 
-      {/* Bottom baseline: base weapon name on left, line extending to the right */}
-      <div className="flex items-center px-1 pb-0.5 pt-1 min-w-0">
-        <span className="font-display font-black text-[11px] text-[#d0bcff]/80 tracking-wider uppercase shrink-0">
-          {slot.weaponName}
-        </span>
-        {/* Segmented horizontal line */}
-        <div className="flex-1 h-[1px] bg-white/10 ml-2 relative">
+      {/* Bottom baseline: weapon label and equipped skin name */}
+      <div className="px-1 pb-0.5 pt-1 min-w-0 shrink-0 border-t border-m3-outline-subtle/30 flex flex-col">
+        <div className="flex items-center justify-between gap-1 min-w-0">
+          <span className="font-mono text-[8.5px] text-m3-outline uppercase tracking-wider truncate">
+            {slot.weaponName}
+          </span>
           {!slot.isDefaultSkin && (
-            <div className="absolute left-0 top-0 bottom-0 w-1/3 bg-[#d0bcff] shadow-[0_0_8px_rgba(208,188,255,0.8)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-m3-primary shrink-0 shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
           )}
         </div>
+        <span
+          className={`text-[10px] font-semibold tracking-wide truncate max-w-full ${
+            slot.isDefaultSkin ? 'text-m3-on-surface-variant/80' : 'text-m3-primary'
+          }`}
+          title={slot.skinName}
+        >
+          {slot.skinName}
+        </span>
       </div>
     </div>
   );
 };
 
 /* ------------------------------------------------------------------ */
-/* Expressions (Sprays) Wheel Component                                */
-/* 4 cardinal points (12, 3, 6, 9 o'clock) with concentric rings      */
+/* Full Player Card Component with Bottom Fade                         */
+/* ------------------------------------------------------------------ */
+
+const PlayerCardContainer: React.FC<{
+  player: LiveMatchPlayer;
+  cardSrc: string;
+  onImgError: () => void;
+}> = ({ player, cardSrc, onImgError }) => {
+  return (
+    <div className="flex-1 min-h-0 w-full max-w-[200px] rounded-2xl bg-m3-surface-container-low border border-m3-outline-subtle/80 hover:border-m3-primary/50 shadow-m3-2 overflow-hidden relative flex flex-col justify-between transition-colors group">
+      {/* Level Chip floating cleanly inside the top */}
+      <div className="absolute top-2 inset-x-0 flex justify-center z-20 pointer-events-none">
+        <div className="bg-m3-surface-dim/80 backdrop-blur-md border border-m3-outline-subtle/80 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold text-m3-primary shadow-m3-1 flex items-center gap-1 select-none">
+          <span className="text-m3-outline text-[8px]">&lt;</span>
+          <span>{player.accountLevel || 1}</span>
+          <span className="text-m3-outline text-[8px]">&gt;</span>
+        </div>
+      </div>
+
+      {/* Full Vertical Card Artwork */}
+      {cardSrc ? (
+        <img
+          src={cardSrc}
+          alt="Player Card"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+          onError={onImgError}
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-m3-outline text-xs font-mono gap-1">
+          <User className="w-7 h-7 text-m3-outline/40" />
+          <span className="text-[11px]">No Card Equipped</span>
+        </div>
+      )}
+
+      {/* Bottom Fade Overlay with Player Identity */}
+      <div className="absolute inset-x-0 bottom-0 pt-16 pb-2.5 px-2.5 bg-gradient-to-t from-m3-surface-dim via-m3-surface-dim/85 to-transparent z-10 flex flex-col items-center text-center pointer-events-none select-none">
+        <span className="font-display font-black text-[13px] leading-tight text-white uppercase tracking-wider block truncate max-w-full drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+          {player.name}
+        </span>
+        <span className="text-[10px] font-semibold text-m3-primary/95 tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] mt-0.5">
+          {player.agentName || 'Agent'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Expressions (Sprays & Flex) Radial Wheel Component (1:1 Aspect)     */
 /* ------------------------------------------------------------------ */
 
 const ExpressionsWheel: React.FC<{ items: EquippedExpression[] }> = ({ items }) => {
-  // Slots in clock order: Top (12h), Right (3h), Bottom (6h), Left (9h)
   const slots = [
-    { pos: 'top-1 left-1/2 -translate-x-1/2', item: items[0] },
-    { pos: 'top-1/2 right-1 -translate-y-1/2', item: items[1] },
-    { pos: 'bottom-1 left-1/2 -translate-x-1/2', item: items[2] },
-    { pos: 'top-1/2 left-1 -translate-y-1/2', item: items[3] },
+    { label: 'Pre-Round', pos: 'top-[2%] left-1/2 -translate-x-1/2', item: items[0] },
+    { label: 'Round Start', pos: 'top-1/2 right-[2%] -translate-y-1/2', item: items[1] },
+    { label: 'Post-Round', pos: 'bottom-[2%] left-1/2 -translate-x-1/2', item: items[2] },
+    { label: 'Flex / Combat', pos: 'top-1/2 left-[2%] -translate-y-1/2', item: items[3] },
   ];
 
   return (
-    <div className="relative w-[200px] h-[200px] mx-auto flex items-center justify-center shrink-0">
+    <div className="relative w-full max-w-[190px] aspect-square mx-auto flex items-center justify-center shrink-0">
       {/* Outer faint ring */}
-      <div className="absolute w-[194px] h-[194px] rounded-full border border-[#d0bcff]/25" />
+      <div className="absolute inset-[1%] rounded-full border border-m3-outline-subtle/40" />
       {/* Middle concentric ring */}
-      <div className="absolute w-[118px] h-[118px] rounded-full border border-[#d0bcff]/15" />
+      <div className="absolute inset-[22%] rounded-full border border-m3-outline-subtle/25" />
       {/* Central hub */}
-      <div className="absolute w-[46px] h-[46px] rounded-full border border-[#d0bcff]/40 bg-[#1c1326] shadow-inner flex items-center justify-center">
-        <div className="w-2.5 h-2.5 rounded-full bg-[#d0bcff]/60 shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
+      <div className="absolute w-[20%] h-[20%] max-w-9 max-h-9 rounded-full border border-m3-outline-subtle bg-m3-surface-container-high shadow-inner flex items-center justify-center">
+        <div className="w-2 h-2 rounded-full bg-m3-primary/70 shadow-[0_0_6px_rgba(208,188,255,0.7)]" />
       </div>
 
-      {/* Radial 8-axis spokes */}
-      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 rotate-45" />
-      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 -rotate-45" />
-      <div className="absolute w-full h-[1px] bg-[#d0bcff]/15 rotate-0" />
-      <div className="absolute h-full w-[1px] bg-[#d0bcff]/15" />
+      {/* Radial spokes */}
+      <div className="absolute w-full h-[1px] bg-m3-outline-subtle/25 rotate-45" />
+      <div className="absolute w-full h-[1px] bg-m3-outline-subtle/25 -rotate-45" />
+      <div className="absolute w-full h-[1px] bg-m3-outline-subtle/25 rotate-0" />
+      <div className="absolute h-full w-[1px] bg-m3-outline-subtle/25" />
 
-      {/* 4 Cardinal slots */}
+      {/* 4 Cardinal slots (Enlarged Circles) */}
       {slots.map((slot, i) => (
         <div
           key={i}
-          className={`absolute ${slot.pos} w-12 h-12 rounded-full bg-[#1c1326] border border-[#d0bcff]/35 hover:border-[#d0bcff] hover:shadow-[0_0_12px_rgba(208,188,255,0.6)] flex items-center justify-center overflow-hidden shadow-lg transition-all group`}
-          title={slot.item?.name ? `${slot.item.name} (${slot.item.kind})` : 'Unequipped slot'}
+          className={`absolute ${slot.pos} w-[31%] h-[31%] max-w-14 max-h-14 rounded-full bg-m3-surface-container-high border-1.5 border-m3-outline-subtle hover:border-m3-primary hover:shadow-m3-2 flex items-center justify-center overflow-hidden shadow-md transition-all group cursor-pointer`}
+          title={slot.item?.name ? `${slot.label}: ${slot.item.name}` : `${slot.label} (Empty)`}
         >
           {slot.item?.icon ? (
             <img
               src={slot.item.icon}
-              alt={slot.item.name || slot.item.kind}
+              alt={slot.item.name || slot.label}
               loading="lazy"
-              className="w-9 h-9 object-contain group-hover:scale-110 transition-transform"
+              className="w-[82%] h-[82%] object-contain group-hover:scale-110 transition-transform"
             />
           ) : (
-            <div className="w-2 h-2 rounded-full bg-[#d0bcff]/30" />
+            <div className="w-2 h-2 rounded-full bg-m3-outline-subtle" />
           )}
         </div>
       ))}
@@ -132,16 +182,15 @@ const ExpressionsWheel: React.FC<{ items: EquippedExpression[] }> = ({ items }) 
 };
 
 /* ------------------------------------------------------------------ */
-/* 20 Weapons Slot Definitions (UUIDs match Valorant Content API)      */
+/* 19 Live Weapons Slot Definitions (Canonical Valorant Collection)   */
 /* ------------------------------------------------------------------ */
 
 const SLOTS = {
-  // Col 1: SIDEARMS
+  // Col 1: SIDEARMS (5 live weapons)
   CLASSIC: { id: '29a0cfab-485b-f5d5-779a-b59f85e204a8', name: 'CLASSIC' },
   SHORTY: { id: '42da8ccc-40d5-affc-beec-15aa47b42eda', name: 'SHORTY' },
   FRENZY: { id: '44d4e95c-4157-0037-81b2-17841bf2e8e3', name: 'FRENZY' },
   GHOST: { id: '1baa85b4-4c70-1284-64bb-6481dfc3bb4e', name: 'GHOST' },
-  BANDIT: { id: '410b2e0b-4ceb-1321-1727-20858f7f3477', name: 'BANDIT' },
   SHERIFF: { id: 'e336c6b8-418d-9340-d77f-7a9e4cfe0702', name: 'SHERIFF' },
 
   // Col 2: SMGS & SHOTGUNS
@@ -157,7 +206,7 @@ const SLOTS = {
   VANDAL: { id: '9c82e19d-4575-0200-1a81-3eacf00cf872', name: 'VANDAL' },
   MELEE: { id: '2f59173c-4bed-b6c3-2191-dea9b58be9c7', name: 'MELEE' },
 
-  // Col 4: SNIPERS & HEAVIES
+  // Col 4: SNIPER RIFLES & MACHINE GUNS
   MARSHAL: { id: 'c4883e50-4494-202c-3ec3-6b8a9284f00b', name: 'MARSHAL' },
   OUTLAW: { id: '5f0aaf7a-4289-3998-d5ff-eb9a5cf7ef5c', name: 'OUTLAW' },
   OPERATOR: { id: 'a03b24d3-4319-996d-0f8c-94bbfba1dfc7', name: 'OPERATOR' },
@@ -166,7 +215,7 @@ const SLOTS = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Main Loadout Viewer Modal                                           */
+/* Main Loadout Viewer Modal (Material Design 3 Dialog)                */
 /* ------------------------------------------------------------------ */
 
 export const LoadoutViewer: React.FC<{
@@ -237,46 +286,56 @@ export const LoadoutViewer: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-3 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1540px] rounded-2xl border border-[#d0bcff]/20 bg-gradient-to-b from-[#1a1124] via-[#140e1b] to-[#0f0a15] shadow-[0_24px_64px_rgba(0,0,0,0.9)] p-6 md:p-8 flex flex-col select-none overflow-hidden"
+        className="w-full max-w-[1360px] h-[calc(100vh-24px)] max-h-[780px] rounded-2xl sm:rounded-3xl border border-m3-outline-subtle bg-m3-surface text-m3-on-surface shadow-m3-3 p-3 sm:p-4 flex flex-col select-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-white/10">
-          <div className="flex items-center gap-3.5">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-m3-outline-subtle/50 shrink-0">
+          <div className="flex items-center gap-3">
             {player.agentIcon ? (
               <img
                 src={player.agentIcon}
                 alt={player.agentName}
-                className="w-9 h-9 rounded-sm object-cover border border-[#d0bcff]/30 shadow-sm"
+                className="w-9 h-9 rounded-xl object-cover border border-m3-outline-subtle shadow-m3-1"
               />
             ) : (
-              <div className="w-9 h-9 rounded-sm bg-[#22162e] border border-[#d0bcff]/30 flex items-center justify-center">
-                <User className="w-5 h-5 text-[#d0bcff]/60" />
+              <div className="w-9 h-9 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle flex items-center justify-center shadow-m3-1">
+                <User className="w-4 h-4 text-m3-outline" />
               </div>
             )}
-            <div className="flex flex-col leading-tight">
-              <span className="font-display font-black text-[16px] text-white tracking-wide">
+            <div className="flex flex-col">
+              <span className="font-display font-bold text-sm sm:text-base text-m3-on-surface tracking-tight leading-tight">
                 {rioId}
               </span>
-              <span className="text-[11px] text-[#d0bcff]/80 font-semibold">
-                {player.agentName}
-                {player.rank ? ` • ${player.rank}` : ''}
-                {player.accountLevel ? ` • Lvl ${player.accountLevel}` : ''}
-              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle/60 text-[10px] font-medium text-m3-on-surface-variant">
+                  {player.agentName || 'Agent'}
+                </span>
+                {player.rank && (
+                  <span className="px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle/60 text-[10px] font-medium text-m3-primary">
+                    {player.rank}
+                  </span>
+                )}
+                {player.accountLevel && (
+                  <span className="px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle/60 text-[10px] font-mono text-m3-outline">
+                    Lvl {player.accountLevel}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-[12px] font-display font-bold uppercase tracking-[0.25em] text-[#d0bcff]/70">
+          <div className="flex items-center gap-2.5">
+            <span className="px-2.5 py-0.5 rounded-full bg-m3-primary-container/30 border border-m3-primary/30 text-[10.5px] font-display font-bold uppercase tracking-[0.2em] text-m3-primary">
               Collection
             </span>
             <button
               onClick={onClose}
-              className="p-1 rounded text-[#d0bcff]/70 hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-full text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest transition-colors cursor-pointer"
               aria-label="Close loadout"
             >
               <X className="w-5 h-5" />
@@ -286,141 +345,99 @@ export const LoadoutViewer: React.FC<{
 
         {/* Notice banners */}
         {ambiguous && (
-          <div className="mb-4 px-3.5 py-1.5 rounded bg-[#ffb4a9]/10 border border-[#ffb4a9]/30 text-[#ffb4a9] text-[11px] font-medium">
-            Multiple players picked {player.agentName} in this match — displaying the first matching loadout.
+          <div className="mb-2 px-3 py-1.5 rounded-xl bg-m3-tertiary-container/30 border border-m3-tertiary/40 text-m3-on-tertiary-container text-xs font-medium flex items-center gap-2 shadow-sm shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-m3-tertiary shrink-0 animate-pulse" />
+            <span>Multiple players picked {player.agentName} in this match — displaying the first matching loadout.</span>
           </div>
         )}
         {unavailableReason && (
-          <div className="mb-4 px-3.5 py-1.5 rounded bg-[#22162e] border border-[#d0bcff]/20 text-[#d0bcff]/80 text-[11px]">
-            {unavailableReason}
+          <div className="mb-2 px-3 py-1.5 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant text-xs flex items-center gap-2 shrink-0">
+            <span>{unavailableReason}</span>
           </div>
         )}
 
-        {/* 5-Column 6-Row Modular Grid */}
-        <div className="relative">
+        {/* 5-Column Modular Grid (4 Weapon columns + Player Card & Expressions) */}
+        <div className="flex-1 min-h-0 relative overflow-hidden">
           {loading && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#140e1b]/90 backdrop-blur-xs rounded-lg">
-              <Loader2 className="w-7 h-7 text-[#d0bcff] animate-spin" />
-              <span className="text-[12px] font-mono text-[#d0bcff]/80 uppercase tracking-wider">
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-m3-surface/90 backdrop-blur-xs rounded-2xl">
+              <Loader2 className="w-6 h-6 text-m3-primary animate-spin" />
+              <span className="text-xs font-mono text-m3-primary uppercase tracking-wider">
                 Loading live weapon arsenal…
               </span>
             </div>
           )}
 
-          <div className="grid grid-cols-5 gap-6 items-start">
-            {/* ------------------------------------------------------------- */}
-            {/* Column 1: SIDEARMS (Classic, Shorty, Frenzy, Ghost, Bandit, Sheriff) */}
-            {/* ------------------------------------------------------------- */}
-            <div className="h-[660px] flex flex-col">
-              <CategoryHeader title="SIDEARMS" className="mb-3 shrink-0" />
-              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
+          <div className="grid grid-cols-5 gap-2.5 sm:gap-3 items-stretch h-full min-h-0">
+            {/* Column 1: SIDEARMS (5 live weapons) */}
+            <div className="h-full min-h-0 flex flex-col min-w-0">
+              <CategoryHeader title="SIDEARMS" className="mb-1.5 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.CLASSIC)} />
                 <WeaponCard slot={getSlot(SLOTS.SHORTY)} />
                 <WeaponCard slot={getSlot(SLOTS.FRENZY)} />
                 <WeaponCard slot={getSlot(SLOTS.GHOST)} />
-                <WeaponCard slot={getSlot(SLOTS.BANDIT)} />
                 <WeaponCard slot={getSlot(SLOTS.SHERIFF)} />
               </div>
             </div>
 
-            {/* ------------------------------------------------------------- */}
-            {/* Column 2: SMGS & SHOTGUNS                                     */}
-            {/* ------------------------------------------------------------- */}
-            <div className="h-[660px] flex flex-col">
-              <CategoryHeader title="SMGS" className="mb-3 shrink-0" />
-              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
+            {/* Column 2: SMGS & SHOTGUNS (2 SMGs + 2 Shotguns) */}
+            <div className="h-full min-h-0 flex flex-col min-w-0">
+              <CategoryHeader title="SMGS" className="mb-1.5 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.STINGER)} />
                 <WeaponCard slot={getSlot(SLOTS.SPECTRE)} />
-                <CategoryHeader title="SHOTGUNS" className="my-1 shrink-0" />
+              </div>
+              <CategoryHeader title="SHOTGUNS" className="mt-2 mb-1.5 shrink-0" />
+              <div className="flex-1 min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.BUCKY)} />
                 <WeaponCard slot={getSlot(SLOTS.JUDGE)} />
               </div>
             </div>
 
-            {/* ------------------------------------------------------------- */}
-            {/* Column 3: RIFLES & MELEE                                      */}
-            {/* ------------------------------------------------------------- */}
-            <div className="h-[660px] flex flex-col">
-              <CategoryHeader title="RIFLES" className="mb-3 shrink-0" />
-              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
+            {/* Column 3: RIFLES & MELEE (4 Rifles + 1 Melee) */}
+            <div className="h-full min-h-0 flex flex-col min-w-0">
+              <CategoryHeader title="RIFLES" className="mb-1.5 shrink-0" />
+              <div className="flex-[4] min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.BULLDOG)} />
                 <WeaponCard slot={getSlot(SLOTS.GUARDIAN)} />
                 <WeaponCard slot={getSlot(SLOTS.PHANTOM)} />
                 <WeaponCard slot={getSlot(SLOTS.VANDAL)} />
-                <CategoryHeader title="MELEE" className="my-1 shrink-0" />
+              </div>
+              <CategoryHeader title="MELEE" className="mt-2 mb-1.5 shrink-0" />
+              <div className="flex-[1] min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.MELEE)} />
               </div>
             </div>
 
-            {/* ------------------------------------------------------------- */}
-            {/* Column 4: SNIPER RIFLES & MACHINE GUNS                        */}
-            {/* ------------------------------------------------------------- */}
-            <div className="h-[660px] flex flex-col">
-              <CategoryHeader title="SNIPER RIFLES" className="mb-3 shrink-0" />
-              <div className="flex-1 min-h-0 flex flex-col justify-between gap-2.5">
+            {/* Column 4: SNIPER RIFLES & MACHINE GUNS (3 Snipers + 2 Heavies) */}
+            <div className="h-full min-h-0 flex flex-col min-w-0">
+              <CategoryHeader title="SNIPER RIFLES" className="mb-1.5 shrink-0" />
+              <div className="flex-[3] min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.MARSHAL)} />
                 <WeaponCard slot={getSlot(SLOTS.OUTLAW)} />
                 <WeaponCard slot={getSlot(SLOTS.OPERATOR)} />
-                <CategoryHeader title="MACHINE GUNS" className="my-1 shrink-0" />
+              </div>
+              <CategoryHeader title="MACHINE GUNS" className="mt-2 mb-1.5 shrink-0" />
+              <div className="flex-[2] min-h-0 flex flex-col gap-1.5">
                 <WeaponCard slot={getSlot(SLOTS.ARES)} />
                 <WeaponCard slot={getSlot(SLOTS.ODIN)} />
               </div>
             </div>
 
-            {/* ------------------------------------------------------------- */}
-            {/* Column 5: PLAYER CARDS & EXPRESSIONS                          */}
-            {/* Rows 1–4: Player Card Banner (Level Badge + Card Art + Name)  */}
-            {/* Rows 5–6: EXPRESSIONS header + Radial Wheel                   */}
-            {/* ------------------------------------------------------------- */}
-            <div className="h-[660px] flex flex-col">
-              <CategoryHeader title="PLAYER CARDS" className="mb-3 shrink-0" />
-              <div className="flex-1 min-h-0 flex flex-col justify-between items-center">
-                {/* Top: Player Card Banner */}
-                <div className="w-full flex flex-col items-center">
-                  <div className="flex justify-center -mb-2.5 z-10">
-                    <div className="bg-[#22162e] border border-[#d0bcff]/50 rounded px-2.5 py-0.5 font-mono text-[11px] font-bold text-[#d0bcff] shadow-md flex items-center gap-1">
-                      <span className="text-[#d0bcff]/40 text-[9px]">&lt;</span>
-                      <span>{player.accountLevel || 398}</span>
-                      <span className="text-[#d0bcff]/40 text-[9px]">&gt;</span>
-                    </div>
-                  </div>
+            {/* Column 5: PLAYER CARDS & EXPRESSIONS */}
+            <div className="h-full min-h-0 flex flex-col min-w-0 items-center">
+              <CategoryHeader title="PLAYER CARDS" className="w-full mb-1.5 shrink-0" />
+              <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-between gap-2">
+                {/* Top: Player Card */}
+                <PlayerCardContainer
+                  player={player}
+                  cardSrc={cardSrc}
+                  onImgError={() => setCardImgFailed(true)}
+                />
 
-                  <div
-                    className="relative w-[220px] h-[330px] border-2 border-[#ffb4a9]/80 bg-[#1c1326] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.7)]"
-                    style={{
-                      clipPath: 'polygon(0 0, 100% 0, 100% 88%, 50% 100%, 0 88%)',
-                    }}
-                  >
-                    {cardSrc ? (
-                      <img
-                        src={cardSrc}
-                        alt="Player Card"
-                        className="absolute inset-0 w-full h-full object-cover"
-                        onError={() => setCardImgFailed(true)}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[#d0bcff]/60 text-xs font-mono">
-                        No Card Equipped
-                      </div>
-                    )}
-
-                    {/* Gold name banner across lower section */}
-                    <div className="absolute bottom-11 inset-x-0 bg-[#e8c66c] py-1 text-center shadow-md">
-                      <span className="font-display font-black text-[15px] text-[#10171b] uppercase tracking-wide block truncate px-2">
-                        {player.name}
-                      </span>
-                    </div>
-
-                    {/* Subtitle / Title below banner */}
-                    <div className="absolute bottom-3 inset-x-0 text-center text-white text-[11px] font-semibold tracking-wider drop-shadow-md">
-                      <span>{player.agentName || 'Six Seven'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom: Expressions Radial Wheel */}
-                <div className="w-full flex flex-col items-center">
-                  <CategoryHeader title="EXPRESSIONS" className="mb-2" />
+                {/* Bottom: Expressions (Sprays & Flex) */}
+                <div className="w-full flex flex-col items-center shrink-0">
+                  <CategoryHeader title="EXPRESSIONS" className="w-full mb-1 shrink-0" />
                   <ExpressionsWheel items={loadout?.expressions ?? []} />
                 </div>
               </div>

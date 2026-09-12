@@ -1,12 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   RefreshCw,
-  Eye,
   Shield,
   Radio,
   Lock,
-  Edit3,
-  Check,
   EyeOff,
   Swords,
   Users,
@@ -35,7 +32,7 @@ import {
   byAcsDesc,
   queueLabel,
 } from '../utils/playerDisplay';
-import { showOverlay, hideOverlay, isOverlayVisible, setOverlayEditMode, getOverlayEditMode, isTauri } from '../utils/ipc';
+import { isTauri } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 /* In-app Live Match page.
@@ -64,8 +61,6 @@ export const LiveMatchView: React.FC = () => {
   const [tierIcons, setTierIcons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const prevStateRef = useRef<LiveMatchState | null>(null);
-  const [overlayOpen, setOverlayOpen] = useState(false);
-  const [inEditMode, setInEditMode] = useState(false);
 
   // Act labels for the peak-act caption under the peak emblem.
   const { seasonNames } = useTrackerData();
@@ -73,7 +68,7 @@ export const LiveMatchView: React.FC = () => {
   const loadState = useCallback(async () => {
     setLoading(true);
     try {
-      const s = await fetchLiveMatchState();
+      const s = await fetchLiveMatchState(undefined, true);
       setMatchState(s);
     } catch {}
     setLoading(false);
@@ -82,16 +77,6 @@ export const LiveMatchView: React.FC = () => {
   useEffect(() => {
     gameData().then((d) => setTierIcons(d.tierIcons)).catch(() => {});
     loadState();
-    isOverlayVisible().then(setOverlayOpen).catch(() => {});
-    getOverlayEditMode().then(setInEditMode).catch(() => {});
-
-    const unlisten = listen<boolean>('overlay-edit-mode-changed', (event) => {
-      setInEditMode(event.payload);
-      if (event.payload) setOverlayOpen(true);
-    });
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
   }, [loadState]);
 
   // Background live sync: synchronized with in-game overlay via events,
@@ -108,6 +93,16 @@ export const LiveMatchView: React.FC = () => {
         })
         .catch(() => {});
     };
+
+    const onGlobalRefresh = () => {
+      fetchLiveMatchState(undefined, true)
+        .then((s) => {
+          prevStateRef.current = s;
+          setMatchState(s);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('recon:global-refresh', onGlobalRefresh);
 
     const onVis = () => {
       if (typeof document !== 'undefined' && !document.hidden) poll();
@@ -132,6 +127,7 @@ export const LiveMatchView: React.FC = () => {
     const interval = setInterval(poll, 6000);
     return () => {
       clearInterval(interval);
+      window.removeEventListener('recon:global-refresh', onGlobalRefresh);
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVis);
         window.removeEventListener('focus', onVis);
@@ -200,28 +196,6 @@ export const LiveMatchView: React.FC = () => {
     [matchState]
   );
 
-  const handleToggleOverlay = async () => {
-    const isVis = await isOverlayVisible();
-    if (isVis) {
-      await hideOverlay();
-      setOverlayOpen(false);
-      if (inEditMode) {
-        await setOverlayEditMode(false);
-        setInEditMode(false);
-      }
-    } else {
-      await showOverlay();
-      setOverlayOpen(true);
-    }
-  };
-
-  const handleToggleEditMode = async () => {
-    const next = !inEditMode;
-    await setOverlayEditMode(next);
-    setInEditMode(next);
-    setOverlayOpen(true);
-  };
-
   const isLive = matchState && matchState.phase !== 'idle';
 
   // Your team / enemy team, with Deathmatch flattened into one FFA board.
@@ -238,78 +212,14 @@ export const LiveMatchView: React.FC = () => {
   );
 
   return (
-    <div className="h-full min-h-0 flex flex-col justify-between gap-1.5 max-w-6xl mx-auto w-full overflow-hidden px-3 py-1.5 select-none">
-      {/* Top Header & Actions Bar */}
-      <div className="flex items-center justify-between gap-2 shrink-0 flex-wrap">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-mono font-bold">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isLive ? 'bg-m3-mint animate-pulse' : 'bg-m3-outline'
-              }`}
-            />
-            <span className={isLive ? 'text-m3-mint' : 'text-m3-outline'}>
-              {matchState?.phase === 'coregame'
-                ? 'IN MATCH'
-                : matchState?.phase === 'pregame'
-                ? 'AGENT SELECT'
-                : 'IDLE / NO MATCH'}
-            </span>
-          </div>
-
-          {matchState?.mapName && matchState.phase !== 'idle' && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11.5px] font-display font-extrabold text-m3-on-surface">
-                {matchState.mapName}
-              </span>
-              {matchState.mode && (
-                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 border border-purple-400/30 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  {matchState.mode}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 ml-auto">
-          <button
-            onClick={loadState}
-            disabled={loading}
-            className="h-7.5 px-2.5 rounded-lg bg-m3-surface-container hover:bg-m3-surface-container-high border border-m3-outline-subtle text-[11px] font-semibold text-m3-on-surface flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-m3-primary' : ''}`} />
-            <span>Refresh</span>
-          </button>
-
-          <button
-            onClick={handleToggleEditMode}
-            className={`h-7.5 px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
-              inEditMode
-                ? 'bg-m3-mint text-zinc-950 border-transparent shadow-md'
-                : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-primary/40 text-m3-primary'
-            }`}
-          >
-            {inEditMode ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
-            <span>{inEditMode ? 'Lock HUD' : 'Edit In-Game HUD'}</span>
-          </button>
-
-          <button
-            onClick={handleToggleOverlay}
-            className={`h-7.5 px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
-              overlayOpen
-                ? 'bg-m3-coral/15 border-m3-coral/40 text-m3-coral hover:bg-m3-coral/25'
-                : 'bg-m3-surface-container hover:bg-m3-surface-container-high border-m3-outline-subtle text-m3-on-surface'
-            }`}
-          >
-            <Eye className="w-3 h-3" />
-            <span>{overlayOpen ? 'Close Overlay' : 'Open Overlay'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Match status strip — what Riot actually tells us about the live game. */}
+    <div className="h-full min-h-0 flex flex-col justify-start gap-2.5 max-w-6xl mx-auto w-full overflow-hidden px-6 pt-3 pb-6 select-none">
+      {/* Consolidated Live Match Status Bar */}
       {isLive && matchState && (
-        <MatchStatusStrip state={matchState} />
+        <MatchStatusStrip
+          state={matchState}
+          onRefresh={loadState}
+          refreshing={loading}
+        />
       )}
 
       {/* Main Content Area */}
@@ -331,7 +241,7 @@ export const LiveMatchView: React.FC = () => {
         </div>
       ) : teams.isFfa ? (
         <PlayerTable
-          title={`Free For All (${teams.yours.length} Players)`}
+          hideHeader
           accent="gold"
           players={teams.yours}
           tierIcons={tierIcons}
@@ -339,8 +249,18 @@ export const LiveMatchView: React.FC = () => {
           queueId={matchState?.queueId}
           onShowLoadout={openLoadout}
         />
+      ) : matchState?.isRange ? (
+        <PlayerTable
+          title="The Range — Practice"
+          accent="mint"
+          players={teams.yours}
+          tierIcons={tierIcons}
+          seasonNames={seasonNames}
+          queueId={matchState?.queueId}
+          onShowLoadout={openLoadout}
+        />
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col justify-between gap-1.5 overflow-hidden">
+        <div className="flex flex-col justify-start gap-2.5 shrink-0">
           <PlayerTable
             title="Your Team"
             accent="primary"
@@ -394,24 +314,46 @@ export const LiveMatchView: React.FC = () => {
 
 const MatchStatusStrip: React.FC<{
   state: LiveMatchState;
-}> = ({ state }) => {
+  onRefresh: () => void;
+  refreshing: boolean;
+}> = ({ state, onRefresh, refreshing }) => {
   const units = (n: number) => `${n} Player${n === 1 ? '' : 's'}`;
 
   return (
-    <section className="rounded-xl bg-m3-surface-container-low border border-m3-outline-subtle px-3 py-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[10px]">
-      <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+    <section className="rounded-xl bg-m3-surface-container-low border border-m3-outline-subtle px-3 py-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[10px] shrink-0">
+      {/* Live Phase indicator */}
+      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-[10px] font-mono font-bold shrink-0">
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${
+            state.phase === 'coregame' || state.phase === 'pregame'
+              ? 'bg-m3-mint animate-pulse'
+              : 'bg-m3-outline'
+          }`}
+        />
+        <span className={state.phase === 'coregame' || state.phase === 'pregame' ? 'text-m3-mint' : 'text-m3-outline'}>
+          {state.phase === 'coregame'
+            ? 'IN MATCH'
+            : state.phase === 'pregame'
+            ? 'AGENT SELECT'
+            : 'IDLE'}
+        </span>
+      </div>
+
+      {/* Map */}
+      <span className="flex items-center gap-1.5 font-mono text-m3-outline shrink-0">
         <Swords className="w-3 h-3 text-m3-primary" />
         <span className="font-bold text-m3-on-surface">{state.mapName || 'Unknown map'}</span>
       </span>
 
+      {/* Mode badge */}
       {state.mode && (
-        <span className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-400/30 text-purple-200 text-[9.5px] font-mono font-bold uppercase">
+        <span className="px-2 py-0.5 rounded-md bg-purple-500/20 border border-purple-400/30 text-purple-200 text-[9.5px] font-mono font-bold uppercase shrink-0 tracking-wider">
           {state.mode}
         </span>
       )}
 
       {state.startingSide && !state.isDeathmatch && (
-        <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+        <span className="flex items-center gap-1.5 font-mono text-m3-outline shrink-0">
           <span className="text-m3-outline">Starting side</span>
           <span
             className={`px-1.5 py-px rounded font-bold ${
@@ -425,15 +367,27 @@ const MatchStatusStrip: React.FC<{
         </span>
       )}
 
-      <span className="flex items-center gap-1.5 font-mono text-m3-outline">
+      <span className="flex items-center gap-1.5 font-mono text-m3-outline shrink-0">
         <Users className="w-3 h-3" />
         <span>{units(state.blueTeam.length + state.redTeam.length)} in lobby</span>
       </span>
 
-      <span className="flex items-center gap-1.5 font-mono text-m3-outline ml-auto">
-        <Clock className="w-3 h-3" />
-        <span>synced {new Date(state.updatedAt || Date.now()).toLocaleTimeString()}</span>
-      </span>
+      {/* Refresh button moved right beside sync timestamp */}
+      <div className="flex items-center gap-2 font-mono text-m3-outline ml-auto shrink-0">
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-m3-primary border border-white/10 text-[10px] font-semibold cursor-pointer active:scale-95 disabled:opacity-50 transition-colors"
+          title="Refresh match data"
+        >
+          <RefreshCw className={`w-2.5 h-2.5 ${refreshing ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+        <span className="flex items-center gap-1 text-m3-outline text-[9.5px]">
+          <Clock className="w-3 h-3" />
+          <span>synced {new Date(state.updatedAt || Date.now()).toLocaleTimeString()}</span>
+        </span>
+      </div>
     </section>
   );
 };
@@ -448,10 +402,11 @@ const ACCENTS: Record<string, { tag: string; border: string }> = {
   primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
   coral: { tag: 'bg-m3-coral/15 text-m3-coral border-m3-coral/30', border: 'border-m3-coral/25' },
   gold: { tag: 'bg-m3-gold/15 text-m3-gold border-m3-gold/30', border: 'border-m3-gold/25' },
+  mint: { tag: 'bg-m3-mint/15 text-m3-mint border-m3-mint/30', border: 'border-m3-mint/25' },
 };
 
 const PlayerTable: React.FC<{
-  title: string;
+  title?: string;
   accent: keyof typeof ACCENTS;
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
@@ -459,22 +414,25 @@ const PlayerTable: React.FC<{
   /** Queue being played — captions the Last-24h column so it reads mode-scoped. */
   queueId?: string;
   onShowLoadout?: (p: LiveMatchPlayer) => void;
-}> = ({ title, accent, players, tierIcons, seasonNames, queueId, onShowLoadout }) => {
+  hideHeader?: boolean;
+}> = ({ title, accent, players, tierIcons, seasonNames, queueId, onShowLoadout, hideHeader }) => {
   const a = ACCENTS[accent] ?? ACCENTS.primary;
   const scope = queueLabel(queueId);
 
   return (
     <section
-      className={`flex-1 min-h-0 rounded-2xl bg-m3-surface-container-low border ${a.border} p-2 shadow-m3-1 flex flex-col justify-between overflow-hidden`}
+      className={`shrink-0 rounded-2xl bg-m3-surface-container-low border ${a.border} p-2.5 shadow-m3-1 flex flex-col gap-1.5 overflow-hidden`}
     >
-      <div className="flex items-center justify-between px-1 shrink-0">
-        <span className={`text-[10.5px] font-bold font-display px-2 py-0.5 rounded-full border ${a.tag}`}>
-          {title}
-        </span>
-        <span className="text-[9.5px] font-mono text-m3-outline">
-          {players.length} Players
-        </span>
-      </div>
+      {!hideHeader && title && (
+        <div className="flex items-center justify-between px-1 shrink-0 pb-1">
+          <span className={`text-[10.5px] font-bold font-display px-2 py-0.5 rounded-full border ${a.tag}`}>
+            {title}
+          </span>
+          <span className="text-[9.5px] font-mono text-m3-outline">
+            {players.length} Player{players.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
 
       {/* Column headers. Act-wide disclosure is deliberate: Riot exposes no
           live combat stats, so nothing here may imply "this match". */}
@@ -499,7 +457,7 @@ const PlayerTable: React.FC<{
         <span className="text-right">Lvl</span>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5 overflow-hidden">
+      <div className="flex flex-col gap-1.5 overflow-hidden shrink-0">
         {[...players].sort(byAcsDesc).map((p) => (
           <PlayerRow
             key={p.puuid}
@@ -510,7 +468,7 @@ const PlayerTable: React.FC<{
           />
         ))}
         {players.length === 0 && (
-          <div className="flex-1 flex items-center justify-center p-2 text-center text-[10.5px] text-m3-outline font-mono">
+          <div className="py-4 flex items-center justify-center p-2 text-center text-[10.5px] text-m3-outline font-mono">
             No players detected yet.
           </div>
         )}
@@ -535,7 +493,7 @@ const PlayerRow: React.FC<{
 
   return (
     <div
-      className={`${GRID} flex-1 min-h-0 relative overflow-hidden rounded-xl border px-2 py-0.5 transition-colors ${
+      className={`${GRID} h-10 shrink-0 relative overflow-hidden rounded-xl border px-2.5 py-1 transition-colors ${
         party
           ? `${party.bg} border-m3-outline-subtle/40`
           : p.isMe

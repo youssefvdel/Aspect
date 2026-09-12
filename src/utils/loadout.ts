@@ -86,7 +86,6 @@ export const ARSENAL_COLUMNS: ColumnDef[] = [
           { id: '42da8ccc-40d5-affc-beec-15aa47b42eda', name: 'SHORTY' },
           { id: '44d4e95c-4157-0037-81b2-17841bf2e8e3', name: 'FRENZY' },
           { id: '1baa85b4-4c70-1284-64bb-6481dfc3bb4e', name: 'GHOST' },
-          { id: '410b2e0b-4ceb-1321-1727-20858f7f3477', name: 'BANDIT' },
           { id: 'e336c6b8-418d-9340-d77f-7a9e4cfe0702', name: 'SHERIFF' },
         ],
       },

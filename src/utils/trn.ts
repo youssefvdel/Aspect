@@ -28,10 +28,10 @@ const num = (v: unknown): number => {
  * serialised with a minimum gap, and a 429/403 puts us in exponential
  * cooldown so the limit is not extended by continued hammering.
  * ------------------------------------------------------------------ */
-const TRN_MIN_GAP_MS = 750;
-/** Cool-off after a rate-limit response: 1m, 2m, 4m, 8m, capped at 16m. */
-const TRN_COOLDOWN_BASE_MS = 60 * 1000;
-const TRN_COOLDOWN_MAX_MS = 16 * 60 * 1000;
+const TRN_MIN_GAP_MS = 1500;
+/** Cool-off after a rate-limit response: 25s, 45s, capped at 60s (was 16m). */
+const TRN_COOLDOWN_BASE_MS = 25 * 1000;
+const TRN_COOLDOWN_MAX_MS = 60 * 1000;
 
 let trnNextSlot = 0;
 let trnCooldownUntil = 0;

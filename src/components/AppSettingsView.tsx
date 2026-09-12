@@ -13,6 +13,10 @@ import {
   Loader2,
   GitBranch,
   ShieldCheck,
+  Eye,
+  Edit3,
+  Check,
+  Coffee,
 } from 'lucide-react';
 import type { MonitorDevice } from '../types';
 import {
@@ -31,8 +35,14 @@ import {
   fetchAllMonitors,
   fetchOverlayMonitor,
   setOverlayMonitor,
+  showOverlay,
+  hideOverlay,
+  isOverlayVisible,
+  getOverlayEditMode,
+  setOverlayEditMode,
 } from '../utils/ipc';
 import { APP_VERSION, appVersion } from '../utils/version';
+import { emit } from '@tauri-apps/api/event';
 
 interface AppSettingsViewProps {
   onUpdateStatusChange?: (hasUpdate: boolean, latestVersion: string) => void;
@@ -65,6 +75,10 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
   const [overlayMonitor, setOverlayMonitorSel] = useState('auto');
   const [monitorStatus, setMonitorStatus] = useState<string | null>(null);
 
+  // Overlay state: window visibility and HUD edit/customization mode
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [inEditMode, setInEditMode] = useState(false);
+
   // Update track: "stable" (official release) vs "early-access" (alpha / instant builds)
   const [updateChannel, setUpdateChannelState] = useState<UpdateChannel>(getUpdateChannel);
 
@@ -73,6 +87,8 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     setCurrentVersion(ver);
     const auto = await getAutostartEnabled();
     setAutostart(auto);
+    isOverlayVisible().then(setOverlayOpen).catch(() => {});
+    getOverlayEditMode().then(setInEditMode).catch(() => {});
     try {
       const [mons, ovMon] = await Promise.all([fetchAllMonitors(), fetchOverlayMonitor()]);
       setMonitors(mons.filter((m) => m.is_attached && !m.is_device_disabled));
@@ -133,6 +149,29 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     localStorage.setItem('aspect_ingame_toasts', next ? 'true' : 'false');
   };
 
+  const [showStartingSide, setShowStartingSide] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('recon_overlay_cfg_v7');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.showStartingSide === true;
+      }
+    } catch {}
+    return false;
+  });
+
+  const handleToggleStartingSide = async () => {
+    const next = !showStartingSide;
+    setShowStartingSide(next);
+    try {
+      const saved = localStorage.getItem('recon_overlay_cfg_v7');
+      const parsed = saved ? JSON.parse(saved) : {};
+      const updated = { ...parsed, showStartingSide: next };
+      localStorage.setItem('recon_overlay_cfg_v7', JSON.stringify(updated));
+      await emit('overlay-config-changed', updated);
+    } catch {}
+  };
+
   const handleOverlayMonitorChange = async (value: string) => {
     setOverlayMonitorSel(value);
     setMonitorStatus(null);
@@ -169,6 +208,31 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
       setError(String(e));
       setInstalling(false);
     }
+  };
+
+  const handleToggleOverlay = async () => {
+    try {
+      const visible = await isOverlayVisible();
+      if (visible) {
+        await hideOverlay();
+        setOverlayOpen(false);
+      } else {
+        await showOverlay();
+        setOverlayOpen(true);
+      }
+    } catch {}
+  };
+
+  const handleToggleEditMode = async () => {
+    try {
+      const next = !inEditMode;
+      await setOverlayEditMode(next);
+      setInEditMode(next);
+      if (next) {
+        await showOverlay();
+        setOverlayOpen(true);
+      }
+    } catch {}
   };
 
   return (
@@ -477,6 +541,63 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
           </div>
 
           <div className="divide-y divide-m3-outline-subtle rounded-2xl bg-m3-surface-container-lowest border border-m3-outline-subtle overflow-hidden">
+            {/* In-Game Overlay Display */}
+            <div className="p-3.5 sm:p-4 flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-semibold text-m3-on-surface flex items-center gap-2">
+                  <span>In-Game Overlay Window</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${
+                      overlayOpen
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                    }`}
+                  >
+                    {overlayOpen ? 'ACTIVE' : 'HIDDEN'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-m3-outline">
+                  Transparent in-game HUD overlay displaying live player ranks, headshot %, and combat duels.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleOverlay}
+                className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  overlayOpen
+                    ? 'bg-m3-coral/15 border-m3-coral/40 text-m3-coral hover:bg-m3-coral/25'
+                    : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest border-m3-outline-subtle text-m3-on-surface'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>{overlayOpen ? 'Close Overlay' : 'Open Overlay'}</span>
+              </button>
+            </div>
+
+            {/* In-Game HUD Layout (Edit Mode) */}
+            <div className="p-3.5 sm:p-4 flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-semibold text-m3-on-surface">
+                  Customize In-Game HUD Layout
+                </div>
+                <div className="text-[11px] text-m3-outline">
+                  Unlock in-game HUD widgets to drag, scale, and reposition them anywhere on your display.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleEditMode}
+                className={`h-8 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  inEditMode
+                    ? 'bg-m3-mint text-zinc-950 border-transparent shadow-md'
+                    : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest border-m3-primary/40 text-m3-primary'
+                }`}
+              >
+                {inEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+                <span>{inEditMode ? 'Lock HUD (Play Mode)' : 'Edit In-Game HUD'}</span>
+              </button>
+            </div>
+
             {/* In-Game Notifications */}
             <div className="p-3.5 sm:p-4 flex items-center justify-between gap-4">
               <div className="space-y-0.5">
@@ -497,6 +618,41 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
                 <div
                   className={`w-4 h-4 rounded-full bg-white transition-transform ${
                     inGameToasts ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Show Starting Side (Attack / Defense) */}
+            <div className="p-3.5 sm:p-4 flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-semibold text-m3-on-surface flex items-center gap-2">
+                  <span>Show Starting Side (Attack / Defense)</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${
+                      showStartingSide
+                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                    }`}
+                  >
+                    {showStartingSide ? 'ENABLED' : 'DISABLED'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-m3-outline">
+                  Displays whether your team starts on Attack or Defense in the Agent Select widget and HUD. Disable to match official client visibility.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleStartingSide}
+                className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                  showStartingSide ? 'bg-m3-primary' : 'bg-m3-surface-container-high'
+                }`}
+                aria-label="Toggle starting side visibility"
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                    showStartingSide ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>
@@ -573,7 +729,14 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
               Version {currentVersion} • Rust / Win32 / Tauri v2
             </span>
           </div>
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-3 pt-2 flex-wrap">
+            <button
+              onClick={() => openExternalUrl('https://ko-fi.com/youssefvdel')}
+              className="h-8 px-3 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Coffee className="w-3.5 h-3.5 text-amber-400" />
+              <span>Support on Ko-fi</span>
+            </button>
             <button
               onClick={() => openExternalUrl('https://github.com/youssefvdel/Recon')}
               className="h-8 px-3 rounded-xl bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"

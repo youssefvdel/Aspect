@@ -37,6 +37,54 @@ pub struct AppState {
     pub preferred_stretched: std::sync::Arc<Mutex<(u32, u32)>>,
 }
 
+#[tauri::command]
+fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn window_toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.is_maximized().unwrap_or(false) {
+        window.unmaximize().map_err(|e| e.to_string())
+    } else {
+        window.maximize().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn window_start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn window_is_maximized(window: tauri::WebviewWindow) -> Result<bool, String> {
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_dev_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("dev") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        Ok(())
+    } else {
+        tauri::WebviewWindowBuilder::new(&app, "dev", tauri::WebviewUrl::App("index.html#dev".into()))
+            .title("Recon \u{2022} Dev Dashboard")
+            .inner_size(1080.0, 780.0)
+            .min_inner_size(720.0, 500.0)
+            .resizable(true)
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
 fn build_display_info() -> DisplayInfo {
     let (native_w, native_h) = display::get_native_resolution();
     let cur = display::get_current_display_mode().unwrap_or(display::DisplayMode {
@@ -915,6 +963,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let img = tauri::include_image!("icons/icon.png");
                 let _ = window.set_icon(img);
+                let _ = window.set_min_size(Some(tauri::LogicalSize::new(1210.0, 800.0)));
             }
 
             // Ensure overlay window starts in true click-through mode
@@ -1055,6 +1104,12 @@ pub fn run() {
             get_autostart_enabled,
             set_autostart_enabled,
             open_external_url,
+            open_dev_window,
+            window_minimize,
+            window_toggle_maximize,
+            window_close,
+            window_start_dragging,
+            window_is_maximized,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

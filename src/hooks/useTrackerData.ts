@@ -7,6 +7,7 @@ import {
   detectRegion,
   fetchCompetitiveUpdates,
   fetchHistoryMeta,
+  fetchLiveMatchState,
   fetchMmrDirect,
   gameData,
   isRiotClientRunning,
@@ -19,6 +20,7 @@ import {
   fetchTrnAgents,
   fetchTrnMaps,
   fetchTrnMatches,
+  resetTrnCooldown,
   type TrnActStats,
   type TrnAgentStat,
   type TrnMapStat,
@@ -193,6 +195,26 @@ export async function triggerGlobalRefresh(): Promise<void> {
     }
   })();
   return refreshPromise;
+}
+
+export async function performGlobalRefresh(): Promise<void> {
+  resetTrnCooldown();
+  const livePromise = fetchLiveMatchState(undefined, true).catch(() => null);
+  const trackerPromise = triggerGlobalRefresh().catch(() => {});
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('recon:global-refresh'));
+  }
+
+  try {
+    const { isTauri } = await import('../utils/ipc');
+    if (isTauri()) {
+      const { emit } = await import('@tauri-apps/api/event');
+      emit('recon:global-refresh', { at: Date.now() }).catch(() => {});
+    }
+  } catch {}
+
+  await Promise.allSettled([livePromise, trackerPromise]);
 }
 
 async function runRefresh(): Promise<void> {

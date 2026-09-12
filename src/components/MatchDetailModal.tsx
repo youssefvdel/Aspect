@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Swords, Clock, ExternalLink } from 'lucide-react';
+import { X, Swords, Clock } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
 import { getPartyStyle } from '../utils/playerDisplay';
@@ -363,26 +363,6 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       .map(([name, count]) => ({ name, count }));
   }, [detail, weaponMap]);
 
-  const handleOpenInWindow = async () => {
-    const mId = game?.matchId || (detail as any)?.matchId || (detail as any)?.id;
-    const url = mId ? `https://tracker.gg/valorant/match/${mId}` : 'https://tracker.gg/valorant';
-    try {
-      if ((window as any).__TAURI__) {
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const win = new WebviewWindow(`match-${(mId || 'det').slice(0, 8)}-${Date.now() % 1000}`, {
-          url,
-          title: `Recon • Match ${mapName} (${teamBlueScore}:${teamRedScore})`,
-          width: 1240,
-          height: 860,
-          resizable: true,
-        });
-        win.once('tauri://error', () => window.open(url, '_blank'));
-        return;
-      }
-    } catch {}
-    window.open(url, '_blank');
-  };
-
   const avgRankName = (team: typeof teamBlue): string => {
     const validTiers = team.map((p) => p.tier || 0).filter((t) => t > 0);
     if (validTiers.length === 0) return game ? game.tier : 'Ascendant';
@@ -427,10 +407,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
 
       {/* Modal Dialog Card (Google Material 3 Theme) */}
-      <div className="relative w-full max-w-5xl h-[88vh] max-h-[88vh] bg-m3-surface-container-low border border-m3-outline-subtle rounded-3xl shadow-m3-3 flex flex-col overflow-hidden text-m3-on-surface z-10">
+      <div className="relative w-full max-w-[96vw] h-[94vh] max-h-[94vh] bg-m3-surface-container-low border border-m3-outline-subtle rounded-3xl shadow-m3-3 flex flex-col overflow-hidden text-m3-on-surface z-10">
         {/* Header */}
-        <div className="px-5 py-3.5 bg-m3-surface-container border-b border-m3-outline-subtle flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-4 shrink-0 min-w-0">
+        <div className="px-4 py-2.5 bg-m3-surface-container border-b border-m3-outline-subtle flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 min-w-0">
             {/* Map & Mode & Date */}
             <div>
               <div className="flex items-center gap-2">
@@ -462,24 +442,24 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2 bg-m3-surface-container-high border border-m3-outline-subtle px-3 py-1.5 rounded-2xl shrink-0">
-                <span className="font-display font-black text-lg text-m3-mint">
+                <span className="font-display font-black text-base text-m3-mint">
                   Team Blue {teamBlueScore}
                 </span>
                 <span className="text-m3-outline font-bold text-sm">:</span>
-                <span className="font-display font-black text-lg text-m3-coral">
+                <span className="font-display font-black text-base text-m3-coral">
                   {teamRedScore} Team Red
                 </span>
               </div>
             )}
           </div>
 
-          {/* Right side: Round Timeline Strip + Close Button */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Right side: Round Timeline Strip + Close Button (Timeline scrolls, controls NEVER get pushed off) */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 justify-end">
             {detail.rounds && detail.rounds.length > 0 && (
-              <div className="flex flex-col gap-1 bg-m3-surface-container-high border border-m3-outline-subtle px-2.5 py-1.5 rounded-2xl shrink-0">
+              <div className="flex flex-col gap-0.5 bg-m3-surface-container-high border border-m3-outline-subtle px-2 py-1 rounded-xl max-w-[360px] sm:max-w-[440px] md:max-w-[560px] lg:max-w-[660px] overflow-x-auto custom-scrollbar shrink">
                 {/* Team Blue Row */}
-                <div className="flex items-center gap-1">
-                  <span className="w-8 text-[9px] font-bold text-m3-mint shrink-0">
+                <div className="flex items-center gap-1 min-w-max">
+                  <span className="w-7 text-[8.5px] font-bold text-m3-mint shrink-0">
                     Blue
                   </span>
                   <div className="flex items-center gap-0.5">
@@ -490,12 +470,12 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className="w-4 h-4 flex items-center justify-center shrink-0"
+                          className="w-3.5 h-3.5 flex items-center justify-center shrink-0"
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
                           ) : (
-                            <span className="text-[9px] text-white/15 leading-none select-none">·</span>
+                            <span className="text-[8px] text-white/15 leading-none select-none">·</span>
                           )}
                         </div>
                       );
@@ -504,8 +484,8 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
 
                 {/* Team Red Row */}
-                <div className="flex items-center gap-1">
-                  <span className="w-8 text-[9px] font-bold text-m3-coral shrink-0">
+                <div className="flex items-center gap-1 min-w-max">
+                  <span className="w-7 text-[8.5px] font-bold text-m3-coral shrink-0">
                     Red
                   </span>
                   <div className="flex items-center gap-0.5">
@@ -516,12 +496,12 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         <div
                           key={i}
                           title={`Round ${i + 1}: ${r.winningTeam} won (${r.roundResult || 'Eliminated'})`}
-                          className="w-4 h-4 flex items-center justify-center shrink-0"
+                          className="w-3.5 h-3.5 flex items-center justify-center shrink-0"
                         >
                           {isWin ? (
-                            <img src={outcomeIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                            <img src={outcomeIcon} alt="" className="w-3 h-3 object-contain" />
                           ) : (
-                            <span className="text-[9px] text-white/15 leading-none select-none">·</span>
+                            <span className="text-[8px] text-white/15 leading-none select-none">·</span>
                           )}
                         </div>
                       );
@@ -531,30 +511,20 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
             )}
 
-            {/* Open in Window Button */}
-            <button
-              type="button"
-              onClick={handleOpenInWindow}
-              title="Open match in separate window"
-              className="w-9 h-9 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </button>
-
-            {/* Close Button */}
+            {/* Persistent Close Button — shrink-0 so X NEVER disappears */}
             <button
               type="button"
               onClick={onClose}
               title="Close"
-              className="w-9 h-9 rounded-2xl bg-m3-surface-container-high hover:bg-m3-surface-bright text-m3-outline hover:text-m3-on-surface flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle"
+              className="w-8 h-8 rounded-xl bg-m3-surface-container-high hover:bg-rose-600 hover:text-white text-m3-outline flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-m3-outline-subtle shadow-xs"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Modal Navigation Tabs */}
-        <div className="flex items-center gap-8 px-6 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs sm:text-[13px] font-bold shrink-0">
+        <div className="flex items-center gap-6 px-4 bg-m3-surface-container-high/60 border-b border-m3-outline-subtle text-xs sm:text-[13px] font-bold shrink-0 h-10">
           {[
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'duels', label: 'Duels' },
@@ -565,7 +535,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id as ModalTab)}
-                className={`relative py-3 transition-colors cursor-pointer whitespace-nowrap font-bold ${
+                className={`relative h-full flex items-center justify-center px-2 transition-colors cursor-pointer whitespace-nowrap font-bold ${
                   active ? 'text-m3-on-surface' : 'text-m3-outline hover:text-m3-on-surface'
                 }`}
               >
@@ -583,7 +553,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-3.5 flex flex-col gap-2.5">
           {/* Tab 1: Scoreboard */}
           {activeTab === 'scoreboard' && (
             isDeathmatch ? (
@@ -716,11 +686,11 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col justify-between gap-3 sm:gap-4 min-h-0">
+              <div className="flex-1 flex flex-col justify-between gap-2.5 min-h-0">
                 {/* Team Blue Table */}
               <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
                 {/* Team Blue Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint shrink-0">
+                <div className="px-3.5 py-1.5 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-mint shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-mint" />
                     <span>Team Blue • {teamBlueScore} Rounds</span>
@@ -904,7 +874,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               {/* Team Red Table */}
               <div className="flex-1 rounded-2xl border border-m3-outline-subtle overflow-hidden bg-m3-surface-container flex flex-col min-h-0">
                 {/* Team Red Banner */}
-                <div className="px-4 py-2 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral shrink-0">
+                <div className="px-3.5 py-1.5 bg-m3-surface-container-high border-b border-m3-outline-subtle flex items-center justify-between text-xs font-bold text-m3-coral shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-m3-coral" />
                     <span>Team Red • {teamRedScore} Rounds</span>

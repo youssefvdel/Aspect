@@ -304,6 +304,7 @@ export interface LiveMatchState {
   mapName: string;
   mode: string;
   isDeathmatch: boolean;
+  isRange?: boolean;
   /** Riot queue id ("competitive", "swiftplay", "deathmatch", …). Scopes the
    *  per-player 24h record to the mode actually being played. */
   queueId?: string;

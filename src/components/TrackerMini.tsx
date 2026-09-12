@@ -89,12 +89,9 @@ export const TrackerMini: React.FC = () => {
 
   useEffect(() => {
     let live = true;
-    // Deferred 900ms: the first paint + telemetry IPC must win the main
-    // thread. This card fires 6+ sequential Riot/TRN HTTP calls (curl
-    // sidecars); starting them at mount made the app feel frozen.
-    const kickoff = setTimeout(() => {
-      (async () => {
-        try {
+
+    const fetchMini = async () => {
+      try {
         const running = await isRiotClientRunning();
         if (!running) {
           if (live) setLoading(false);
@@ -116,11 +113,8 @@ export const TrackerMini: React.FC = () => {
         const peakTier = prof.seasons.reduce((m, s) => Math.max(m, s.tier), 0);
         const rawAvatar = trn?.stats.avatarUrl ?? '';
         const cardMatch = rawAvatar.match(/playercards\/([^/]+)/);
-        // Equipped card straight from Riot's presence blob (works even when TRN
-        // is gated, and after the old /personalization endpoint was retired).
         const ident = await fetchIdentityDirect(region).catch(() => null);
         if (!live) return;
-        // Either source yields a card ID; the art URLs follow from it directly.
         const cardId = ident?.cardId || cardMatch?.[1] || '';
         const art = cardArtUrls(cardId);
         const bannerUrl = art.wide;
@@ -143,17 +137,25 @@ export const TrackerMini: React.FC = () => {
         setMini(fullMini);
         writeCachedSidebarMini(fullMini, acc?.puuid);
       } catch {
-        // Client closed / Riot unreachable. Keep the cached identity on screen
-        // (it was correct a moment ago) — hide only if there is nothing cached.
         if (live) setMini((m) => m ?? null);
       } finally {
         if (live) setLoading(false);
       }
-      })();
+    };
+
+    const kickoff = setTimeout(() => {
+      fetchMini();
     }, 900);
+
+    const onGlobalRefresh = () => {
+      fetchMini();
+    };
+    window.addEventListener('recon:global-refresh', onGlobalRefresh);
+
     return () => {
       live = false;
       clearTimeout(kickoff);
+      window.removeEventListener('recon:global-refresh', onGlobalRefresh);
     };
   }, []);
 
