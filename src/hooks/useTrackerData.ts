@@ -15,6 +15,7 @@ import {
   shortMapName,
   type AggStats,
 } from '../utils/tracker';
+import { isTauri } from '../utils/ipc';
 import {
   fetchTrnActStats,
   fetchTrnAgents,
@@ -221,8 +222,58 @@ async function runRefresh(): Promise<void> {
   // 1. Fast <0.1ms lockfile check: is Riot Client actually running?
   const running = await isRiotClientRunning();
   if (!running) {
+    /* Browser preview (the marketing site embeds this exact app): there is no
+       local Riot client to talk to, so the "client closed" chrome would be
+       noise. Skip it, but still load the public static metadata from
+       valorant-api.com — that is what fills season/act names, rank crests and
+       agent portraits, and it needs no game session.
+
+       The persisted snapshot is re-read here rather than trusted from memory:
+       the host page seeds localStorage, and a store hydrated before that seed
+       landed would otherwise keep rendering stale values. */
+    const fresh = readSnapshot();
+    const profileNow = fresh?.profile ?? store.profile;
+    const hasData = Boolean(profileNow);
+
+    if (!isTauri() && hasData) {
+      const gd = await gameData().catch(() => null);
+      updateStore({
+        clientClosed: false,
+        isLoading: false,
+        ready: true,
+        hasCached: true,
+        banner: null,
+        ...(fresh
+          ? {
+              profile: fresh.profile ?? store.profile,
+              games: fresh.games ?? [],
+              agg: fresh.agg ?? null,
+              mapById: fresh.mapById ?? {},
+              queueById: fresh.queueById ?? {},
+              trn: fresh.trn ?? null,
+              trnAgents: fresh.trnAgents ?? [],
+              trnMaps: fresh.trnMaps ?? [],
+              trnPrev: fresh.trnPrev ?? {},
+              trnMatchTrs: fresh.trnMatchTrs ?? {},
+              detailsById: fresh.detailsById ?? {},
+              detailsReady: fresh.detailsReady ?? 0,
+              detailsTotal: fresh.games?.length ?? 0,
+            }
+          : {}),
+        ...(gd
+          ? {
+              seasonNames: gd.seasons,
+              seasonOrder: gd.seasonOrder,
+              tierIcons: gd.tierIcons,
+              agentInfo: gd.agentInfo,
+              weapons: gd.weapons,
+            }
+          : {}),
+      });
+      return;
+    }
+
     // If we have cached data, keep showing it peacefully without wiping anything!
-    const hasData = Boolean(store.profile);
     updateStore({
       clientClosed: true,
       isLoading: false,

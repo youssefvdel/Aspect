@@ -286,11 +286,11 @@ export const LoadoutViewer: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-3 animate-in fade-in duration-150"
+      className="m3-modal-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-3"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1360px] h-[calc(100vh-24px)] max-h-[780px] rounded-2xl sm:rounded-3xl border border-m3-outline-subtle bg-m3-surface text-m3-on-surface shadow-m3-3 p-3 sm:p-4 flex flex-col select-none overflow-hidden"
+        className="m3-modal-panel w-full max-w-[1360px] h-[calc(100vh-24px)] max-h-[780px] rounded-2xl sm:rounded-3xl border border-m3-outline-subtle bg-m3-surface text-m3-on-surface shadow-m3-3 p-3 sm:p-4 flex flex-col select-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}

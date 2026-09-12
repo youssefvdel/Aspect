@@ -33,6 +33,12 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
   });
 
   useEffect(() => {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  useEffect(() => {
     try {
       localStorage.setItem('recon_active_subtab', subTab);
     } catch {}
@@ -61,12 +67,13 @@ export const TrackerView: React.FC<{ initialSubTab?: TrackerSubTab }> = ({ initi
                   </span>
                 )}
               </span>
-              {active && (
-                <motion.span
-                  layoutId="tracker-active-subtab"
-                  className="absolute -bottom-px left-2 right-2 h-[2.5px] bg-m3-primary rounded-full shadow-xs"
-                />
-              )}
+              <span
+                className={`absolute -bottom-px left-2 right-2 h-[2.5px] rounded-full transition-all duration-150 pointer-events-none ${
+                  active
+                    ? 'bg-m3-primary opacity-100 shadow-[0_0_8px_rgba(182,171,247,0.5)]'
+                    : 'bg-transparent opacity-0 scale-x-75'
+                }`}
+              />
             </button>
           );
         })}

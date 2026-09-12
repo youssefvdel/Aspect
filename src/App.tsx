@@ -222,10 +222,19 @@ export const App: React.FC = () => {
       } catch (_) {}
     }, 2000);
 
+    const handleNavigateTab = (e: Event) => {
+      const tab = (e as CustomEvent<TabType>).detail;
+      if (tab && ['overview', 'switcher', 'visualizer', 'game_config', 'settings', 'matches'].includes(tab)) {
+        setCurrentTab(tab);
+      }
+    };
+    window.addEventListener('recon_navigate_tab', handleNavigateTab);
+
     return () => {
       clearInterval(tabInterval);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('recon_navigate_tab', handleNavigateTab);
       if (unlistenFn) unlistenFn();
       if (unlistenBlFn) unlistenBlFn();
     };

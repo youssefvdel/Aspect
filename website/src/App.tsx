@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, lazy, Suspense } from 'react';
 const CRTWarp = lazy(() => import('./components/CRTWarp'));
 import PixelTrail from './components/PixelTrail';
 import VariableProximity from './components/VariableProximity';
-import AppPreviewsStack from './components/AppPreviewsStack';
+import AppWalkthrough from './components/AppWalkthrough';
+import JohnPorkCall from './components/JohnPorkCall';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -57,110 +58,6 @@ const GithubIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
     <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
   </svg>
 );
-
-/* ------------------------------------------------------------------ */
-/* 1. INTERACTIVE BEFORE/AFTER TRUE STRETCH SLIDER                    */
-/* Inspired by awesome-react-components image comparison tools        */
-/* ------------------------------------------------------------------ */
-
-function StretchComparisonSlider() {
-  const [sliderPos, setSliderPos] = useState(50);
-  const [isDragging, setIsDragging] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const handleMove = (clientX: number) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-    setSliderPos((x / rect.width) * 100);
-  };
-
-  const handlePointerDown = () => setIsDragging(true);
-
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      if (isDragging) handleMove(e.clientX);
-    };
-    const onPointerUp = () => setIsDragging(false);
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-  }, [isDragging]);
-
-  return (
-    <div className="w-full flex flex-col items-center">
-      <div
-        ref={containerRef}
-        onPointerDown={handlePointerDown}
-        className="relative w-full max-w-3xl h-64 sm:h-80 rounded-2xl border border-white/20 bg-[#0d0914] overflow-hidden select-none cursor-ew-resize shadow-2xl touch-none"
-      >
-        {/* Left Side: Native 16:9 (Thin Hitbox) */}
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0d0914]">
-          {/* Simulated Valorant Crosshair & Target */}
-          <div className="flex flex-col items-center scale-x-100 transition-transform">
-            <div className="w-10 h-10 rounded-full bg-[#ff4655] border-2 border-white/70 shadow-lg flex items-center justify-center font-mono text-[9px] font-black text-white">
-              16:9
-            </div>
-            <div className="w-16 h-28 mt-1.5 rounded-xl bg-zinc-800 border border-white/20 flex items-center justify-center font-mono text-[9px] text-zinc-400">
-              HITBOX
-            </div>
-          </div>
-          {/* Native Label */}
-          <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-lg border border-white/10 font-mono text-xs text-zinc-300">
-            Native 16:9 (1920×1080)
-          </div>
-        </div>
-
-        {/* Right Side: Stretched (+22.6% Wider Hitbox) with Clip Path */}
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-[#140b20]"
-          style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
-        >
-          {/* Stretched Target */}
-          <div className="flex flex-col items-center scale-x-[1.226] transition-transform">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-b from-[#b6abf7] to-[#806bff] border-2 border-white shadow-[0_0_15px_rgba(182,171,247,0.6)] flex items-center justify-center font-mono text-[9px] font-black text-[#1b1721]">
-              STRETCH
-            </div>
-            <div className="w-16 h-28 mt-1.5 rounded-xl bg-[#2b1b42] border border-[#b6abf7]/50 shadow-inner flex items-center justify-center font-mono text-[9px] font-bold text-[#b6abf7]">
-              +22.6% WIDE
-            </div>
-          </div>
-          {/* Stretched Label */}
-          <div className="absolute top-4 right-4 bg-[#b6abf7]/20 backdrop-blur-md px-3 py-1 rounded-lg border border-[#b6abf7]/40 font-mono text-xs font-bold text-[#b6abf7]">
-            Recon True Stretch 1.45:1 (2088×1440)
-          </div>
-        </div>
-
-        {/* Crosshair Center Reference */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#00ffcc]" />
-          <div className="absolute w-8 h-[1px] bg-[#00ffcc]/70" />
-          <div className="absolute h-8 w-[1px] bg-[#00ffcc]/70" />
-        </div>
-
-        {/* Draggable Divider Bar */}
-        <div
-          className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_12px_rgba(255,255,255,0.8)] flex items-center justify-center pointer-events-none"
-          style={{ left: `${sliderPos}%` }}
-        >
-          <div className="w-8 h-8 rounded-full bg-white text-zinc-950 font-black text-[10px] flex items-center justify-center shadow-2xl border-2 border-zinc-950">
-            ↔
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between w-full max-w-3xl text-xs font-mono text-zinc-400 px-1">
-        <span>← Drag left to reveal True Stretch</span>
-        <span className="text-[#a8f5cc] font-bold">100% Vertical FOV Kept • 0ms Added Latency</span>
-        <span>Drag right for Native →</span>
-      </div>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* 2. INTERACTIVE STREAMER-MODE UNMASKER SIMULATOR                     */
@@ -331,7 +228,6 @@ export default function App() {
   const heroRef = useRef<HTMLDivElement>(null);
 
   const [activeShot, setActiveShot] = useState<'hud' | 'inventory' | 'unmasked' | 'overview' | 'stretch'>('hud');
-  const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [release, setRelease] = useState<ReleaseInfo>(DEFAULT_RELEASE);
   const [lightbox, setLightbox] = useState<{ isOpen: boolean; src: string; title: string }>({
     isOpen: false,
@@ -410,6 +306,20 @@ export default function App() {
 
       // Accumulate target scroll position with natural impulse
       targetY = Math.max(0, Math.min(maxScroll, targetY + delta * 1.35));
+
+      /* Entering the pinned tour used to hit like a wall: the frame slams into
+         place and then stops responding because the sticky content is frozen,
+         so a fast flick is absorbed with zero feedback. Catch the approach and
+         land it just PAST the first stage's rest instead — the tour's settle then
+         eases it back, which is the recoil. Scrolling up and out is untouched,
+         and a flick aimed well past the tour still sails through. */
+      const tour = (window as unknown as {
+        __reconTour?: { top: number; span: number; stage: number };
+      }).__reconTour;
+      if (tour && delta > 0 && window.scrollY < tour.top && targetY > tour.top) {
+        const entryCap = tour.top + tour.stage * 0.28;
+        if (targetY < tour.top + tour.stage * 1.6) targetY = entryCap;
+      }
 
       isTweening = true;
 
@@ -503,7 +413,10 @@ export default function App() {
 
   useGSAP(
     () => {
-      // Cinematic hero text entrance
+      // Cinematic hero text entrance. NOTE: the CTA buttons deliberately do
+      // NOT animate via gsap.from here — a delayed `from` tween can be killed
+      // by the effect teardown and leave opacity: 0 forever (invisible
+      // buttons). They use a CSS keyframe instead (see .hero-cta-enter).
       gsap.from('.gsap-hero-title', {
         y: 45,
         opacity: 0,
@@ -515,13 +428,6 @@ export default function App() {
         opacity: 0,
         duration: 1.1,
         delay: 0.15,
-        ease: 'power3.out',
-      });
-      gsap.from('.gsap-hero-cta', {
-        y: 25,
-        opacity: 0,
-        duration: 1.0,
-        delay: 0.3,
         ease: 'power3.out',
       });
 
@@ -539,18 +445,6 @@ export default function App() {
           ease: 'power2.out',
         });
       });
-
-      // Vanguard blueprint reveal
-      gsap.from('.gsap-vanguard-card', {
-        scrollTrigger: {
-          trigger: '.gsap-vanguard-card',
-          start: 'top 80%',
-        },
-        y: 50,
-        opacity: 0,
-        duration: 0.9,
-        ease: 'power3.out',
-      });
     },
     { scope: containerRef }
   );
@@ -558,7 +452,7 @@ export default function App() {
   return (
     <div
       ref={containerRef}
-      className="relative min-h-screen bg-[#09060d] text-[#e8def8] selection:bg-[#b6abf7]/30 selection:text-white font-sans antialiased overflow-x-hidden"
+      className="relative min-h-screen bg-[#09060d] text-[#e8def8] selection:bg-[#b6abf7]/30 selection:text-white font-sans antialiased overflow-x-clip"
     >
       {/* Precision ambient lighting matching real Recon Radar colors */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
@@ -610,14 +504,14 @@ export default function App() {
           </a>
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-mono uppercase tracking-wider text-zinc-400">
-            <a href="#app-previews" className="hover:text-white transition-colors">Live App</a>
-            <a href="#simulator" className="hover:text-white transition-colors">Hitbox Math</a>
-            <a href="#vanguard" className="hover:text-[#a8f5cc] transition-colors flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#a8f5cc]" />
-              <span>Vanguard Safe</span>
+            <a href="#app-walkthrough" className="hover:text-white transition-colors">Demo App</a>
+            <a href="#john-pork-call" className="hover:text-[#b6abf7] transition-colors flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 shadow-[0_0_8px_#ef4444]" />
+              </span>
+              <span>Incoming Call</span>
             </a>
-            <a href="#benchmarks" className="hover:text-white transition-colors">Benchmarks</a>
-            <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -645,7 +539,10 @@ export default function App() {
       {/* ========================================================================= */}
       {/* 2. CINEMATIC HERO (2-LINE IRON RULE, WIDE BREATHING CONTAINER)           */}
       {/* ========================================================================= */}
-      <section ref={heroRef} className="relative pt-16 sm:pt-28 pb-16 z-10 text-center overflow-hidden">
+      <section
+        ref={heroRef}
+        className="relative min-h-[calc(100svh-65px)] flex items-center justify-center py-12 z-10 text-center overflow-hidden"
+      >
         {/* CRT Warp plasma backdrop: first thing behind the hero */}
         <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
           <Suspense fallback={null}>
@@ -673,13 +570,7 @@ export default function App() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#09060d]/70 via-[#09060d]/25 to-[#09060d]" />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-        {/* Radar Active Badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1b1721] border border-[#b6abf7]/30 text-xs font-mono text-[#b6abf7] mb-7 shadow-inner">
-          <span className="w-2 h-2 rounded-full bg-[#f4a390] shadow-[0_0_8px_#f4a390]" />
-          <span>TRUE STRETCHED RESOLUTION & IN-GAME SCOUT FOR VALORANT</span>
-        </div>
-
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
         {/* Interactive VariableProximity Hero Title */}
         <h1 className="gsap-hero-title font-display font-medium text-4xl sm:text-6xl lg:text-7xl tracking-tight text-white max-w-5xl mx-auto leading-[1.12] text-balance select-none my-4 sm:my-6">
           <VariableProximity
@@ -753,235 +644,17 @@ export default function App() {
       </section>
 
       {/* ========================================================================= */}
-      {/* 3. LIVE APP PREVIEWS STACK (REACTBITS SCROLLSTACK)                         */}
+      {/* 3. LIVE RECON DESKTOP APP WALKTHROUGH (PINNED SCROLL DEMO)                 */}
       {/* ========================================================================= */}
-      <AppPreviewsStack />
-
-      {/* ========================================================================= */}
-      {/* 4. INTERACTIVE BEFORE/AFTER TRUE STRETCH SLIDER                            */}
-      {/* ========================================================================= */}
-      <section id="simulator" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto z-10 text-center">
-        <div className="max-w-2xl mx-auto mb-10">
-          <div className="font-mono text-xs text-[#b6abf7] uppercase tracking-wider">
-            OPTICAL HITBOX GEOMETRY
-          </div>
-          <h2 className="font-display font-black text-3xl sm:text-4xl text-white tracking-tight mt-1">
-            Interactive Hitbox Width Simulator
-          </h2>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-2">
-            Drag the split-slider to compare Native 16:9 model geometry against Recon True Stretch 1.45:1 (+22.6% wider crosshair targets).
-          </p>
-        </div>
-        <StretchComparisonSlider />
-      </section>
+      <AppWalkthrough />
 
       {/* ========================================================================= */}
-      {/* 5. VANGUARD COMPLIANCE ARCHITECTURE (PROPRIETARY ARCHITECTURE)            */}
+      {/* 4. IMMORTAL JOHN PORK IS CALLING (INTERACTIVE INCOMING CALL)               */}
       {/* ========================================================================= */}
-      <section id="vanguard" className="py-20 sm:py-32 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10">
-        <div className="gsap-vanguard-card rounded-2xl border border-[#a8f5cc]/30 bg-gradient-to-b from-[#0e1913] via-[#09110d] to-[#09060d] p-8 sm:p-14 relative overflow-hidden">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded bg-[#a8f5cc]/15 border border-[#a8f5cc]/30 text-xs font-mono font-bold text-[#a8f5cc] mb-4">
-              <ShieldCheck className="w-4 h-4" />
-              <span>VANGUARD-SAFE ARCHITECTURE</span>
-            </div>
-
-            <h2 className="font-display font-black text-3xl sm:text-5xl text-white tracking-tight">
-              Why Vanguard Approves Recon.
-            </h2>
-
-            <p className="mt-4 text-sm sm:text-base text-zinc-300 leading-relaxed">
-              Standard overlays hook into game memory or modify direct rendering pipelines, which triggers Vanguard detection. Recon operates strictly outside the Valorant game boundary:
-            </p>
-
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl border border-white/10 bg-black/50 hover:border-[#a8f5cc]/30 transition-colors">
-                <div className="font-mono text-xs text-[#a8f5cc] font-bold tracking-wider">NO PROCESS HOOKING</div>
-                <h4 className="font-bold text-sm text-white mt-1.5">Zero Memory Injection</h4>
-                <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                  Recon never opens a handle to <code className="text-[#b6abf7]">VALORANT.exe</code>. No memory reading, no DLL injection, no code modification.
-                </p>
-              </div>
-
-              <div className="p-5 rounded-xl border border-white/10 bg-black/50 hover:border-[#a8f5cc]/30 transition-colors">
-                <div className="font-mono text-xs text-[#a8f5cc] font-bold tracking-wider">OFFICIAL PROTOCOL</div>
-                <h4 className="font-bold text-sm text-white mt-1.5">Riot Local Client API</h4>
-                <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                  Queries only the official local client loopback socket authenticated by Riot's lockfile: the exact same verified method used by Tracker Network and Blitz.
-                </p>
-              </div>
-
-              <div className="p-5 rounded-xl border border-white/10 bg-black/50 hover:border-[#a8f5cc]/30 transition-colors">
-                <div className="font-mono text-xs text-[#a8f5cc] font-bold tracking-wider">WIN32 NATIVE</div>
-                <h4 className="font-bold text-sm text-white mt-1.5">Hardware Display Driver</h4>
-                <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                  Resolution switching communicates directly with the Windows Display Driver Model (WDDM), introducing zero software compositing latency.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <JohnPorkCall onDownload={handleDownload} version={release.version} />
 
       {/* ========================================================================= */}
-      {/* 7. HARDWARE BENCHMARKS MATRIX                                            */}
-      {/* ========================================================================= */}
-      <section id="benchmarks" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10">
-        <div className="mb-10 text-center">
-          <div className="font-mono text-xs text-[#b6abf7] uppercase">PERFORMANCE TELEMETRY</div>
-          <h2 className="font-display font-black text-3xl sm:text-4xl text-white tracking-tight mt-1">
-            Recon vs Overwolf Trackers
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-black/60 overflow-hidden">
-          <table className="w-full text-left text-xs font-mono">
-            <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03] text-zinc-400">
-                <th className="p-4 uppercase">Parameter</th>
-                <th className="p-4 text-[#b6abf7] font-bold uppercase">Recon {release.version}</th>
-                <th className="p-4 uppercase">Overwolf Trackers</th>
-                <th className="p-4 uppercase">Direct Registry Hacks</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 text-zinc-300">
-              <tr>
-                <td className="p-4 text-white font-bold">Runtime Backend</td>
-                <td className="p-4 text-[#a8f5cc] font-bold">Rust + Tauri (Native GDI)</td>
-                <td className="p-4 text-red-400">Chromium Embedded (CEF)</td>
-                <td className="p-4 text-zinc-400">Manual Windows Registry</td>
-              </tr>
-              <tr>
-                <td className="p-4 text-white font-bold">Idle RAM Usage</td>
-                <td className="p-4 text-[#a8f5cc] font-bold">~35 MB</td>
-                <td className="p-4 text-red-400">650 MB - 1.4 GB</td>
-                <td className="p-4">0 MB</td>
-              </tr>
-              <tr>
-                <td className="p-4 text-white font-bold">Input Overhead</td>
-                <td className="p-4 text-[#a8f5cc] font-bold">0.00 ms (Hardware direct)</td>
-                <td className="p-4 text-red-400">+4ms to +11ms (Hook layer)</td>
-                <td className="p-4">0.00 ms</td>
-              </tr>
-              <tr>
-                <td className="p-4 text-white font-bold">In-Game Advertising</td>
-                <td className="p-4 text-[#a8f5cc] font-bold">Zero (No Ads)</td>
-                <td className="p-4 text-red-400">Heavy Video & Banner Ads</td>
-                <td className="p-4">None</td>
-              </tr>
-              <tr>
-                <td className="p-4 text-white font-bold">True Stretched Engine</td>
-                <td className="p-4 text-[#a8f5cc] font-bold">Native Hotkey Switcher</td>
-                <td className="p-4 text-red-400">Unsupported</td>
-                <td className="p-4 text-zinc-400">Crash risk / Reboot needed</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 8. FAQ (SYSTEM TRANSPARENCY)                                              */}
-      {/* ========================================================================= */}
-      <section id="faq" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto z-10">
-        <div className="text-center mb-12">
-          <h2 className="font-display font-black text-3xl sm:text-4xl text-white tracking-tight text-balance">
-            Frequently Asked Questions
-          </h2>
-          <p className="mt-2 text-xs sm:text-sm text-zinc-400">
-            Verified facts regarding Vanguard compliance, display driver latency, and security architecture.
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          {[
-            {
-              q: 'Can Vanguard ban my Riot account for running Recon?',
-              a: 'No. Recon does not inject DLLs, read/write Valorant memory, or hook game binaries. It connects purely to the official local client loopback HTTPS port that Riot provides on your PC: the identical method used by Tracker Network, Blitz, and ValoPlant. Furthermore, v0.3.2 includes a toggle to disable Attack/Defense pregame indicators if you prefer complete visual parity.',
-            },
-            {
-              q: 'How does True Stretched Resolution operate with 0ms delay?',
-              a: 'Recon interfaces directly with the Windows Display Driver via the Win32 ChangeDisplaySettingsEx API. It resizes the native monitor output before frames are rendered, introducing zero software compositing latency.',
-            },
-            {
-              q: 'Why did you remove the MSI installer in v0.3.2?',
-              a: 'Users requested a streamlined, single-file experience. The single signed .EXE setup installer is only 18 MB, includes cryptographic minisign signature verification, and automatically handles quiet background updates without MSI dependencies.',
-            },
-            {
-              q: 'Is Recon free to use and what is the license?',
-              a: 'Recon is 100% free to download and use for all players. The source code is openly published on GitHub for transparency and Vanguard auditing under a proprietary Source-Available license. Unauthorized redistribution, cloning, or commercial exploitation is strictly prohibited.',
-            },
-          ].map((item, idx) => {
-            const isOpen = activeFaq === idx;
-            return (
-              <div key={idx} className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden transition-colors hover:border-white/20">
-                <button
-                  type="button"
-                  aria-expanded={isOpen}
-                  aria-controls={`faq-answer-${idx}`}
-                  onClick={() => setActiveFaq(isOpen ? null : idx)}
-                  className="w-full px-5 py-4 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-white/[0.02] transition-colors tap-feedback focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b6abf7]"
-                >
-                  <span className="font-display font-bold text-sm sm:text-base text-white">{item.q}</span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-[#b6abf7] shrink-0 transition-transform duration-200 ease-out ${
-                      isOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-                <div
-                  id={`faq-answer-${idx}`}
-                  className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-                    isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-                  }`}
-                >
-                  <div className="overflow-hidden">
-                    <div className="px-5 pb-4 text-xs sm:text-sm text-zinc-300 leading-relaxed border-t border-white/5 pt-3">
-                      {item.a}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 9. BOTTOM ACTION                                                          */}
-      {/* ========================================================================= */}
-      <section className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10 text-center">
-        <div className="rounded-2xl border border-white/15 bg-gradient-to-b from-[#160f22] to-[#0a0510] p-8 sm:p-14 shadow-2xl">
-          <h2 className="font-display font-black text-3xl sm:text-5xl text-white">
-            Ready to Upgrade Your Setup?
-          </h2>
-          <p className="mt-3 text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
-            Lightweight 18 MB standalone setup executable. Fully verified and cryptographically signed.
-          </p>
-
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={handleDownload}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-[#b6abf7] hover:bg-[#c8c0fa] text-[#1b1721] font-display font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 tap-feedback active:scale-[0.97] cursor-pointer shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b6abf7]"
-            >
-              <Download className="w-4 h-4 stroke-[2.5]" />
-              <span>Download Recon {release.version} (.exe)</span>
-            </button>
-            <a
-              href="https://ko-fi.com/youssefvdel"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full sm:w-auto px-6 py-4 rounded-xl border border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/15 text-amber-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-colors tap-feedback active:scale-[0.97] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-            >
-              <Coffee className="w-4 h-4" />
-              <span>Support on Ko-fi</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 10. FOOTER                                                                */}
+      {/* 5. FOOTER                                                                 */}
       {/* ========================================================================= */}
       <footer className="border-t border-white/[0.08] bg-[#050308] py-10 px-4 sm:px-6 lg:px-8 text-xs font-mono text-zinc-500 z-10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">

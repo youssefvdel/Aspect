@@ -1267,6 +1267,16 @@ export const glzHostFor = (region: string): string => {
  */
 export async function fetchMatchLoadouts(matchId: string, region: string): Promise<unknown[]> {
   if (!matchId) return [];
+  /* Website preview: no Riot client available, so serve the seeded loadout
+     payload. Same shape Riot returns, so parseLoadouts/resolveLoadoutForPlayer
+     and the LoadoutViewer all run their real code paths. */
+  if (!isTauri()) {
+    try {
+      const raw = localStorage.getItem('recon_preview_loadouts');
+      if (raw) return JSON.parse(raw) as unknown[];
+    } catch {}
+    return [];
+  }
   try {
     const glz = glzHostFor(region);
     const raw = await riotGet(glz, `/core-game/v1/matches/${matchId}/loadouts`).catch(() =>
@@ -1601,8 +1611,40 @@ export async function fetchLiveQueueId(): Promise<string> {
 }
 
 const LIVE_MATCH_CACHE_KEY = 'recon_live_match_state_v2';
+/* Seeded lobby used by the website preview (see website/src/previewData.ts). */
+const PREVIEW_LIVE_MATCH_KEY = 'recon_preview_live_match';
 let lastLiveMatchFetchTime = 0;
 let lastLiveMatchResult: LiveMatchState | null = null;
+
+/**
+ * Synchronous best-known lobby snapshot, with no awaiting.
+ *
+ * A view seeds its initial render from this so the first paint already shows the
+ * lobby it knows about, instead of flashing the "Waiting for Valorant Match"
+ * empty state while the first fetch resolves. Returns null only when there is
+ * genuinely nothing yet — a cold start really is idle.
+ */
+export function peekLiveMatchState(): LiveMatchState | null {
+  if (lastLiveMatchResult?.phase && lastLiveMatchResult.phase !== 'idle') {
+    return lastLiveMatchResult;
+  }
+  if (typeof localStorage === 'undefined') return null;
+
+  /* The browser preview writes its own key; the desktop app persists a cached
+     payload under a different one. */
+  const key = isTauri() ? LIVE_MATCH_CACHE_KEY : PREVIEW_LIVE_MATCH_KEY;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: LiveMatchState } & LiveMatchState;
+    const state = key === LIVE_MATCH_CACHE_KEY ? parsed?.state : parsed;
+    if (state?.phase && state.phase !== 'idle') {
+      lastLiveMatchResult = state;
+      return state;
+    }
+  } catch {}
+  return null;
+}
 
 export async function fetchLiveMatchState(regionOverride?: string, forceRefresh = false): Promise<LiveMatchState> {
   // Dev dashboard simulator: canned match without Riot open (dev builds only).
@@ -1641,7 +1683,24 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
     updatedAt: Date.now(),
   };
 
-  if (!isTauri()) return idleState;
+  /* Website preview: there is no local Riot client to interrogate, so serve the
+     seeded preview lobby instead of an empty idle state. Deliberately the same
+     shape as the live payload so every downstream component (player tables,
+     party grouping, unmask badges) renders for real. */
+  if (!isTauri()) {
+    try {
+      const raw = localStorage.getItem(PREVIEW_LIVE_MATCH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as LiveMatchState;
+        if (parsed?.phase && parsed.phase !== 'idle') {
+          lastLiveMatchResult = parsed;
+          lastLiveMatchFetchTime = now;
+          return parsed;
+        }
+      }
+    } catch {}
+    return idleState;
+  }
 
   try {
     const ent = await getEntitlements();

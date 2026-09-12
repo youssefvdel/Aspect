@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { X, Swords, Clock } from 'lucide-react';
 import type { TrackerMatchDetail, TrackerMmrPoint } from '../types';
 import { tierName, resolvePlayerNames, gameData } from '../utils/tracker';
@@ -540,13 +539,13 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 }`}
               >
                 <span>{t.label}</span>
-                {active && (
-                  <motion.span
-                    layoutId="modal-active-tab"
-                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
-                    className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-m3-primary rounded-full"
-                  />
-                )}
+                <span
+                  className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full transition-all duration-150 pointer-events-none ${
+                    active
+                      ? 'bg-m3-primary opacity-100 shadow-[0_0_8px_rgba(182,171,247,0.5)]'
+                      : 'bg-transparent opacity-0 scale-x-75'
+                  }`}
+                />
               </button>
             );
           })}

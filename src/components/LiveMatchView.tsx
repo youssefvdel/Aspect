@@ -11,7 +11,14 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
-import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames, fetchMatchLoadouts } from '../utils/tracker';
+import {
+  fetchLiveMatchState,
+  peekLiveMatchState,
+  gameData,
+  matchEndHarvest,
+  harvestMatchNames,
+  fetchMatchLoadouts,
+} from '../utils/tracker';
 import {
   loadWeaponCatalog,
   parseLoadouts,
@@ -50,7 +57,12 @@ import { listen } from '@tauri-apps/api/event';
    (a licensed Overwolf-only API) or screen OCR — see ROADMAP.md. */
 
 export const LiveMatchView: React.FC = () => {
-  const [matchState, setMatchState] = useState<LiveMatchState | null>(null);
+  /* Seeded from the last known lobby so the first paint already has data.
+     Starting at `null` made the "Waiting for Valorant Match" empty state flash
+     for a frame or two on every visit before the fetch resolved. */
+  const [matchState, setMatchState] = useState<LiveMatchState | null>(() =>
+    peekLiveMatchState()
+  );
   // Loadout viewer — Riot only serves equipped skins while a match is live, so
   // the data is fetched on demand rather than polled with the rest of the HUD.
   const [loadoutFor, setLoadoutFor] = useState<LiveMatchPlayer | null>(null);

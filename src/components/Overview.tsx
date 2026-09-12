@@ -285,7 +285,7 @@ export const Overview: React.FC = () => {
   }
 
   return (
-    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col justify-start gap-2.5 max-w-6xl mx-auto w-full overflow-hidden px-6 pt-3 pb-6">
+    <motion.div initial="hidden" animate="show" className="h-full min-h-0 flex flex-col justify-start gap-2.5 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar px-6 pt-3 pb-6">
       {clientClosed && (
         <div className="p-2.5 rounded-xl bg-m3-surface-container-high border border-m3-outline-subtle text-m3-on-surface-variant text-xs font-medium flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
