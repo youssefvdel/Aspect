@@ -10,7 +10,7 @@
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?style=flat-square)](https://github.com/youssefvdel/Recon)
   [![Tauri](https://img.shields.io/badge/tauri-v2-orange?style=flat-square)](https://tauri.app)
   [![TypeScript](https://img.shields.io/badge/typescript-3178c6?style=flat-square)](https://www.typescriptlang.org)
-  [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+  [![License](https://img.shields.io/badge/license-Source--Available-blue?style=flat-square)](LICENSE)
 </div>
 
 ---
@@ -189,4 +189,4 @@ window — nothing is attached to the game process.
 
 ## License
 
-MIT License © 2026 Youssef Adel
+Copyright © 2026 Youssef Adel. All rights reserved. Source-available for personal auditing and evaluation. No redistribution or unauthorized commercial use permitted. See [LICENSE](LICENSE).
