@@ -191,15 +191,15 @@ export const Overview: React.FC = () => {
   const kpiReady = !selLoading && statsReady;
   const kpiPlaceholder = selLoading ? '…' : statsReady ? undefined : '—';
 
-  const orderIdx = (id: string): number => {
-    const i = seasonOrder.indexOf(id.toLowerCase());
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
   const recentActs = useMemo(() => {
     if (!profile) return [];
+    const getOrderIdx = (id: string): number => {
+      const i = seasonOrder.indexOf(id.toLowerCase());
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
     return (profile.seasons ?? [])
       .filter((s) => s.games > 0)
-      .sort((a, b) => orderIdx(a.id) - orderIdx(b.id))
+      .sort((a, b) => getOrderIdx(a.id) - getOrderIdx(b.id))
       .slice(0, 3);
   }, [profile, seasonOrder]);
 

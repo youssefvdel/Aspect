@@ -192,7 +192,10 @@ export const TrackerAgents: React.FC = () => {
     };
   }, [actId, profile, seasonOrder]);
 
-  const agentsData = actId === 'current' ? (trnAgents.length > 0 ? trnAgents : fallbackAgents) : (actAgents ?? []);
+  const agentsData = useMemo(() => {
+    if (actId === 'current') return trnAgents.length > 0 ? trnAgents : fallbackAgents;
+    return actAgents ?? [];
+  }, [actId, trnAgents, fallbackAgents, actAgents]);
 
   // Maximum values for highlighting
   const maxVals = useMemo(() => {

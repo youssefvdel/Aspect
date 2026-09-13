@@ -118,7 +118,9 @@ export default function AppWalkthrough() {
      the internal layout is then always pixel-correct. */
   const [fit, setFit] = useState(1);
   const fitRef = useRef(fit);
-  fitRef.current = fit;
+  useEffect(() => {
+    fitRef.current = fit;
+  }, [fit]);
 
   /* Scroll-settle state. `settling` guards re-entry; `idle` debounces the
      moment the user actually stops scrolling. */

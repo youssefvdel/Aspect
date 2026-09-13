@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sliders,
@@ -112,43 +112,6 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     };
   }, []);
 
-  // Safe Test Watchdog Countdown
-  useEffect(() => {
-    if (!isTesting) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
-    setCountdown(15);
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          revertSafeMode();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isTesting]);
-
-  // Global Escape and Enter key handler during test
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isTesting) return;
-      if (e.key === 'Escape') {
-        revertSafeMode();
-      } else if (e.key === 'Enter') {
-        keepChanges();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTesting, safeMode, width, height, hz]);
-
   const normalizeEvenDims = (w: number, h: number) => {
     let ew = Math.round(w);
     let eh = Math.round(h);
@@ -162,33 +125,7 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
     return l.includes('admin') || l.includes('elevat');
   };
 
-  const startSafeTest = async (overrideW?: number, overrideH?: number, overrideHz?: number) => {
-    const tw = overrideW ?? width;
-    const th = overrideH ?? height;
-    const thz = overrideHz ?? hz;
-    if (tw <= 0 || th <= 0 || thz <= 0) {
-      showToast('Please enter valid resolution dimensions and refresh rate.', 'warning');
-      return;
-    }
-
-    const currentSafe = {
-      width: displayInfo?.current_width || nativeW,
-      height: displayInfo?.current_height || nativeH,
-      hz: displayInfo?.current_hz || defaultHz,
-    };
-    setSafeMode(currentSafe);
-    setIsTesting(true);
-
-    try {
-      await applyResolution(tw, th, thz);
-      if (onRefreshDisplayInfo) onRefreshDisplayInfo();
-    } catch (err) {
-      showToast(`Failed to switch resolution: ${err}`, 'warning');
-      setIsTesting(false);
-    }
-  };
-
-  const revertSafeMode = async () => {
+  const revertSafeMode = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsTesting(false);
 
@@ -219,9 +156,9 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
       onRefreshDisplayInfo();
     }
     setSafeMode(null);
-  };
+  }, [safeMode, onRefreshDisplayInfo]);
 
-  const keepChanges = async () => {
+  const keepChanges = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsTesting(false);
     // User explicitly kept the resolution — do NOT remove the override!
@@ -234,6 +171,69 @@ export const CustomResolution: React.FC<CustomResolutionProps> = ({
       if (onRefreshDisplayInfo) onRefreshDisplayInfo();
     } catch (err) {
       showToast(`Saved resolution mode: ${err}`, 'info');
+    }
+  }, [width, height, hz, onRefreshDisplayInfo]);
+
+  // Safe Test Watchdog Countdown
+  useEffect(() => {
+    if (!isTesting) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+
+    setCountdown(15);
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          revertSafeMode();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isTesting, revertSafeMode]);
+
+  // Global Escape and Enter key handler during test
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isTesting) return;
+      if (e.key === 'Escape') {
+        revertSafeMode();
+      } else if (e.key === 'Enter') {
+        keepChanges();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTesting, revertSafeMode, keepChanges]);
+
+  const startSafeTest = async (overrideW?: number, overrideH?: number, overrideHz?: number) => {
+    const tw = overrideW ?? width;
+    const th = overrideH ?? height;
+    const thz = overrideHz ?? hz;
+    if (tw <= 0 || th <= 0 || thz <= 0) {
+      showToast('Please enter valid resolution dimensions and refresh rate.', 'warning');
+      return;
+    }
+
+    const currentSafe = {
+      width: displayInfo?.current_width || nativeW,
+      height: displayInfo?.current_height || nativeH,
+      hz: displayInfo?.current_hz || defaultHz,
+    };
+    setSafeMode(currentSafe);
+    setIsTesting(true);
+
+    try {
+      await applyResolution(tw, th, thz);
+      if (onRefreshDisplayInfo) onRefreshDisplayInfo();
+    } catch (err) {
+      showToast(`Failed to switch resolution: ${err}`, 'warning');
+      setIsTesting(false);
     }
   };
 

@@ -11,31 +11,8 @@ import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import confetti from 'canvas-confetti';
 import {
   Download,
-  Shield,
-  ShieldCheck,
-  ChevronDown,
   ExternalLink,
-  Lock,
-  Cpu,
-  Zap,
-  Coffee,
-  CheckCircle2,
-  XCircle,
-  Crosshair,
-  Sliders,
-  Maximize2,
-  Eye,
-  Layers,
-  Sparkles,
-  Move,
-  Search,
-  Check,
   X,
-  Play,
-  Terminal,
-  Activity,
-  User,
-  Flame,
 } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
@@ -60,124 +37,7 @@ const GithubIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
 );
 
 /* ------------------------------------------------------------------ */
-/* 2. INTERACTIVE STREAMER-MODE UNMASKER SIMULATOR                     */
-/* Demonstrates how Recon decodes hidden player tags in real-time      */
-/* ------------------------------------------------------------------ */
-
-function StreamerUnmaskerDemo() {
-  const [isUnmasked, setIsUnmasked] = useState(false);
-
-  const players = [
-    {
-      agent: 'Reyna',
-      masked: 'Anonymous Player #1',
-      realName: '4523461375#4135',
-      rank: 'Diamond 3',
-      peak: 'Ascendant 2',
-      kd: '1.42',
-      hs: '32%',
-    },
-    {
-      agent: 'Breach',
-      masked: 'Secret Agent #2',
-      realName: 'ジLeViジ#2113',
-      rank: 'Gold 2',
-      peak: 'Platinum 2',
-      kd: '1.08',
-      hs: '24%',
-    },
-    {
-      agent: 'Cypher',
-      masked: 'Hidden User #3',
-      realName: 'ben#zwace',
-      rank: 'Bronze 1',
-      peak: 'Bronze 2',
-      kd: '0.94',
-      hs: '19%',
-    },
-    {
-      agent: 'Sova',
-      masked: 'Ghost #4',
-      realName: 'xSilentxStorm#4198',
-      rank: 'Silver 1',
-      peak: 'Gold 2',
-      kd: '1.15',
-      hs: '26%',
-    },
-  ];
-
-  return (
-    <div className="w-full max-w-4xl mx-auto rounded-2xl border border-white/10 bg-[#0e0914] p-5 sm:p-7 shadow-2xl">
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
-        <div>
-          <div className="font-mono text-xs text-[#b6abf7] uppercase tracking-wider">
-            VALORANT STREAMER-MODE BYPASS
-          </div>
-          <h3 className="font-display font-black text-xl text-white mt-0.5">
-            Real-Time Incognito Unmasker Simulator
-          </h3>
-          <p className="text-xs text-zinc-400 mt-1">
-            Opponents hide names to conceal rank/stats. Recon reads the official client loopback to expose real MMR.
-          </p>
-        </div>
-
-        <button
-          onClick={() => setIsUnmasked(!isUnmasked)}
-          className={`px-4 py-2 rounded-xl font-display font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md ${
-            isUnmasked
-              ? 'bg-[#a8f5cc] text-[#0d1f14] shadow-[0_0_15px_rgba(168,245,204,0.4)]'
-              : 'bg-[#b6abf7] text-[#1b1721] shadow-[0_0_15px_rgba(182,171,247,0.4)]'
-          }`}
-        >
-          <Eye className="w-4 h-4" />
-          <span>{isUnmasked ? 'Mask Identities' : 'Unmask Streamer Mode'}</span>
-        </button>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {players.map((p, i) => (
-          <div
-            key={i}
-            className="p-3.5 rounded-xl border border-white/[0.08] bg-white/[0.02] flex items-center justify-between gap-3 transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#1f152b] border border-white/10 flex items-center justify-center font-bold text-xs text-[#b6abf7]">
-                {p.agent[0]}
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`font-display font-bold text-sm transition-colors ${
-                      isUnmasked ? 'text-white' : 'text-zinc-400 line-through'
-                    }`}
-                  >
-                    {isUnmasked ? p.realName : p.masked}
-                  </span>
-                  {!isUnmasked && (
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-red-500/20 text-red-300 border border-red-500/30">
-                      HIDDEN
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10.5px] font-mono text-zinc-400">
-                  {p.agent} • Rank: <strong className="text-[#a8f5cc]">{p.rank}</strong> (Peak: {p.peak})
-                </span>
-              </div>
-            </div>
-
-            <div className="text-right font-mono text-xs">
-              <div className="text-white font-bold">{p.kd} KD</div>
-              <div className="text-[10px] text-zinc-400">{p.hs} HS%</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* 3. LIGHTBOX MODAL FOR REAL APP SCREENSHOT INSPECTION               */
+/* 2. LIGHTBOX MODAL FOR REAL APP SCREENSHOT INSPECTION               */
 /* ------------------------------------------------------------------ */
 
 function ScreenshotLightbox({
@@ -227,7 +87,6 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
 
-  const [activeShot, setActiveShot] = useState<'hud' | 'inventory' | 'unmasked' | 'overview' | 'stretch'>('hud');
   const [release, setRelease] = useState<ReleaseInfo>(DEFAULT_RELEASE);
   const [lightbox, setLightbox] = useState<{ isOpen: boolean; src: string; title: string }>({
     isOpen: false,
@@ -456,7 +315,7 @@ export default function App() {
     >
       {/* Precision ambient lighting matching real Recon Radar colors */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-gradient-to-b from-[#b6abf7]/12 via-[#f4a390]/5 to-transparent blur-[120px] opacity-70" />
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-gradient-to-b from-[#b6abf7]/10 via-[#f4a390]/5 to-transparent blur-[120px] opacity-70" />
         <div className="absolute top-[45%] right-0 w-[500px] h-[500px] bg-[#3a205a]/20 blur-[150px] opacity-60" />
         <div className="absolute bottom-[15%] left-0 w-[500px] h-[500px] bg-[#1a5238]/15 blur-[160px] opacity-50" />
       </div>

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink } from 'lucide-react';
+import { X, Copy, Check } from 'lucide-react';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import { fetchTrnActStats, fetchTrnAgents, type TrnActStats, type TrnAgentStat } from '../utils/trn';
 import { fetchMmrDirect, gameData } from '../utils/tracker';
+import { getCountryName, getTrackerUrls } from '../utils/playerDisplay';
+import { openExternalUrl } from '../utils/ipc';
 import type { TrackerProfile } from '../types';
 
 export interface SelectedPlayerInfo {
@@ -16,6 +18,7 @@ export interface SelectedPlayerInfo {
   rankName?: string;
   rankIcon?: string;
   team: string;
+  country?: string;
   isMe?: boolean;
   kills: number;
   deaths: number;
@@ -51,6 +54,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
   const [agentIconMap, setAgentIconMap] = useState<Record<string, string>>({});
   const [mmrProfile, setMmrProfile] = useState<TrackerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     gameData().then((d) => {
@@ -110,26 +114,6 @@ export const PlayerOverviewModal: React.FC<Props> = ({
     };
   }, [player, seasonId]);
 
-  const handleOpenExternal = async () => {
-    if (!player || !player.name) return;
-    const trackerUrl = `https://tracker.gg/valorant/profile/riot/${encodeURIComponent(player.name + '#' + (player.tag || ''))}/overview`;
-    try {
-      if ((window as any).__TAURI__) {
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const win = new WebviewWindow(`player-${player.name.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now() % 1000}`, {
-          url: trackerUrl,
-          title: `Recon • ${player.name}#${player.tag} Profile`,
-          width: 1240,
-          height: 860,
-          resizable: true,
-        });
-        win.once('tauri://error', () => window.open(trackerUrl, '_blank'));
-        return;
-      }
-    } catch {}
-    window.open(trackerUrl, '_blank');
-  };
-
   if (!player) return null;
 
   // Strict: RR + local rank belong to the logged-in player only (player.isMe
@@ -137,6 +121,17 @@ export const PlayerOverviewModal: React.FC<Props> = ({
   const isMe = player.isMe === true;
   const currentRank = player.rankName || (isMe ? mmrProfile?.rank : undefined) || 'Unranked';
   const currentRr = isMe ? mmrProfile?.rr ?? 0 : 0;
+  const countryName = getCountryName(player.country);
+  const trackerUrls = getTrackerUrls(player.name, player.tag);
+
+  const handleCopyRiotId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!player.name) return;
+    const fullId = `${player.name}${player.tag ? '#' + player.tag : ''}`;
+    navigator.clipboard.writeText(fullId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   return (
     <AnimatePresence>
@@ -188,6 +183,16 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                       #{player.tag}
                     </span>
                   )}
+                  {player.name && (
+                    <button
+                      type="button"
+                      onClick={handleCopyRiotId}
+                      className="p-1 rounded-md hover:bg-white/10 text-m3-outline hover:text-white cursor-pointer transition-colors"
+                      title={copied ? 'Copied!' : `Copy ${player.name}#${player.tag}`}
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-m3-mint" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                       player.team === 'Blue'
@@ -198,7 +203,7 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                     {player.team} Team
                   </span>
                 </div>
-                <div className="text-xs text-m3-outline mt-0.5 flex items-center gap-2">
+                <div className="text-xs text-m3-outline mt-0.5 flex items-center gap-2 flex-wrap">
                   <span>Played {player.agent}</span>
                   {player.rankIcon && (
                     <span className="flex items-center gap-1 font-medium text-m3-on-surface-variant">
@@ -206,21 +211,45 @@ export const PlayerOverviewModal: React.FC<Props> = ({
                       {currentRank} {currentRr > 0 ? `(${currentRr} RR)` : ''}
                     </span>
                   )}
+                  {countryName && (
+                    <span className="flex items-center gap-1 text-zinc-300 font-medium">
+                      • {countryName}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleOpenExternal}
-                className="px-3.5 py-1.5 rounded-full bg-m3-surface-container-high hover:bg-m3-surface-bright border border-m3-outline-subtle text-m3-on-surface text-xs font-display font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Open full profile in new window"
-              >
-                <span>Open in Window</span>
-                <ExternalLink className="w-3.5 h-3.5 text-m3-primary" />
-              </button>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {player.name && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(trackerUrls.trn)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-white/5 hover:bg-[#b6abf7]/25 hover:text-[#b6abf7] border border-white/10 text-zinc-300 transition-colors cursor-pointer"
+                    title="Open on Tracker.gg (TRN)"
+                  >
+                    TRN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(trackerUrls.blitz)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-white/5 hover:bg-red-500/25 hover:text-red-300 border border-white/10 text-zinc-300 transition-colors cursor-pointer"
+                    title="Open on Blitz.gg"
+                  >
+                    Blitz
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(trackerUrls.opgg)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-white/5 hover:bg-blue-500/25 hover:text-blue-300 border border-white/10 text-zinc-300 transition-colors cursor-pointer"
+                    title="Open on OP.GG"
+                  >
+                    OP.GG
+                  </button>
+                </div>
+              )}
               {onViewFullProfile && player.name && (
                 <button
                   type="button"

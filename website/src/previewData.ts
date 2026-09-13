@@ -75,16 +75,6 @@ const ROSTER: Seat[] = [
   { name: 'noopye', tag: 'nupi', puuid: '2ef28c39-c342-55f0-a159-9cd0cae55fb', agent: 'Chamber', team: 'Red', unmasked: false, rank: 'Diamond 1', tier: 18, peakRank: 'Diamond 2', peakTier: 19, level: 331, kd: 1.07, winPct: 51.9, hsPct: 28.0, acs: 209.5, trnScore: 573 },
 ];
 
-/* Party lines: me + シLeVi queued together, and the two 4-stacks split across
-   teams — mirrors how the real table draws grouping rails. */
-const PARTIES: Record<string, number> = {
-  '2ef28c39-c342-55f0-a159-9cd0cae55f3': 1,
-  '2ef28c39-c342-55f0-a159-9cd0cae55f4': 2,
-  '2ef28c39-c342-55f0-a159-9cd0cae55f5': 2,
-  '2ef28c39-c342-55f0-a159-9cd0cae55f7': 3,
-  '2ef28c39-c342-55f0-a159-9cd0cae55f8': 3,
-};
-
 /** Build the seeded lobby. `phase: 'coregame'` is required for loadouts. */
 function buildLobby(): LiveMatchState {
   const mk = (s: Seat): LiveMatchPlayer => {

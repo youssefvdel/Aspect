@@ -1,23 +1,9 @@
 import React, { useState } from 'react';
 import ScrollStack, { ScrollStackItem } from './ScrollStack';
 import {
-  Maximize2,
-  Eye,
-  Layers,
-  Crosshair,
-  Sliders,
-  Shield,
-  Zap,
   Check,
-  ArrowRight,
-  Sparkles,
+  Eye,
   RefreshCw,
-  Lock,
-  ChevronDown,
-  Monitor,
-  Activity,
-  User,
-  Flame,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */

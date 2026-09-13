@@ -320,6 +320,11 @@ let gameDataMem: { agents: Record<string, string>; maps: Record<string, string>;
 
 const GAME_DATA_KEY = 'aspect_game_data_v3';
 
+/** Latest valorant-api map index (mapUrl|uuid → display name), module-level so
+ *  the SYNCHRONOUS read paths (persisted match state, caches) can re-derive a
+ *  map name instead of trusting one stored by an older build. */
+let mapIndexMem: Record<string, string> = {};
+
 /** Static Riot metadata via public valorant-api.com, cached 30 days. */
 export async function gameData(): Promise<{ agents: Record<string, string>; maps: Record<string, string>; seasons: Record<string, string>; seasonOrder: string[]; tierIcons: Record<number, string>; agentInfo: Record<string, { name: string; icon: string; role: string; roleIcon: string }>; weapons: Record<string, string> }> {
   if (gameDataMem) return gameDataMem;
@@ -329,6 +334,7 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
       const { savedAt, data } = JSON.parse(raw);
       if (Date.now() - savedAt < 30 * 24 * 3600 * 1000 && data?.agents && data?.tierIcons && data?.agentInfo) {
         gameDataMem = { agents: data.agents, maps: data.maps ?? {}, seasons: data.seasons ?? {}, seasonOrder: data.seasonOrder ?? [], tierIcons: data.tierIcons, agentInfo: data.agentInfo ?? {}, weapons: data.weapons ?? {} };
+        mapIndexMem = gameDataMem.maps;
         return gameDataMem;
       }
     }
@@ -403,12 +409,69 @@ export async function gameData(): Promise<{ agents: Record<string, string>; maps
     localStorage.setItem(GAME_DATA_KEY, JSON.stringify({ savedAt: Date.now(), data: { agents, maps, seasons, seasonOrder, tierIcons, agentInfo, weapons } }));
   } catch {}
   gameDataMem = { agents, maps, seasons, seasonOrder, tierIcons, agentInfo, weapons };
+  mapIndexMem = maps;
   return gameDataMem;
 }
 
 /** Last path segment of a /Game/Maps/X/X id, for maps valorant-api.com doesn't know yet. */
-export const shortMapName = (mapId: string, maps: Record<string, string>): string =>
-  maps[mapId.toLowerCase()] ?? (mapId.split('/').pop() || '?');
+export const shortMapName = (mapId: string, maps: Record<string, string>): string => {
+  const known = maps[mapId.toLowerCase()];
+  if (known) return known;
+  // Riot reuses codenames (Plummet became Summit), so the path segment is only
+  // ever a last resort — and it must at least be title-cased for display.
+  const seg = mapId.split('/').filter(Boolean).pop() || '?';
+  return seg.charAt(0).toUpperCase() + seg.slice(1);
+};
+
+/** Offline fallback for the map codename table. NEVER authoritative: Riot
+ *  reuses codenames between releases (Plummet → Summit, Abyss moved to
+ *  Infinity), so the live valorant-api index always outranks this. */
+const OFFLINE_MAP_NAMES: Record<string, string> = {
+  '/game/maps/duality/duality': 'Bind',
+  '/game/maps/bonsai/bonsai': 'Split',
+  '/game/maps/ascent/ascent': 'Ascent',
+  '/game/maps/triad/triad': 'Haven',
+  '/game/maps/port/port': 'Icebox',
+  '/game/maps/foxtrot/foxtrot': 'Breeze',
+  '/game/maps/canyon/canyon': 'Fracture',
+  '/game/maps/pitt/pitt': 'Pearl',
+  '/game/maps/jam/jam': 'Lotus',
+  '/game/maps/juliett/juliett': 'Sunset',
+  '/game/maps/plummet/plummet': 'Summit',
+  '/game/maps/infinity/infinity': 'Abyss',
+  '/game/maps/rook/rook': 'Corrode',
+  '/game/maps/poveglia/range': 'The Range',
+};
+
+/**
+ * Single source of truth for a map display name, and safe to call synchronously
+ * from persisted-state read paths.
+ *
+ * Order matters: the live valorant-api index wins, the offline table is a
+ * fallback, the path segment is last. A name that was STORED by an older build
+ * must never be trusted — that is how a cached lobby kept reporting "Abyss"
+ * for Summit long after Riot moved the codename.
+ */
+export function resolveMapName(mapId: string, maps?: Record<string, string>): string {
+  const id = String(mapId || '').toLowerCase();
+  if (!id) return '';
+  const index = maps ?? mapIndexMem;
+  return index[id] || OFFLINE_MAP_NAMES[id] || shortMapName(id, index);
+}
+
+/**
+ * Re-derives `mapName` from `mapId` for a state that came out of a cache or
+ * localStorage. Persisted derived fields go stale the moment Riot reuses a
+ * codename, so read paths always recompute instead of trusting the stored name.
+ */
+function healMapName(s: LiveMatchState): LiveMatchState;
+function healMapName(s: LiveMatchState | null): LiveMatchState | null;
+function healMapName(s: LiveMatchState | null): LiveMatchState | null {
+  if (!s || !s.mapId) return s;
+  const mapName = resolveMapName(s.mapId);
+  if (!mapName || mapName === s.mapName) return s;
+  return { ...s, mapName };
+}
 
 /** True all-time peak tier for one season row (end tier, act rank, or highest won tier). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1407,6 +1470,90 @@ const recent24hCache = new Map<string, Recent24hRecord>();
 const recent24hInflight = new Map<string, Promise<Recent24hRecord>>();
 const livePlayerRecentMatchesCache = new Map<string, { matches: string[]; fetchedAt: number }>();
 
+// Stable party assignment across polling cycles for the same match
+let activePartyMatchKey = '';
+const matchPartyIndexMap = new Map<string, number>();
+let nextMatchPartyIndex = 1;
+
+/** Compares two live match states to determine if any meaningful UI data changed.
+ *  Covers EVERY field that reaches the screen, matched by PUUID (Riot can
+ *  reorder players between polls) — no visual change ⇒ no re-render, ever. */
+export function isMatchStateEqual(a: LiveMatchState | null, b: LiveMatchState | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (
+    a.phase !== b.phase ||
+    a.matchId !== b.matchId ||
+    a.mapId !== b.mapId ||
+    a.mode !== b.mode ||
+    a.queueId !== b.queueId ||
+    a.isDeathmatch !== b.isDeathmatch ||
+    a.isRange !== b.isRange ||
+    a.isPreviousMatch !== b.isPreviousMatch ||
+    a.startingSide !== b.startingSide ||
+    a.allyScore !== b.allyScore ||
+    a.enemyScore !== b.enemyScore ||
+    a.blueTeam.length !== b.blueTeam.length ||
+    a.redTeam.length !== b.redTeam.length
+  ) {
+    return false;
+  }
+
+  const isPlayerEqual = (p1: LiveMatchPlayer, p2: LiveMatchPlayer) => {
+    return (
+      p1.puuid === p2.puuid &&
+      p1.name === p2.name &&
+      p1.tag === p2.tag &&
+      p1.team === p2.team &&
+      p1.agentId === p2.agentId &&
+      p1.agentName === p2.agentName &&
+      p1.agentIcon === p2.agentIcon &&
+      p1.agentRole === p2.agentRole &&
+      p1.tier === p2.tier &&
+      p1.rank === p2.rank &&
+      p1.rr === p2.rr &&
+      p1.peakTier === p2.peakTier &&
+      p1.peakRank === p2.peakRank &&
+      p1.peakSeasonId === p2.peakSeasonId &&
+      p1.actWins === p2.actWins &&
+      p1.actGames === p2.actGames &&
+      p1.leaderboardRank === p2.leaderboardRank &&
+      p1.isRankHidden === p2.isRankHidden &&
+      p1.accountLevel === p2.accountLevel &&
+      p1.cardId === p2.cardId &&
+      p1.isMe === p2.isMe &&
+      p1.selectionState === p2.selectionState &&
+      p1.region === p2.region &&
+      p1.country === p2.country &&
+      p1.kd === p2.kd &&
+      p1.winPct === p2.winPct &&
+      p1.hsPct === p2.hsPct &&
+      p1.trnScore === p2.trnScore &&
+      p1.acs === p2.acs &&
+      p1.recentWon === p2.recentWon &&
+      p1.recentLost === p2.recentLost &&
+      p1.streak === p2.streak &&
+      p1.streakIsWin === p2.streakIsWin &&
+      p1.isIncognito === p2.isIncognito &&
+      p1.nameResolved === p2.nameResolved &&
+      p1.partyId === p2.partyId &&
+      p1.partyIndex === p2.partyIndex
+    );
+  };
+
+  // Match by PUUID, not by array index — Riot reorders lobby rows between polls.
+  const teamsEqual = (ta: LiveMatchPlayer[], tb: LiveMatchPlayer[]) => {
+    if (ta.length !== tb.length) return false;
+    const byId = new Map(tb.map((p) => [p.puuid.toLowerCase(), p]));
+    return ta.every((pa) => {
+      const pb = byId.get(pa.puuid.toLowerCase());
+      return pb !== undefined && isPlayerEqual(pa, pb);
+    });
+  };
+
+  return teamsEqual(a.blueTeam, b.blueTeam) && teamsEqual(a.redTeam, b.redTeam);
+}
+
 /**
  * Real win/loss record for a player over the last 24 hours, newest match first.
  * Only matches actually started within the window are counted.
@@ -1515,7 +1662,8 @@ export interface LivePlayerStatsEntry {
 
 const livePlayerStatsCache = new Map<string, LivePlayerStatsEntry>();
 const LIVE_STATS_CACHE_KEY = 'recon_live_player_stats_v2';
-const LIVE_STATS_TTL = 30 * 60 * 1000; // 30 mins
+const LIVE_STATS_TTL = 24 * 60 * 60 * 1000; // 24 hours — player act stats & country do not change every minute
+const trnInFlightLive = new Set<string>();
 
 export function getCachedLivePlayerStats(puuid: string): LivePlayerStatsEntry | undefined {
   if (!puuid) return undefined;
@@ -1558,12 +1706,19 @@ export function setCachedLivePlayerStats(puuid: string, entry: Partial<LivePlaye
     } catch {}
   }
 
-  // Deep-merge: preserve whatever was previously fetched by the other window
+  // Non-destructive merge: NEVER overwrite existing valid fields with undefined
   const merged: LivePlayerStatsEntry = {
     ...existing,
-    ...entry,
     fetchedAt: entry.fetchedAt ?? existing?.fetchedAt ?? Date.now(),
   };
+  for (const [k, v] of Object.entries(entry)) {
+    if (v !== undefined && v !== null) {
+      (merged as any)[k] = v;
+    }
+  }
+  if (entry.retryAfter !== undefined) {
+    merged.retryAfter = entry.retryAfter;
+  }
 
   livePlayerStatsCache.set(pU, merged);
 
@@ -1571,9 +1726,9 @@ export function setCachedLivePlayerStats(puuid: string, entry: Partial<LivePlaye
     try {
       store[pU] = merged;
       const keys = Object.keys(store);
-      if (keys.length > 150) {
+      if (keys.length > 200) {
         const sorted = keys.sort((a, b) => store[a].fetchedAt - store[b].fetchedAt);
-        for (let i = 0; i < 30; i++) delete store[sorted[i]];
+        for (let i = 0; i < 40; i++) delete store[sorted[i]];
       }
       localStorage.setItem(LIVE_STATS_CACHE_KEY, JSON.stringify(store));
     } catch {}
@@ -1613,20 +1768,41 @@ export async function fetchLiveQueueId(): Promise<string> {
 const LIVE_MATCH_CACHE_KEY = 'recon_live_match_state_v2';
 /* Seeded lobby used by the website preview (see website/src/previewData.ts). */
 const PREVIEW_LIVE_MATCH_KEY = 'recon_preview_live_match';
+const LAST_ACTIVE_MATCH_KEY = 'recon_last_active_match_v1';
 let lastLiveMatchFetchTime = 0;
 let lastLiveMatchResult: LiveMatchState | null = null;
+let lastActiveMatchState: LiveMatchState | null = null;
+
+/** Returns the last completed/active match so the UI stays populated while waiting in queue. */
+export function getLastActiveMatch(): LiveMatchState | null {
+  if (lastActiveMatchState && (lastActiveMatchState.blueTeam.length > 0 || lastActiveMatchState.redTeam.length > 0)) {
+    return healMapName(lastActiveMatchState);
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LAST_ACTIVE_MATCH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as LiveMatchState;
+        if (parsed && (parsed.blueTeam?.length > 0 || parsed.redTeam?.length > 0)) {
+          lastActiveMatchState = parsed;
+          return healMapName(parsed);
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
 
 /**
  * Synchronous best-known lobby snapshot, with no awaiting.
  *
  * A view seeds its initial render from this so the first paint already shows the
  * lobby it knows about, instead of flashing the "Waiting for Valorant Match"
- * empty state while the first fetch resolves. Returns null only when there is
- * genuinely nothing yet — a cold start really is idle.
+ * empty state while the first fetch resolves.
  */
 export function peekLiveMatchState(): LiveMatchState | null {
   if (lastLiveMatchResult?.phase && lastLiveMatchResult.phase !== 'idle') {
-    return lastLiveMatchResult;
+    return healMapName(lastLiveMatchResult);
   }
   if (typeof localStorage === 'undefined') return null;
 
@@ -1640,9 +1816,16 @@ export function peekLiveMatchState(): LiveMatchState | null {
     const state = key === LIVE_MATCH_CACHE_KEY ? parsed?.state : parsed;
     if (state?.phase && state.phase !== 'idle') {
       lastLiveMatchResult = state;
-      return state;
+      return healMapName(state);
     }
   } catch {}
+
+  // Keep last match visible while in queue so screen is never empty
+  const lastActive = getLastActiveMatch();
+  if (lastActive) {
+    return { ...lastActive, isPreviousMatch: true };
+  }
+
   return null;
 }
 
@@ -1664,7 +1847,7 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
           if (item?.state && now - item.at < 2500) {
             lastLiveMatchResult = item.state;
             lastLiveMatchFetchTime = item.at;
-            return item.state;
+            return healMapName(item.state);
           }
         }
       } catch {}
@@ -1695,7 +1878,7 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
         if (parsed?.phase && parsed.phase !== 'idle') {
           lastLiveMatchResult = parsed;
           lastLiveMatchFetchTime = now;
-          return parsed;
+          return healMapName(parsed);
         }
       }
     } catch {}
@@ -1971,9 +2154,12 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       }
     >();
     const missingMmr = puuids.filter((p) => {
-      const cached = liveMmrCache.get(p);
+      const pU = p.toLowerCase();
+      const cached =
+        liveMmrCache.get(p) ?? liveMmrCache.get(pU) ?? liveMmrCache.get(p.toUpperCase());
       if (cached && Date.now() - cached.fetchedAt < 15 * 60 * 1000) {
         mmrMap.set(p, cached);
+        mmrMap.set(pU, cached);
         return false;
       }
       return true;
@@ -2015,11 +2201,15 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
                 fetchedAt: Date.now(),
               };
               liveMmrCache.set(p, val);
+              liveMmrCache.set(p.toLowerCase(), val);
               mmrMap.set(p, val);
+              mmrMap.set(p.toLowerCase(), val);
             } catch {
               const val = { tier: 0, rr: 0, peakTier: 0, fetchedAt: Date.now() };
               liveMmrCache.set(p, val);
+              liveMmrCache.set(p.toLowerCase(), val);
               mmrMap.set(p, val);
+              mmrMap.set(p.toLowerCase(), val);
             }
           })
         );
@@ -2027,20 +2217,6 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
     }
 
     const rawMapId = String(matchData.MapID || '').toLowerCase();
-    const mapDict: Record<string, string> = {
-      '/game/maps/duality/duality': 'Bind',
-      '/game/maps/bonsai/bonsai': 'Split',
-      '/game/maps/ascent/ascent': 'Ascent',
-      '/game/maps/triad/triad': 'Haven',
-      '/game/maps/port/port': 'Icebox',
-      '/game/maps/foxtrot/foxtrot': 'Breeze',
-      '/game/maps/canyon/canyon': 'Fracture',
-      '/game/maps/pitt/pitt': 'Pearl',
-      '/game/maps/jam/jam': 'Lotus',
-      '/game/maps/juliett/juliett': 'Sunset',
-      '/game/maps/plummet/plummet': 'Abyss',
-      '/game/maps/poveglia/range': 'The Range',
-    };
 
     const rawModeId = String(matchData.ModeID || matchData.Mode || '');
     const directQueue = String(
@@ -2058,9 +2234,7 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       rawModeLower.includes('shootingrange') ||
       rawModeLower.includes('practice');
 
-    const mapName = isRange
-      ? 'The Range'
-      : mapDict[rawMapId] || data.maps[rawMapId] || shortMapName(rawMapId, data.maps);
+    const mapName = isRange ? 'The Range' : resolveMapName(rawMapId, data.maps);
 
     const isDeathmatch = !isRange && (rawModeLower.includes('deathmatch') || directQueue.includes('deathmatch'));
 
@@ -2191,18 +2365,39 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       clusters.set(root, list);
     }
 
-    // Assign party index to clusters of 2-5. Max queue party is 5, so a
-    // bigger cluster is a requeue echo, never a real party.
+    // Filter and sort genuine parties (2-5 players) deterministically
+    const validClusters: string[][] = [];
+    for (const members of clusters.values()) {
+      if (members.length >= 2 && members.length <= 5) {
+        members.sort(); // Canonical internal sorting
+        validClusters.push(members);
+      }
+    }
+    // Sort all clusters by their primary member PUUID so order never flips
+    validClusters.sort((a, b) => a[0].localeCompare(b[0]));
+
+    // Match-scoped cache so party indices stay 100% static for the match duration
+    const currentMatchKey = String(matchId || phase || 'current').toLowerCase().trim();
+    if (activePartyMatchKey !== currentMatchKey) {
+      activePartyMatchKey = currentMatchKey;
+      matchPartyIndexMap.clear();
+      nextMatchPartyIndex = 1;
+    }
+
     const playerPartyIndexMap = new Map<string, number>();
     const playerPartyIdMap = new Map<string, string>();
-    let nextPartyIdx = 1;
-    for (const [root, members] of clusters.entries()) {
-      if (members.length >= 2 && members.length <= 5) {
-        const pIdx = nextPartyIdx++;
-        for (const m of members) {
-          playerPartyIndexMap.set(m, pIdx);
-          playerPartyIdMap.set(m, `party_${root}`);
-        }
+
+    for (const members of validClusters) {
+      // If any player in this party already has an index assigned in this match, reuse it
+      let pIdx = members.reduce<number | undefined>((found, m) => found ?? matchPartyIndexMap.get(m), undefined);
+      if (!pIdx) {
+        pIdx = nextMatchPartyIndex++;
+      }
+      const canonicalRoot = members[0];
+      for (const m of members) {
+        matchPartyIndexMap.set(m, pIdx);
+        playerPartyIndexMap.set(m, pIdx);
+        playerPartyIdMap.set(m, `party_${canonicalRoot}`);
       }
     }
 
@@ -2219,9 +2414,32 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       const realName = resolved?.name || presFallback?.name || '';
       const realTag = resolved?.tag || presFallback?.tag || '';
       const isSelf = pU === ent.puuid.toLowerCase();
-      const name = realName || (isSelf ? 'You' : `Player ${idx + 1}`);
-      const tag = realName ? realTag : '';
-      const mmr = mmrMap.get(p.puuid) || { tier: 0, rr: 0, peakTier: 0 };
+      // Latch identity from the previous poll: local presences can hiccup for a
+      // poll and must never flip a known Riot ID back to "Player N" (flicker).
+      const prevPlayer =
+        lastLiveMatchResult?.blueTeam.find((bp) => bp.puuid.toLowerCase() === pU) ||
+        lastLiveMatchResult?.redTeam.find((rp) => rp.puuid.toLowerCase() === pU);
+      const prevHasRealName = !!prevPlayer && !!prevPlayer.name && !prevPlayer.name.startsWith('Player ');
+      const name = realName || (prevHasRealName ? prevPlayer!.name : isSelf ? 'You' : `Player ${idx + 1}`);
+      const tag = realName ? realTag : prevHasRealName ? prevPlayer!.tag : '';
+      const nameResolved = !!realName || prevHasRealName;
+
+      const mmr =
+        mmrMap.get(p.puuid) ||
+        mmrMap.get(pU) ||
+        mmrMap.get(p.puuid.toUpperCase()) ||
+        (prevPlayer
+          ? {
+              tier: prevPlayer.tier,
+              rr: prevPlayer.rr,
+              peakTier: prevPlayer.peakTier,
+              peakSeasonId: prevPlayer.peakSeasonId,
+              actWins: prevPlayer.actWins,
+              actGames: prevPlayer.actGames,
+              leaderboardRank: prevPlayer.leaderboardRank,
+              isRankHidden: prevPlayer.isRankHidden,
+            }
+          : { tier: 0, rr: 0, peakTier: 0 });
       const agentRawName = data.agents[p.characterId.toLowerCase()] || '';
       const agentMeta = Object.values(data.agentInfo).find(
         (a) => a.name.toLowerCase() === agentRawName.toLowerCase()
@@ -2235,42 +2453,56 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
           statsCached.acs == null &&
           Date.now() > (statsCached.retryAfter ?? 0));
 
-      if (needsStats && realName && realTag && !p.isIncognito) {
-        import('./trn')
-          .then(({ fetchTrnActStats, trnCooldownRemainingMs }) => {
-            if (trnCooldownRemainingMs() > 0) return;
-            fetchTrnActStats(realName, realTag)
-              .then((res) => {
-                const realCountry =
-                  res?.countryCode &&
-                  res.countryCode.length === 2 &&
-                  !['EU', 'NA', 'AP', 'KR'].includes(res.countryCode.toUpperCase())
-                    ? res.countryCode.toUpperCase()
-                    : undefined;
+      // Fetch TRN stats (KD & country) for any player with a resolved Riot ID,
+      // including unmasked streamer-mode players.
+      if (needsStats && realName && realTag && !realName.startsWith('Player ')) {
+        const inFlightKey = p.puuid.toLowerCase();
+        if (!trnInFlightLive.has(inFlightKey)) {
+          trnInFlightLive.add(inFlightKey);
+          import('./trn')
+            .then(({ fetchTrnActStats, trnCooldownRemainingMs }) => {
+              if (trnCooldownRemainingMs() > 0) {
+                trnInFlightLive.delete(inFlightKey);
+                return;
+              }
+              fetchTrnActStats(realName, realTag)
+                .then((res) => {
+                  const realCountry =
+                    res?.countryCode &&
+                    res.countryCode.length === 2 &&
+                    !['EU', 'NA', 'AP', 'KR'].includes(res.countryCode.toUpperCase())
+                      ? res.countryCode.toUpperCase()
+                      : undefined;
 
-                const prev = getCachedLivePlayerStats(p.puuid);
-                setCachedLivePlayerStats(p.puuid, {
-                  ...prev,
-                  kd: res?.stats?.kd ? Number(res.stats.kd.toFixed(2)) : undefined,
-                  winPct: res?.stats?.winPct != null ? Math.round(res.stats.winPct) : undefined,
-                  hsPct: res?.stats?.hsPct != null ? Math.round(res.stats.hsPct) : undefined,
-                  trnScore: res?.stats?.trnScore ? Math.round(res.stats.trnScore) : undefined,
-                  acs: res?.stats?.acs ? Math.round(res.stats.acs) : undefined,
-                  country: realCountry,
-                  fetchedAt: Date.now(),
-                  retryAfter: undefined,
+                  const update: Partial<LivePlayerStatsEntry> = {
+                    fetchedAt: Date.now(),
+                    retryAfter: undefined,
+                  };
+                  if (realCountry) update.country = realCountry;
+                  if (res?.stats?.kd != null) update.kd = Number(res.stats.kd.toFixed(2));
+                  if (res?.stats?.winPct != null) update.winPct = Math.round(res.stats.winPct);
+                  if (res?.stats?.hsPct != null) update.hsPct = Math.round(res.stats.hsPct);
+                  if (res?.stats?.trnScore != null) update.trnScore = Math.round(res.stats.trnScore);
+                  if (res?.stats?.acs != null) update.acs = Math.round(res.stats.acs);
+                  // If private or no stats found, set long retryAfter (4 hours) so we never spam Tracker.gg
+                  if (!res || !res.stats || res.stats.kd == null) {
+                    update.retryAfter = Date.now() + 4 * 60 * 60 * 1000;
+                  }
+                  setCachedLivePlayerStats(p.puuid, update);
+                })
+                .catch(() => {
+                  setCachedLivePlayerStats(p.puuid, {
+                    retryAfter: Date.now() + 2 * 60 * 60 * 1000,
+                  });
+                })
+                .finally(() => {
+                  trnInFlightLive.delete(inFlightKey);
                 });
-              })
-              .catch(() => {
-                const prev = getCachedLivePlayerStats(p.puuid);
-                setCachedLivePlayerStats(p.puuid, {
-                  ...prev,
-                  fetchedAt: prev?.fetchedAt ?? Date.now(),
-                  retryAfter: Date.now() + 30 * 60 * 1000,
-                });
-              });
-          })
-          .catch(() => {});
+            })
+            .catch(() => {
+              trnInFlightLive.delete(inFlightKey);
+            });
+        }
       }
 
       // Last-24h record — Riot local history works for ANY puuid, so every
@@ -2304,6 +2536,19 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       const targetTeam = isDeathmatch ? 'Blue' : p.team;
       const playerStats = getCachedLivePlayerStats(p.puuid);
 
+      // Latch remaining TRN fields from previous state — data must STICK and never flicker
+
+      const resolvedCountry = playerStats?.country || prevPlayer?.country;
+      const resolvedKd = playerStats?.kd ?? prevPlayer?.kd;
+      const resolvedWinPct = playerStats?.winPct ?? prevPlayer?.winPct;
+      const resolvedHsPct = playerStats?.hsPct ?? prevPlayer?.hsPct;
+      const resolvedTrnScore = playerStats?.trnScore ?? prevPlayer?.trnScore;
+      const resolvedAcs = playerStats?.acs ?? prevPlayer?.acs;
+      const resolvedRecentWon = playerStats?.recentWon ?? prevPlayer?.recentWon;
+      const resolvedRecentLost = playerStats?.recentLost ?? prevPlayer?.recentLost;
+      const resolvedStreak = playerStats?.streak ?? prevPlayer?.streak;
+      const resolvedStreakIsWin = playerStats?.streakIsWin ?? prevPlayer?.streakIsWin;
+
       const playerObj: LiveMatchPlayer = {
         puuid: p.puuid,
         name,
@@ -2325,21 +2570,21 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
         isRankHidden: mmr.isRankHidden,
         accountLevel: p.accountLevel,
         cardId: p.cardId,
-        isMe: p.puuid === ent.puuid,
+        isMe: p.puuid.toLowerCase() === ent.puuid.toLowerCase() || prevPlayer?.isMe === true,
         selectionState: p.selectionState,
         region: region.toUpperCase(),
-        country: playerStats?.country,
-        kd: playerStats?.kd,
-        winPct: playerStats?.winPct,
-        hsPct: playerStats?.hsPct,
-        trnScore: playerStats?.trnScore,
-        acs: playerStats?.acs,
-        recentWon: playerStats?.recentWon,
-        recentLost: playerStats?.recentLost,
-        streak: playerStats?.streak,
-        streakIsWin: playerStats?.streakIsWin,
+        country: resolvedCountry,
+        kd: resolvedKd,
+        winPct: resolvedWinPct,
+        hsPct: resolvedHsPct,
+        trnScore: resolvedTrnScore,
+        acs: resolvedAcs,
+        recentWon: resolvedRecentWon,
+        recentLost: resolvedRecentLost,
+        streak: resolvedStreak,
+        streakIsWin: resolvedStreakIsWin,
         isIncognito: p.isIncognito ?? false,
-        nameResolved: !!realName,
+        nameResolved,
         partyId: pPartyId,
         partyIndex: pPartyIndex,
       };
@@ -2373,6 +2618,15 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       redTeam,
       updatedAt: Date.now(),
     };
+
+    if (finalState.phase !== 'idle' && (finalState.blueTeam.length > 0 || finalState.redTeam.length > 0)) {
+      lastActiveMatchState = finalState;
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(LAST_ACTIVE_MATCH_KEY, JSON.stringify(finalState));
+        } catch {}
+      }
+    }
 
     // Background score progression sequence tracker:
     if (typeof localStorage !== 'undefined' && matchId) {

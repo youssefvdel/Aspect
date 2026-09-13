@@ -194,7 +194,10 @@ export const TrackerMaps: React.FC = () => {
     };
   }, [actId, profile, seasonOrder]);
 
-  const mapsData = actId === 'current' ? (trnMaps.length > 0 ? trnMaps : fallbackMaps) : (actMaps ?? []);
+  const mapsData = useMemo(() => {
+    if (actId === 'current') return trnMaps.length > 0 ? trnMaps : fallbackMaps;
+    return actMaps ?? [];
+  }, [actId, trnMaps, fallbackMaps, actMaps]);
 
   // Highlights: find highest numbers in each column across maps
   const maxVals = useMemo(() => {

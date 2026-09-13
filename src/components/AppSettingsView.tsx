@@ -40,9 +40,10 @@ import {
   isOverlayVisible,
   getOverlayEditMode,
   setOverlayEditMode,
+  isTauri,
 } from '../utils/ipc';
 import { APP_VERSION, appVersion } from '../utils/version';
-import { emit } from '@tauri-apps/api/event';
+import { listen } from '@tauri-apps/api/event';
 
 interface AppSettingsViewProps {
   onUpdateStatusChange?: (hasUpdate: boolean, latestVersion: string) => void;
@@ -125,6 +126,33 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     handleCheckUpdates();
   }, [loadSettings, handleCheckUpdates]);
 
+  // The overlay owns its own Lock button (and Escape key). Without a listener
+  // this view keeps the stale edit-mode flag and keeps asking to "Lock HUD".
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlistenEdit: (() => void) | undefined;
+    try {
+      listen<boolean>('overlay-edit-mode-changed', (event) => {
+        setInEditMode(event.payload);
+      }).then((fn) => {
+        unlistenEdit = fn;
+      });
+    } catch {
+      /* Event bridge unavailable (dev browser) — initial fetch stands. */
+    }
+    // Re-sync on focus too: the overlay can change state via Escape while this
+    // window is unfocused, and events fired then are easy to miss.
+    const resync = () => {
+      getOverlayEditMode().then(setInEditMode).catch(() => {});
+      isOverlayVisible().then(setOverlayOpen).catch(() => {});
+    };
+    window.addEventListener('focus', resync);
+    return () => {
+      unlistenEdit?.();
+      window.removeEventListener('focus', resync);
+    };
+  }, []);
+
   const handleToggleAutostart = async () => {
     const next = !autostart;
     setAutostart(next);
@@ -147,29 +175,6 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
     const next = !inGameToasts;
     setInGameToasts(next);
     localStorage.setItem('aspect_ingame_toasts', next ? 'true' : 'false');
-  };
-
-  const [showStartingSide, setShowStartingSide] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('recon_overlay_cfg_v7');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.showStartingSide === true;
-      }
-    } catch {}
-    return false;
-  });
-
-  const handleToggleStartingSide = async () => {
-    const next = !showStartingSide;
-    setShowStartingSide(next);
-    try {
-      const saved = localStorage.getItem('recon_overlay_cfg_v7');
-      const parsed = saved ? JSON.parse(saved) : {};
-      const updated = { ...parsed, showStartingSide: next };
-      localStorage.setItem('recon_overlay_cfg_v7', JSON.stringify(updated));
-      await emit('overlay-config-changed', updated);
-    } catch {}
   };
 
   const handleOverlayMonitorChange = async (value: string) => {
@@ -618,41 +623,6 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({
                 <div
                   className={`w-4 h-4 rounded-full bg-white transition-transform ${
                     inGameToasts ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Show Starting Side (Attack / Defense) */}
-            <div className="p-3.5 sm:p-4 flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="text-xs sm:text-sm font-semibold text-m3-on-surface flex items-center gap-2">
-                  <span>Show Starting Side (Attack / Defense)</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${
-                      showStartingSide
-                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                    }`}
-                  >
-                    {showStartingSide ? 'ENABLED' : 'DISABLED'}
-                  </span>
-                </div>
-                <div className="text-[11px] text-m3-outline">
-                  Displays whether your team starts on Attack or Defense in the Agent Select widget and HUD. Disable to match official client visibility.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleStartingSide}
-                className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
-                  showStartingSide ? 'bg-m3-primary' : 'bg-m3-surface-container-high'
-                }`}
-                aria-label="Toggle starting side visibility"
-              >
-                <div
-                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                    showStartingSide ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>

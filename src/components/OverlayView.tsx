@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Lock as LockIcon, Check, Users, Shield, RotateCcw, Move, X, Trophy, EyeOff, Swords, Clock, AlertTriangle, Layers } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
-import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames } from '../utils/tracker';
+import { fetchLiveMatchState, gameData, matchEndHarvest, harvestMatchNames, isMatchStateEqual } from '../utils/tracker';
 import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import {
   getFlagUrl,
+  getCountryName,
   rankTooltip,
   shortAct,
   formatKd,
@@ -13,7 +14,8 @@ import {
   byAcsDesc,
   queueLabel,
 } from '../utils/playerDisplay';
-import { computeMapAgentStats, getMapMetaPicks, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
+import { computeMapAgentStats, getRankTierLabel, type AgentStatSummary } from '../utils/mapMeta';
+import { fetchBlitzAgentStats, peekBlitzAgentStats, type BlitzAgentStat } from '../utils/blitzMeta';
 import { getOverlayEditMode, setOverlayEditMode, isTabDown, isTauri } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
@@ -76,7 +78,7 @@ export function getDefaultOverlayConfig(): OverlayConfig {
     showLobby: true,
     showPregame: true,
     showTopAgents: true,
-    showStartingSide: false,
+    showStartingSide: true,
     positions: getDefaultOverlayPositions(),
     scales: {
       lobby: 1.0,
@@ -469,15 +471,32 @@ export const OverlayView: React.FC = () => {
   // 3. Does the player have an agent they actually win with here?
   const hasWinningAgentOnMap = mapScopedStats.some((s) => s.matches >= 2 && s.winPct >= 50);
 
-  // 4. Rank-tuned map meta picks
-  const userTier = profile?.tier || 22;
-  const rankTierLabel = getRankTierLabel(userTier);
-  const metaPicks = getMapMetaPicks(normActiveMap, userTier);
+  // 4. Live rank-tuned map meta from Blitz (this map, this rank). Replaces the
+  //    hardcoded table, which was stale within a patch or two.
+  const userTier = profile?.tier || 0;
+  const rankTierLabel = getRankTierLabel(userTier || 22);
+  const [metaPicks, setMetaPicks] = useState<BlitzAgentStat[]>(
+    () => peekBlitzAgentStats(activeMapName, userTier) ?? []
+  );
 
-  // The player's own agents are the point of this widget, so they are the
-  // default view. Meta only takes over when the player explicitly asks, or when
-  // there is no personal data at all to show.
-  const showMetaPicks = viewMode === 'blitz' || (viewMode === 'auto' && personalStats.length === 0);
+  useEffect(() => {
+    let alive = true;
+    fetchBlitzAgentStats(activeMapName, userTier).then((rows) => {
+      // Keep the last good list if Blitz is unreachable or has no sample.
+      if (alive && rows.length > 0) setMetaPicks(rows);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [activeMapName, userTier]);
+
+  // Agent select is the one moment a suggestion is actionable — and the HUD is
+  // click-through while the overlay is locked, so a toggle the user has to click
+  // would NEVER be reachable in-game. The recommendation is therefore the
+  // default view, and the toggle exists only to get back to your own numbers
+  // while editing.
+  const hasMetaForMap = metaPicks.length > 0;
+  const showMetaPicks = hasMetaForMap && viewMode !== 'personal';
 
   // Never fabricate: the preview list only appears when there is no account data
   // at all (dev mock / signed-out), never as a stand-in for missing map games.
@@ -568,9 +587,11 @@ export const OverlayView: React.FC = () => {
           // name-service for the whole lobby and cache them permanently.
           const harvest = matchEndHarvest(prevStateRef.current, s);
           if (harvest) harvestMatchNames(harvest).catch(() => {});
-          prevStateRef.current = s;
-          phaseRef.current = s.phase;
-          setMatchState(s);
+          if (!isMatchStateEqual(prevStateRef.current, s)) {
+            prevStateRef.current = s;
+            phaseRef.current = s.phase;
+            setMatchState(s);
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -593,9 +614,11 @@ export const OverlayView: React.FC = () => {
             const s = event.payload;
             const harvest = matchEndHarvest(prevStateRef.current, s);
             if (harvest) harvestMatchNames(harvest).catch(() => {});
-            prevStateRef.current = s;
-            phaseRef.current = s.phase;
-            setMatchState(s);
+            if (!isMatchStateEqual(prevStateRef.current, s)) {
+              prevStateRef.current = s;
+              phaseRef.current = s.phase;
+              setMatchState(s);
+            }
           }
         })
       : null;
@@ -821,10 +844,10 @@ export const OverlayView: React.FC = () => {
           />
           {/* Screen Boundary Frame so users clearly see their display perimeter */}
           <div className="fixed inset-3 pointer-events-none border-2 border-dashed border-purple-500/50 rounded-3xl z-40 flex items-start justify-between p-3 select-none">
-            <span className="px-3 py-1 rounded-xl bg-[#0c0816]/90 border border-purple-500/40 text-[10px] font-mono font-bold text-purple-300 shadow-md">
+            <span className="px-3 py-1 rounded-xl bg-[#0c0816]/95 border border-purple-500/40 text-[10px] font-mono font-bold text-purple-300 shadow-md">
               SCREEN BOUNDS • {typeof window !== 'undefined' ? `${window.innerWidth}×${window.innerHeight}` : 'DISPLAY'}
             </span>
-            <span className="px-3 py-1 rounded-xl bg-[#0c0816]/90 border border-purple-500/40 text-[10px] font-mono font-bold text-zinc-400 shadow-md">
+            <span className="px-3 py-1 rounded-xl bg-[#0c0816]/95 border border-purple-500/40 text-[10px] font-mono font-bold text-zinc-400 shadow-md">
               DRAG WIDGETS BY TOP BAR • PRESS ESC TO LOCK
             </span>
           </div>
@@ -1021,7 +1044,7 @@ export const OverlayView: React.FC = () => {
                 <Shield className="w-3.5 h-3.5 text-m3-mint" />
                 <span>Starting Side (Atk/Def)</span>
               </span>
-              <span className="text-[10px] text-zinc-400">Display in Agent Select widget</span>
+              <span className="text-[10px] text-zinc-400">Show in Agent Select & HUD</span>
             </div>
             <button
               type="button"
@@ -1035,6 +1058,7 @@ export const OverlayView: React.FC = () => {
               {config.showStartingSide ? 'ON' : 'OFF'}
             </button>
           </div>
+
         </div>
       )}
 
@@ -1052,7 +1076,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[330px] will-change-transform z-10 ${
+          } select-none w-[320px] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_30px_rgba(168,85,247,0.45)] ring-2 ring-white/30'
               : ''
@@ -1102,8 +1126,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-2xl border p-2.5 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/10'
-                : 'bg-[#0c0816]/75 border-white/10'
+                ? 'bg-[#0c0816]/95 border-white/25 shadow-[0_12px_40px_rgba(0,0,0,0.85)] ring-1 ring-white/15 backdrop-blur-xl'
+                : 'bg-[#0c0816]/95 border-white/15 backdrop-blur-xl shadow-2xl'
             }`}
           >
             {/* Header: Map • Mode • Phase + live game status */}
@@ -1144,16 +1168,15 @@ export const OverlayView: React.FC = () => {
             </div>
 
             {/* Column Titles */}
-            <div className="flex items-center gap-1 px-1.5 text-[8.5px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/5 pb-1">
-              <span className="shrink-0 w-4 text-center" title="Tracker Score tier">TS</span>
-              <span className="shrink-0 w-8 text-center" title="Agent">Agent</span>
-              <span className="shrink-0 w-7 text-center">Rank</span>
-              <span className="shrink-0 w-6 text-center">Peak</span>
-              <span className="shrink-0 w-9 text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
-              <span className="shrink-0 w-8 text-right">K/D</span>
-              <span className="shrink-0 w-9 text-right" title="Act-wide win rate">Win%</span>
-              <span className="shrink-0 w-8 text-right" title="Act-wide headshot %">HS%</span>
-              <span className="shrink-0 w-11 text-right" title="Wins / losses in the last 24 hours">24H</span>
+            <div className="grid grid-cols-[18px_24px_28px_26px_36px_32px_36px_34px] items-center gap-x-1.5 px-2 text-[8.5px] font-mono text-zinc-400 uppercase tracking-wider border-b border-white/10 pb-1 shrink-0">
+              <span className="text-center" title="Tracker Score tier">TS</span>
+              <span className="text-center" title="Agent">Agent</span>
+              <span className="text-center">Rank</span>
+              <span className="text-center">Peak</span>
+              <span className="text-right" title="Act-wide average combat score — the column this board is sorted by">ACS</span>
+              <span className="text-right">K/D</span>
+              <span className="text-right" title="Act-wide win rate">Win%</span>
+              <span className="text-right" title="Act-wide headshot %">HS%</span>
             </div>
 
             {/* Vertical Compact Teams / Player Stack */}
@@ -1209,7 +1232,7 @@ export const OverlayView: React.FC = () => {
           }}
           className={`fixed top-0 left-0 ${
             isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-          } select-none w-[580px] max-w-[96vw] will-change-transform z-10 ${
+          } select-none w-[510px] max-w-[96vw] will-change-transform z-10 ${
             isEditMode
               ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-purple-400 bg-purple-950/25 rounded-3xl p-1.5 shadow-[0_0_35px_rgba(168,85,247,0.5)] ring-2 ring-white/30'
               : ''
@@ -1259,8 +1282,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-2xl border p-3 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
-                : 'bg-[#0c0816]/75 border-white/10'
+                ? 'bg-[#0c0816]/95 border-white/25 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/15 backdrop-blur-xl'
+                : 'bg-[#0c0816]/95 border-white/15 backdrop-blur-xl shadow-2xl'
             }`}
           >
             {/* Header: Map • Starting Side Badge */}
@@ -1386,8 +1409,8 @@ export const OverlayView: React.FC = () => {
           <div
             className={`rounded-3xl border p-3 shadow-2xl flex flex-col gap-2 transition-all ${
               isEditMode
-                ? 'bg-[#0c0816]/85 border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/10'
-                : 'bg-[#0c0816]/75 border-white/10'
+                ? 'bg-[#0c0816]/95 border-white/25 shadow-[0_16px_50px_rgba(0,0,0,0.9)] ring-1 ring-white/15 backdrop-blur-xl'
+                : 'bg-[#0c0816]/95 border-white/15 backdrop-blur-xl shadow-2xl'
             }`}
           >
             {/* Header with Map name & Mode toggle */}
@@ -1433,6 +1456,15 @@ export const OverlayView: React.FC = () => {
               </div>
             )}
 
+            {/* This map has no hand-tuned meta — say so instead of borrowing
+                another map's picks and passing them off as this map's. */}
+            {!hasMetaForMap && (
+              <div className="px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-1.5 text-[10px] font-mono text-zinc-300">
+                <AlertTriangle className="w-3 h-3 text-zinc-400 shrink-0" />
+                <span>No {activeMapName} meta yet — showing your real numbers</span>
+              </div>
+            )}
+
             {/* If user struggles on this map (<50% win rate), show tactical alert */}
             {!hasWinningAgentOnMap && !showMetaPicks && personalScope === 'map' && (
               <div className="px-2.5 py-1 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-between text-[10px] font-mono text-amber-200">
@@ -1456,10 +1488,10 @@ export const OverlayView: React.FC = () => {
               /* RECOMMENDED PICKS FOR THIS MAP AND RANK (NO TIPS) */
               <div className="flex flex-col gap-1.5">
                 <div className="px-1 text-[9px] font-mono text-zinc-400 flex items-center justify-between border-b border-white/5 pb-1">
-                  <span>Rank-Tuned Meta ({rankTierLabel})</span>
-                  <span className="text-m3-mint font-bold">Tier &amp; Win%</span>
+                  <span>Blitz Live Meta ({rankTierLabel})</span>
+                  <span className="text-m3-mint font-bold">Top 3 · Win% · Pick%</span>
                 </div>
-                {metaPicks.map((b) => {
+                {metaPicks.slice(0, 3).map((b) => {
                   const norm = b.agent.toLowerCase();
                   const meta = Object.values(agentMap).find((a) => a.name.toLowerCase() === norm);
                   const icon =
@@ -1495,9 +1527,9 @@ export const OverlayView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="text-center">
+                      <div className="text-center" title="Games sampled from Blitz">
                         <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[8px] font-mono font-bold uppercase">
-                          {b.tier} Tier
+                          {b.matches >= 1000 ? `${(b.matches / 1000).toFixed(1)}k` : b.matches} G
                         </span>
                       </div>
 
@@ -1655,7 +1687,7 @@ export const OverlayView: React.FC = () => {
                             )}
                             <span className="font-bold text-[10px] text-white truncate">{b.agent}</span>
                             <span className="px-1 py-px rounded bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[7px] font-mono font-bold uppercase shrink-0">
-                              {b.tier}
+                              {b.matches >= 1000 ? `${(b.matches / 1000).toFixed(1)}k` : b.matches}g
                             </span>
                           </div>
                           <span className="text-right font-mono text-[10px] font-bold text-m3-mint" title="Win rate">
@@ -1684,14 +1716,12 @@ const PregameTeamColumn: React.FC<{
   players: LiveMatchPlayer[];
   tierIcons: Record<number, string>;
   seasons?: Record<string, string>;
-  /** Queue being played — captions the 24H column so it reads as mode-scoped. */
   queueId?: string;
-}> = ({ players, tierIcons, seasons, queueId }) => {
-  const scope = queueLabel(queueId);
+}> = ({ players, tierIcons, seasons }) => {
   return (
     <div className="flex flex-col gap-1.5 pointer-events-none select-none">
-      {/* Table Column Headers: Score badge, Agent, Player, Rank, Peak, K/D, Win%, HS%, Recent */}
-      <div className="grid grid-cols-[26px_1fr_36px_36px_44px_46px_44px_64px] items-center px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/10">
+      {/* Table Column Headers: Score badge, Player, Rank, Peak, K/D, Win%, HS% */}
+      <div className="grid grid-cols-[26px_1fr_40px_40px_48px_50px_48px] items-center px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 border-b border-white/10">
         <span className="text-center" title="Tracker Score tier">TS</span>
         <span>Player</span>
         <span className="text-center">Rank</span>
@@ -1699,9 +1729,6 @@ const PregameTeamColumn: React.FC<{
         <span className="text-right">K/D</span>
         <span className="text-right">Win%</span>
         <span className="text-right">HS%</span>
-        <span className="text-right" title={scope ? `Wins / losses in the last 24 hours — ${scope} games only` : 'Wins / losses in the last 24 hours'}>
-          {scope ? `24H ${scope}` : '24H'}
-        </span>
       </div>
 
       {/* Teammate Rows */}
@@ -1714,11 +1741,12 @@ const PregameTeamColumn: React.FC<{
           const hasPick = !locked && !!p.agentName && p.agentName !== 'Selecting…';
           const party = getPartyStyle(p.partyIndex);
           const flagUrl = getFlagUrl(p.country);
+          const countryName = getCountryName(p.country);
 
           return (
             <div
               key={p.puuid}
-              className={`relative overflow-hidden grid grid-cols-[26px_1fr_36px_36px_44px_46px_44px_64px] items-center px-2.5 py-1 rounded-xl border text-xs transition-colors ${
+              className={`relative overflow-hidden grid grid-cols-[26px_1fr_40px_40px_48px_50px_48px] items-center px-2.5 py-1 rounded-xl border text-xs transition-colors ${
                 party
                   ? `${party.bg} border-white/10`
                   : p.isMe
@@ -1785,7 +1813,7 @@ const PregameTeamColumn: React.FC<{
                     <img
                       src={flagUrl}
                       alt={p.country || ''}
-                      title={`Country: ${p.country}`}
+                      title={countryName ? `Country: ${countryName} (${p.country})` : `Country: ${p.country}`}
                       draggable={false}
                       onError={(e) => {
                         (e.currentTarget as HTMLElement).style.display = 'none';
@@ -1853,8 +1881,10 @@ const PregameTeamColumn: React.FC<{
                 ) : (
                   <span className="text-[10px] font-mono text-zinc-500">—</span>
                 )}
-                {p.rr > 0 && (
+                {p.tier > 2 && p.rr != null ? (
                   <span className="text-[8.5px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
+                ) : (
+                  <span className="text-[8.5px] font-mono text-transparent mt-0.5 select-none">—</span>
                 )}
               </div>
 
@@ -1903,35 +1933,6 @@ const PregameTeamColumn: React.FC<{
                   <span className="text-zinc-600">—</span>
                 )}
               </div>
-
-              {/* Last 24h record (W/L) + current streak */}
-              <div
-                className="flex flex-col items-end leading-none font-mono text-[10px]"
-                title={`Last 24 hours: ${p.recentWon ?? 0}W - ${p.recentLost ?? 0}L${
-                  p.streak && p.streak > 0 ? ` • ${p.streak} ${p.streakIsWin ? 'win' : 'loss'} streak` : ''
-                }`}
-              >
-                {p.recentWon != null || p.recentLost != null ? (
-                  <>
-                    <span className="font-bold whitespace-nowrap">
-                      <span className="text-m3-mint">{p.recentWon ?? 0}W</span>
-                      <span className="text-zinc-500 mx-0.5">-</span>
-                      <span className="text-rose-400">{p.recentLost ?? 0}L</span>
-                    </span>
-                    {p.streak && p.streak > 0 ? (
-                      <span
-                        className={`text-[8px] font-bold mt-0.5 ${
-                          p.streakIsWin ? 'text-m3-mint' : 'text-rose-400'
-                        }`}
-                      >
-                        {p.streak}{p.streakIsWin ? 'W' : 'L'}
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  <span className="text-zinc-600">—</span>
-                )}
-              </div>
             </div>
           );
         })}
@@ -1960,17 +1961,18 @@ const VerticalSquadColumn: React.FC<{
       const kd = formatKd(p.kd);
       const party = getPartyStyle(p.partyIndex);
       const flagUrl = getFlagUrl(p.country);
+      const countryName = getCountryName(p.country);
 
       return (
         <div
           key={p.puuid}
-          title={`${p.name}${p.tag ? '#' + p.tag : ''} • ${p.agentName}`}
-          className={`relative overflow-hidden flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-xs transition-colors ${
+          title={`${p.name}${p.tag ? '#' + p.tag : ''} • ${p.agentName}${countryName ? ` • ${countryName}` : ''}`}
+          className={`relative overflow-hidden grid grid-cols-[18px_24px_28px_26px_36px_32px_36px_34px] items-center gap-x-1.5 h-[28px] px-2 rounded-lg border text-xs transition-colors shrink-0 ${
             party
               ? `${party.bg} border-white/10`
               : p.isMe
-              ? 'bg-purple-950/30 border-purple-500/40 text-white shadow-xs'
-              : 'bg-black/25 hover:bg-black/40 border-white/5 text-zinc-200'
+              ? 'bg-purple-950/70 border-purple-400/60 ring-1 ring-purple-400/30 text-white shadow-xs'
+              : 'bg-black/60 hover:bg-black/70 border-white/10 text-zinc-100'
           }`}
         >
           {/* Party identifier: curved bow arc wrapping the left edge when queued in a party */}
@@ -1992,7 +1994,7 @@ const VerticalSquadColumn: React.FC<{
           )}
           {/* Tracker Score tier badge */}
           <div
-            className="shrink-0 w-4 flex items-center justify-center"
+            className="flex items-center justify-center shrink-0"
             title={
               p.trnScore != null
                 ? `Tracker Score: ${p.trnScore} / 1000 — Tier ${scoreTier(p.trnScore).tier}`
@@ -2002,68 +2004,65 @@ const VerticalSquadColumn: React.FC<{
             {p.trnScore != null ? (
               <ScoreBadge tier={scoreTier(p.trnScore).tier} size={15} />
             ) : (
-              <span className="w-4 h-4 rounded border border-white/10 bg-white/[0.03] flex items-center justify-center text-[7.5px] font-mono text-zinc-600">
+              <span className="w-3.5 h-3.5 rounded border border-white/10 bg-white/[0.03] flex items-center justify-center text-[7.5px] font-mono text-zinc-600">
                 —
               </span>
             )}
           </div>
 
-          {/* Agent Icon (with Flag Overlay + Party dot / You indicator) */}
-          <div className="flex items-center gap-1 shrink-0 w-8">
-            <div className="relative shrink-0">
-              {p.agentIcon ? (
-                <img
-                  src={p.agentIcon}
-                  alt=""
-                  draggable={false}
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
-                  className="w-5 h-5 rounded-md object-cover pointer-events-none select-none border border-white/10"
-                />
-              ) : (
-                <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
-                  ?
-                </div>
-              )}
-              {flagUrl && (
-                <img
-                  src={flagUrl}
-                  alt={p.country || ''}
-                  title={`Country: ${p.country}`}
-                  draggable={false}
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
-                  className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] shadow-xs border border-black/80 pointer-events-none select-none"
-                />
-              )}
-            </div>
-            {party && (
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${party.bar} shrink-0 shadow-xs`}
-                title={`Queued together in ${party.name}`}
+          {/* Agent Icon (with Flag Overlay + Party dot badge) */}
+          <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
+            {p.agentIcon ? (
+              <img
+                src={p.agentIcon}
+                alt=""
+                draggable={false}
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+                className="w-5 h-5 rounded-md object-cover pointer-events-none select-none border border-white/10"
+              />
+            ) : (
+              <div className="w-5 h-5 rounded-md bg-zinc-800 border border-white/10 flex items-center justify-center text-[9px] font-bold text-zinc-400">
+                ?
+              </div>
+            )}
+            {flagUrl && (
+              <img
+                src={flagUrl}
+                alt={p.country || ''}
+                title={countryName ? `Country: ${countryName} (${p.country})` : `Country: ${p.country}`}
+                draggable={false}
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] shadow-xs border border-black/80 pointer-events-none select-none"
               />
             )}
-            {p.isMe && (
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0 shadow-[0_0_6px_rgba(192,132,252,0.8)]" title="You" />
+            {party && (
+              <span
+                className={`absolute -top-0.5 -left-0.5 w-1.5 h-1.5 rounded-full ${party.bar} shadow-xs border border-black/60`}
+                title={`Queued together in ${party.name}`}
+              />
             )}
           </div>
 
           {/* Current Rank emblem + live RR */}
-          <div className="flex flex-col items-center justify-center w-7 shrink-0 leading-none" title={rankTooltip(p)}>
+          <div className="flex flex-col items-center justify-center leading-none" title={rankTooltip(p)}>
             {icon ? (
               <img src={icon} alt="" draggable={false} className="w-4 h-4 object-contain shrink-0" />
             ) : (
               <span className="text-[10px] font-mono text-zinc-500">—</span>
             )}
-            {p.rr > 0 && (
+            {p.tier > 2 && p.rr != null ? (
               <span className="text-[7px] font-mono font-bold text-m3-primary mt-0.5">{p.rr}</span>
+            ) : (
+              <span className="text-[7px] font-mono text-transparent mt-0.5 select-none">—</span>
             )}
           </div>
 
           {/* Peak Rank (Icon only) */}
-          <div className="flex items-center justify-center w-6 shrink-0" title={`Peak: ${p.peakRank}`}>
+          <div className="flex items-center justify-center" title={`Peak: ${p.peakRank}`}>
             {peakIcon ? (
               <img src={peakIcon} alt="" draggable={false} className="w-3.5 h-3.5 object-contain opacity-75 shrink-0" />
             ) : (
@@ -2073,7 +2072,7 @@ const VerticalSquadColumn: React.FC<{
 
           {/* ACS — the sort key, so it reads first among the numbers */}
           <div
-            className="shrink-0 w-9 text-right font-mono text-[10px] font-bold"
+            className="text-right font-mono text-[10px] font-bold"
             title="Act-wide average combat score"
           >
             {p.acs != null ? (
@@ -2086,12 +2085,12 @@ const VerticalSquadColumn: React.FC<{
           </div>
 
           {/* KD */}
-          <div className="shrink-0 w-8 text-right font-mono text-[10px]" title="Act-wide K/D">
+          <div className="text-right font-mono text-[10px]" title="Act-wide K/D">
             <span className={kd.color}>{kd.text}</span>
           </div>
 
           {/* Act-wide win rate */}
-          <div className="shrink-0 w-9 text-right font-mono text-[10px]" title="Act-wide win rate">
+          <div className="text-right font-mono text-[10px]" title="Act-wide win rate">
             {p.winPct != null ? (
               <span className={p.winPct >= 50 ? 'text-m3-mint font-semibold' : 'text-rose-400'}>
                 {p.winPct.toFixed(0)}%
@@ -2102,19 +2101,8 @@ const VerticalSquadColumn: React.FC<{
           </div>
 
           {/* Act-wide headshot % */}
-          <div className="shrink-0 w-8 text-right font-mono text-[10px] text-amber-200/90" title="Act-wide headshot %">
+          <div className="text-right font-mono text-[10px] text-amber-200/90" title="Act-wide headshot %">
             {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-zinc-600">—</span>}
-          </div>
-
-          {/* Last 24h W/L */}
-          <div className="shrink-0 w-11 text-right font-mono text-[9px]" title="Wins / losses in the last 24 hours">
-            {p.recentWon != null || p.recentLost != null ? (
-              <span className={(p.recentWon ?? 0) >= (p.recentLost ?? 0) ? 'text-m3-mint' : 'text-rose-400'}>
-                {p.recentWon ?? 0}W-{p.recentLost ?? 0}L
-              </span>
-            ) : (
-              <span className="text-zinc-600">—</span>
-            )}
           </div>
         </div>
       );

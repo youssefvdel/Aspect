@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Phone, PhoneOff, Volume2, Sparkles, ShieldCheck, Zap, Layers, Cpu } from 'lucide-react';
+import { Phone, PhoneOff, Volume2, Sparkles } from 'lucide-react';
 import gsap from 'gsap';
 
 interface JohnPorkCallProps {

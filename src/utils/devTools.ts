@@ -46,6 +46,19 @@ export const isDevNoClient = (): boolean => {
 };
 
 let mockIdx = 0;
+const AGENT_META: Record<string, { icon: string; role: string }> = {
+  jett: { icon: 'https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/displayicon.png', role: 'Duelist' },
+  omen: { icon: 'https://media.valorant-api.com/agents/8e252d04-4643-3281-92ff-8549f6bcbc31/displayicon.png', role: 'Controller' },
+  sova: { icon: 'https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/displayicon.png', role: 'Initiator' },
+  killjoy: { icon: 'https://media.valorant-api.com/agents/1e58de9c-4950-5125-93e9-a0aee9f98746/displayicon.png', role: 'Sentinel' },
+  raze: { icon: 'https://media.valorant-api.com/agents/f94c3b30-42be-e959-889c-5aa313dba261/displayicon.png', role: 'Duelist' },
+  reyna: { icon: 'https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/displayicon.png', role: 'Duelist' },
+  viper: { icon: 'https://media.valorant-api.com/agents/707eab51-4836-f488-046a-cda6bf494859/displayicon.png', role: 'Controller' },
+  cypher: { icon: 'https://media.valorant-api.com/agents/117ed9e3-49f3-6512-3ccf-0cada7e3823b/displayicon.png', role: 'Sentinel' },
+  sage: { icon: 'https://media.valorant-api.com/agents/569fdd95-4d10-43ab-ca70-79becc718b46/displayicon.png', role: 'Sentinel' },
+  phoenix: { icon: 'https://media.valorant-api.com/agents/eb9333ab-4034-bc35-8964-64c426378049/displayicon.png', role: 'Duelist' },
+};
+
 const mk = (
   name: string,
   team: 'Blue' | 'Red',
@@ -54,6 +67,8 @@ const mk = (
   extra?: Partial<LiveMatchPlayer>
 ): LiveMatchPlayer => {
   const i = mockIdx++;
+  const kds = [1.38, 1.15, 0.94, 1.08, 1.22, 0.88, 1.45, 1.02, 1.11, 0.96];
+  const countries = ['EG', 'DE', 'FR', 'GB', 'US', 'SA', 'TR', 'IT', 'ES', 'SE'];
   return {
     puuid: `dev-puuid-${team}-${i}`,
     name,
@@ -65,20 +80,20 @@ const mk = (
     agentRole: '',
     tier,
     rank,
-    rr: 40 + i,
-    peakTier: tier + 3,
+    rr: 40 + (i * 7) % 55,
+    peakTier: tier + 2,
     peakRank: rank,
     // Real season uuid so the "peak reached in" act label renders in previews.
     peakSeasonId: '8102cd81-43a0-d0d7-bd59-47b8fe9bed1b',
     actWins: 12 + i,
     actGames: 20 + i,
-    accountLevel: 100 + i,
+    accountLevel: 100 + (i * 23) % 250,
     cardId: '',
     isMe: false,
     selectionState: '',
     region: 'EU',
-    country: 'DE',
-    kd: 1.1,
+    country: countries[i % countries.length],
+    kd: kds[i % kds.length],
     winPct: 48 + (i % 5) * 3,
     hsPct: 24 + (i % 4),
     // Spread across the tier bands so the badge range is visible in previews.
@@ -137,8 +152,14 @@ function mockCoregame(): LiveMatchState {
     ...s,
     phase: 'coregame',
     matchId: 'dev-match-coregame',
-    blueTeam: s.blueTeam.map((p, i) => ({ ...p, agentName: agents[i] })),
-    redTeam: s.redTeam.map((p, i) => ({ ...p, agentName: foes[i] })),
+    blueTeam: s.blueTeam.map((p, i) => {
+      const meta = AGENT_META[agents[i].toLowerCase()];
+      return { ...p, agentName: agents[i], agentIcon: meta?.icon || '', agentRole: meta?.role || '' };
+    }),
+    redTeam: s.redTeam.map((p, i) => {
+      const meta = AGENT_META[foes[i].toLowerCase()];
+      return { ...p, agentName: foes[i], agentIcon: meta?.icon || '', agentRole: meta?.role || '' };
+    }),
     updatedAt: Date.now(),
   };
 }

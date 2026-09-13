@@ -15,6 +15,34 @@ export function getFlagUrl(code?: string): string | null {
   return `https://flagcdn.com/24x18/${lower}.png`;
 }
 
+const regionNames = typeof Intl !== 'undefined' && Intl.DisplayNames ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
+
+/** Full human-readable country name (e.g. 'EG' → 'Egypt', 'DE' → 'Germany'). */
+export function getCountryName(code?: string): string | null {
+  if (!code || code.length !== 2 || ['EU', 'NA', 'AP', 'KR'].includes(code.toUpperCase())) return null;
+  let upper = code.toUpperCase();
+  if (upper === 'UK') upper = 'GB';
+  try {
+    return regionNames?.of(upper) || upper;
+  } catch {
+    return upper;
+  }
+}
+
+/** Canonical search & profile URLs across Tracker.gg (TRN), Blitz.gg, and OP.GG */
+export function getTrackerUrls(name: string, tag?: string) {
+  const cleanName = (name || '').trim();
+  const cleanTag = (tag || '').trim();
+  const riotIdEncoded = `${encodeURIComponent(cleanName)}%23${encodeURIComponent(cleanTag)}`;
+  const blitzSlug = `${encodeURIComponent(cleanName)}-${encodeURIComponent(cleanTag)}`;
+
+  return {
+    trn: `https://tracker.gg/valorant/profile/riot/${riotIdEncoded}/overview`,
+    blitz: `https://blitz.gg/valorant/profile/${blitzSlug}`,
+    opgg: `https://op.gg/valorant/profile/${riotIdEncoded}`,
+  };
+}
+
 /** Full MMR picture for a lobby player, surfaced on hover. */
 export function rankTooltip(p: LiveMatchPlayer, actLabel?: string): string {
   const bits: string[] = [];
@@ -182,8 +210,12 @@ export function splitTeams(state: {
   return { yours: state.blueTeam, theirs: state.redTeam, isFfa: false };
 }
 
-/** Strongest combat score first. Players whose ACS hasn't resolved yet sink to
- *  the bottom of the board rather than being dropped or shown as a zero. */
+/** Strongest combat score first. Ties are deterministically resolved by tier
+ *  then PUUID so rows never jitter or swap positions between polls. */
 export function byAcsDesc(a: LiveMatchPlayer, b: LiveMatchPlayer): number {
-  return (b.acs ?? -1) - (a.acs ?? -1);
+  const diff = (b.acs ?? -1) - (a.acs ?? -1);
+  if (diff !== 0) return diff;
+  const tierDiff = (b.tier || 0) - (a.tier || 0);
+  if (tierDiff !== 0) return tierDiff;
+  return a.puuid.localeCompare(b.puuid);
 }

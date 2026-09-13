@@ -280,16 +280,14 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     if (!me) return { totalKills: 0, totalDeaths: 0, nemesis: null, prey: null };
     const enemies = playerStats.filter((p) => p.team !== me.team);
 
-    let totalKills = 0;
-    let totalDeaths = 0;
     const records = enemies.map((e) => {
       const k = detail.kills.filter((x) => x.killerPuuid === me.puuid && x.victimPuuid === e.puuid).length;
       const d = detail.kills.filter((x) => x.killerPuuid === e.puuid && x.victimPuuid === me.puuid).length;
-      totalKills += k;
-      totalDeaths += d;
       return { opponent: e, kills: k, deaths: d, net: k - d };
     });
 
+    const totalKills = records.reduce((sum, r) => sum + r.kills, 0);
+    const totalDeaths = records.reduce((sum, r) => sum + r.deaths, 0);
     const sortedByDeaths = [...records].sort((a, b) => b.deaths - a.deaths);
     const sortedByKills = [...records].sort((a, b) => b.kills - a.kills);
 
@@ -352,7 +350,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
     for (const k of detail.kills) {
       if (!k.weapon) continue;
       const lower = k.weapon.toLowerCase();
-      const raw = lower.replace(/^.*[_\/]/, '').replace(/equippable_?/i, '');
+      const raw = lower.replace(/^.*[_/]/, '').replace(/equippable_?/i, '');
       const wName = weaponMap[lower] || weaponMap[raw] || raw;
       if (!wName) continue;
       counts.set(wName, (counts.get(wName) ?? 0) + 1);

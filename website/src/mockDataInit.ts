@@ -15,5 +15,3 @@ initReconMockData();
    app renders, so the Live Match view's first paint already has the lobby and
    never flashes its "Waiting for Valorant Match" empty state. */
 seedPreviewData();
-
-export {};

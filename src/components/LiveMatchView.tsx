@@ -9,15 +9,19 @@ import {
   Users,
   Clock,
   Sparkles,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { LiveMatchState, LiveMatchPlayer } from '../types';
 import {
   fetchLiveMatchState,
   peekLiveMatchState,
+  getLastActiveMatch,
   gameData,
   matchEndHarvest,
   harvestMatchNames,
   fetchMatchLoadouts,
+  isMatchStateEqual,
 } from '../utils/tracker';
 import {
   loadWeaponCatalog,
@@ -30,16 +34,16 @@ import { useTrackerData } from '../hooks/useTrackerData';
 import { ScoreBadge, scoreTier } from './ScoreBadge';
 import {
   getFlagUrl,
+  getCountryName,
+  getTrackerUrls,
   rankTooltip,
   shortAct,
   formatKd,
-  recentLabel,
   getPartyStyle,
   splitTeams,
   byAcsDesc,
-  queueLabel,
 } from '../utils/playerDisplay';
-import { isTauri } from '../utils/ipc';
+import { isTauri, openExternalUrl } from '../utils/ipc';
 import { listen } from '@tauri-apps/api/event';
 
 /* In-app Live Match page.
@@ -100,8 +104,10 @@ export const LiveMatchView: React.FC = () => {
           // Match just ended: hidden names are released by Riot only now.
           const harvest = matchEndHarvest(prevStateRef.current, s);
           if (harvest) harvestMatchNames(harvest).catch(() => {});
-          prevStateRef.current = s;
-          setMatchState(s);
+          if (!isMatchStateEqual(prevStateRef.current, s)) {
+            prevStateRef.current = s;
+            setMatchState(s);
+          }
         })
         .catch(() => {});
     };
@@ -130,8 +136,10 @@ export const LiveMatchView: React.FC = () => {
             const s = event.payload;
             const harvest = matchEndHarvest(prevStateRef.current, s);
             if (harvest) harvestMatchNames(harvest).catch(() => {});
-            prevStateRef.current = s;
-            setMatchState(s);
+            if (!isMatchStateEqual(prevStateRef.current, s)) {
+              prevStateRef.current = s;
+              setMatchState(s);
+            }
           }
         })
       : null;
@@ -208,27 +216,38 @@ export const LiveMatchView: React.FC = () => {
     [matchState]
   );
 
-  const isLive = matchState && matchState.phase !== 'idle';
+  const lastActive = getLastActiveMatch();
+  const effectiveState: LiveMatchState | null = useMemo(() => {
+    if (matchState && matchState.phase !== 'idle' && (matchState.blueTeam.length > 0 || matchState.redTeam.length > 0)) {
+      return matchState;
+    }
+    if (lastActive && (lastActive.blueTeam.length > 0 || lastActive.redTeam.length > 0)) {
+      return { ...lastActive, isPreviousMatch: true };
+    }
+    return matchState;
+  }, [matchState, lastActive]);
+
+  const isLive = Boolean(effectiveState && (effectiveState.blueTeam.length > 0 || effectiveState.redTeam.length > 0));
 
   // Your team / enemy team, with Deathmatch flattened into one FFA board.
   const teams = useMemo(
     () =>
-      matchState
+      effectiveState
         ? splitTeams({
-            isDeathmatch: matchState.isDeathmatch,
-            blueTeam: matchState.blueTeam,
-            redTeam: matchState.redTeam,
+            isDeathmatch: effectiveState.isDeathmatch,
+            blueTeam: effectiveState.blueTeam,
+            redTeam: effectiveState.redTeam,
           })
         : { yours: [], theirs: [], isFfa: false },
-    [matchState]
+    [effectiveState]
   );
 
   return (
     <div className="h-full min-h-0 flex flex-col justify-start gap-2.5 max-w-6xl mx-auto w-full overflow-hidden px-6 pt-3 pb-6 select-none">
       {/* Consolidated Live Match Status Bar */}
-      {isLive && matchState && (
+      {isLive && effectiveState && (
         <MatchStatusStrip
-          state={matchState}
+          state={effectiveState}
           onRefresh={loadState}
           refreshing={loading}
         />
@@ -258,17 +277,17 @@ export const LiveMatchView: React.FC = () => {
           players={teams.yours}
           tierIcons={tierIcons}
           seasonNames={seasonNames}
-          queueId={matchState?.queueId}
+          queueId={effectiveState?.queueId}
           onShowLoadout={openLoadout}
         />
-      ) : matchState?.isRange ? (
+      ) : effectiveState?.isRange ? (
         <PlayerTable
           title="The Range — Practice"
           accent="mint"
           players={teams.yours}
           tierIcons={tierIcons}
           seasonNames={seasonNames}
-          queueId={matchState?.queueId}
+          queueId={effectiveState?.queueId}
           onShowLoadout={openLoadout}
         />
       ) : (
@@ -279,18 +298,18 @@ export const LiveMatchView: React.FC = () => {
             players={teams.yours}
             tierIcons={tierIcons}
             seasonNames={seasonNames}
-            queueId={matchState?.queueId}
+            queueId={effectiveState?.queueId}
             onShowLoadout={openLoadout}
           />
 
-          {matchState.phase === 'coregame' ? (
+          {effectiveState?.phase === 'coregame' || effectiveState?.isPreviousMatch || teams.theirs.length > 0 ? (
             <PlayerTable
               title="Enemy Team"
               accent="coral"
               players={teams.theirs}
               tierIcons={tierIcons}
               seasonNames={seasonNames}
-              queueId={matchState?.queueId}
+              queueId={effectiveState?.queueId}
               onShowLoadout={openLoadout}
             />
           ) : (
@@ -337,13 +356,17 @@ const MatchStatusStrip: React.FC<{
       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-m3-surface-container-high border border-m3-outline-subtle text-[10px] font-mono font-bold shrink-0">
         <span
           className={`w-1.5 h-1.5 rounded-full ${
-            state.phase === 'coregame' || state.phase === 'pregame'
+            state.isPreviousMatch
+              ? 'bg-amber-400'
+              : state.phase === 'coregame' || state.phase === 'pregame'
               ? 'bg-m3-mint animate-pulse'
               : 'bg-m3-outline'
           }`}
         />
-        <span className={state.phase === 'coregame' || state.phase === 'pregame' ? 'text-m3-mint' : 'text-m3-outline'}>
-          {state.phase === 'coregame'
+        <span className={state.isPreviousMatch ? 'text-amber-300' : state.phase === 'coregame' || state.phase === 'pregame' ? 'text-m3-mint' : 'text-m3-outline'}>
+          {state.isPreviousMatch
+            ? 'PREVIOUS MATCH • WAITING FOR QUEUE'
+            : state.phase === 'coregame'
             ? 'IN MATCH'
             : state.phase === 'pregame'
             ? 'AGENT SELECT'
@@ -397,7 +420,7 @@ const MatchStatusStrip: React.FC<{
         </button>
         <span className="flex items-center gap-1 text-m3-outline text-[9.5px]">
           <Clock className="w-3 h-3" />
-          <span>synced {new Date(state.updatedAt || Date.now()).toLocaleTimeString()}</span>
+          <span>synced {state.updatedAt ? new Date(state.updatedAt).toLocaleTimeString() : '—'}</span>
         </span>
       </div>
     </section>
@@ -408,7 +431,7 @@ const MatchStatusStrip: React.FC<{
 /* Player table — mirrors the Agent Select widget's columns            */
 /* ------------------------------------------------------------------ */
 
-const GRID = 'grid grid-cols-[1fr_64px_28px_70px_68px_42px_38px_42px_38px_60px_34px] items-center gap-x-1.5';
+const GRID = 'grid grid-cols-[1fr_64px_28px_70px_68px_42px_38px_42px_38px_34px] items-center gap-x-1.5';
 
 const ACCENTS: Record<string, { tag: string; border: string }> = {
   primary: { tag: 'bg-m3-primary/15 text-m3-primary border-m3-primary/30', border: 'border-m3-primary/25' },
@@ -427,9 +450,8 @@ const PlayerTable: React.FC<{
   queueId?: string;
   onShowLoadout?: (p: LiveMatchPlayer) => void;
   hideHeader?: boolean;
-}> = ({ title, accent, players, tierIcons, seasonNames, queueId, onShowLoadout, hideHeader }) => {
+}> = ({ title, accent, players, tierIcons, seasonNames, onShowLoadout, hideHeader }) => {
   const a = ACCENTS[accent] ?? ACCENTS.primary;
-  const scope = queueLabel(queueId);
 
   return (
     <section
@@ -460,12 +482,6 @@ const PlayerTable: React.FC<{
         <span className="text-right" title="Act-wide K/D (Riot exposes no live kill data)">K/D</span>
         <span className="text-right" title="Act-wide win rate">Win%</span>
         <span className="text-right" title="Act-wide headshot %">HS%</span>
-        <span
-          className="text-right"
-          title={scope ? `Wins / losses in the last 24 hours (${scope} games)` : 'Wins / losses in the last 24 hours'}
-        >
-          24H
-        </span>
         <span className="text-right">Lvl</span>
       </div>
 
@@ -495,13 +511,24 @@ const PlayerRow: React.FC<{
   seasonNames: Record<string, string>;
   onShowLoadout?: (p: LiveMatchPlayer) => void;
 }> = ({ p, tierIcons, seasonNames, onShowLoadout }) => {
+  const [copied, setCopied] = useState(false);
   const rankIcon = tierIcons[p.tier];
   const peakIcon = tierIcons[p.peakTier];
   const kd = formatKd(p.kd);
-  const recent = recentLabel(p);
   const party = getPartyStyle(p.partyIndex);
   const flagUrl = getFlagUrl(p.country);
+  const countryName = getCountryName(p.country);
+  const trackerUrls = getTrackerUrls(p.name, p.tag);
   const actLabel = p.peakSeasonId ? seasonNames[p.peakSeasonId] : undefined;
+
+  const handleCopyRiotId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!p.name) return;
+    const fullId = `${p.name}${p.tag ? '#' + p.tag : ''}`;
+    navigator.clipboard.writeText(fullId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   return (
     <div
@@ -549,7 +576,7 @@ const PlayerRow: React.FC<{
             <img
               src={flagUrl}
               alt={p.country || ''}
-              title={`Country: ${p.country}`}
+              title={countryName ? `Country: ${countryName} (${p.country})` : `Country: ${p.country}`}
               className="absolute -bottom-0.5 -right-0.5 w-3 h-2 object-cover rounded-[1.5px] border border-m3-surface shadow-xs"
             />
           )}
@@ -571,6 +598,53 @@ const PlayerRow: React.FC<{
             </span>
             {p.tag && (
               <span className="text-[8.5px] font-mono text-m3-outline truncate">#{p.tag}</span>
+            )}
+            {p.name && p.tag && !p.name.startsWith('Player ') && (
+              <button
+                type="button"
+                onClick={handleCopyRiotId}
+                className="p-0.5 rounded hover:bg-white/10 text-m3-outline hover:text-white cursor-pointer transition-colors shrink-0"
+                title={copied ? 'Copied!' : `Copy ${p.name}#${p.tag}`}
+              >
+                {copied ? <Check className="w-2.5 h-2.5 text-m3-mint" /> : <Copy className="w-2.5 h-2.5" />}
+              </button>
+            )}
+            {p.name && p.tag && !p.name.startsWith('Player ') && (
+              <div className="flex items-center gap-1 ml-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openExternalUrl(trackerUrls.trn);
+                  }}
+                  className="px-1 py-px rounded text-[7px] font-mono font-bold bg-white/5 hover:bg-[#b6abf7]/25 hover:text-[#b6abf7] border border-white/10 text-zinc-400 cursor-pointer transition-colors"
+                  title={`Search ${p.name}#${p.tag} on Tracker.gg (TRN)`}
+                >
+                  TRN
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openExternalUrl(trackerUrls.blitz);
+                  }}
+                  className="px-1 py-px rounded text-[7px] font-mono font-bold bg-white/5 hover:bg-red-500/25 hover:text-red-300 border border-white/10 text-zinc-400 cursor-pointer transition-colors"
+                  title={`Search ${p.name}#${p.tag} on Blitz.gg`}
+                >
+                  Blitz
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openExternalUrl(trackerUrls.opgg);
+                  }}
+                  className="px-1 py-px rounded text-[7px] font-mono font-bold bg-white/5 hover:bg-blue-500/25 hover:text-blue-300 border border-white/10 text-zinc-400 cursor-pointer transition-colors"
+                  title={`Search ${p.name}#${p.tag} on OP.GG`}
+                >
+                  OP.GG
+                </button>
+              </div>
             )}
             {p.isMe && (
               <span className="px-1 py-px rounded bg-m3-primary text-m3-on-primary text-[7.5px] font-black uppercase shrink-0">
@@ -596,6 +670,11 @@ const PlayerRow: React.FC<{
               {p.agentName}
             </span>
             {p.agentRole && <span className="truncate">• {p.agentRole}</span>}
+            {countryName && (
+              <span className="text-zinc-300 font-medium truncate" title={`Nationality: ${countryName} (${p.country})`}>
+                • {countryName}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -711,12 +790,7 @@ const PlayerRow: React.FC<{
         {p.hsPct != null && p.hsPct > 0 ? `${p.hsPct.toFixed(0)}%` : <span className="text-m3-outline">—</span>}
       </div>
 
-      {/* 10. Last 24h W/L */}
-      <div className="text-right font-mono text-[9.5px]" title="Wins / losses in the last 24 hours">
-        {recent ? <span className={recent.color}>{recent.text}</span> : <span className="text-m3-outline">—</span>}
-      </div>
-
-      {/* 11. Account level */}
+      {/* 10. Account level */}
       <div className="text-right font-mono text-[9.5px] text-m3-outline" title="Account level">
         {p.accountLevel > 0 ? p.accountLevel : '—'}
       </div>
