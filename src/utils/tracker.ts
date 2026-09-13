@@ -1364,8 +1364,17 @@ const liveMmrCache = new Map<
     leaderboardRank?: number;
     isRankHidden?: boolean;
     fetchedAt: number;
+    /** Set when the last lookup FAILED (rate limit, blip). The entry keeps the
+     *  last good rank and only backs off briefly before retrying. */
+    retryAfter?: boolean;
   }
 >();
+
+/** A resolved rank stays valid for the session — Riot's numbers barely move
+ *  mid-match. A FAILED lookup backs off only briefly so the rank comes back as
+ *  soon as Riot answers again. */
+const MMR_TTL_MS = 15 * 60 * 1000;
+const MMR_RETRY_MS = 2 * 60 * 1000;
 
 /* ------------------------------------------------------------------ *
  * LAST-24H WIN/LOSS TRACKER
@@ -2157,10 +2166,15 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
       const pU = p.toLowerCase();
       const cached =
         liveMmrCache.get(p) ?? liveMmrCache.get(pU) ?? liveMmrCache.get(p.toUpperCase());
-      if (cached && Date.now() - cached.fetchedAt < 15 * 60 * 1000) {
-        mmrMap.set(p, cached);
-        mmrMap.set(pU, cached);
-        return false;
+      if (cached) {
+        // A failed entry backs off briefly; a resolved rank is good for the
+        // session, so one transient blip can no longer blank a lobby for 15min.
+        const ttl = cached.retryAfter ? MMR_RETRY_MS : MMR_TTL_MS;
+        if (Date.now() - cached.fetchedAt < ttl) {
+          mmrMap.set(p, cached);
+          mmrMap.set(pU, cached);
+          return false;
+        }
       }
       return true;
     });
@@ -2205,7 +2219,16 @@ export async function fetchLiveMatchState(regionOverride?: string, forceRefresh 
               mmrMap.set(p, val);
               mmrMap.set(p.toLowerCase(), val);
             } catch {
-              const val = { tier: 0, rr: 0, peakTier: 0, fetchedAt: Date.now() };
+              // A failed lookup must NEVER erase a rank we already know. Writing
+              // tier 0 here (and stamping fetchedAt) is what made ranks flicker:
+              // the failure was cached as "no rank" and the TTL then held that
+              // for the full 15 minutes. Keep the last good value, back off
+              // briefly, and let the next poll retry.
+              const prev =
+                liveMmrCache.get(p) ?? liveMmrCache.get(p.toLowerCase()) ?? null;
+              const val = prev
+                ? { ...prev, fetchedAt: Date.now(), retryAfter: true }
+                : { tier: 0, rr: 0, peakTier: 0, fetchedAt: Date.now(), retryAfter: true };
               liveMmrCache.set(p, val);
               liveMmrCache.set(p.toLowerCase(), val);
               mmrMap.set(p, val);
